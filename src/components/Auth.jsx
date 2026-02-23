@@ -42,7 +42,7 @@ export default function Auth({ onLogin }) {
                         <Heart className="text-rose-500" size={32} />
                     </div>
                     <h1 className="text-2xl font-light text-slate-800">
-                        Love<span className="font-semibold">Metrics</span>
+                        Alexithymia<span className="font-semibold">LoveQuantifier</span>
                     </h1>
                     <p className="text-slate-400 text-sm mt-1">
                         {isLogin ? 'Welcome back' : 'Create your account'}

@@ -8,8 +8,14 @@ import Dashboard from './components/Dashboard';
 import Auth from './components/Auth';
 import Profile from './components/Profile';
 
+// Initialize axios default headers immediately to prevent race conditions on first render
+const initialToken = localStorage.getItem('token');
+if (initialToken) {
+    axios.defaults.headers.common['Authorization'] = `Bearer ${initialToken}`;
+}
+
 export default function App() {
-    const [token, setToken] = useState(localStorage.getItem('token'));
+    const [token, setToken] = useState(initialToken);
 
     useEffect(() => {
         if (token) {

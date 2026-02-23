@@ -1,15 +1,118 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
-import { Plus, X, Trash2, Edit2, Info, Activity, Layers, Calendar } from 'lucide-react';
+import { Plus, X, Trash2, Edit2, Info, Activity, Layers, Calendar, ChevronLeft } from 'lucide-react';
 
 const CATEGORIES = [
-    { id: 'eros', label: 'Eros', description: 'Romantic, passionate love', color: 'bg-rose-400' },
-    { id: 'ludus', label: 'Ludus', description: 'Playful, flirtatious love', color: 'bg-orange-400' },
-    { id: 'storge', label: 'Storge', description: 'Unconditional, familial love', color: 'bg-amber-400' },
-    { id: 'pragma', label: 'Pragma', description: 'Enduring, logical love', color: 'bg-emerald-400' },
-    { id: 'mania', label: 'Mania', description: 'Obsessive, intense love', color: 'bg-violet-400' },
-    { id: 'agape', label: 'Agape', description: 'Selfless, universal love', color: 'bg-blue-400' },
-    { id: 'selflessness', label: 'Selflessness', description: 'Complete lack of ego', color: 'bg-slate-400' }
+    {
+        id: 'eros',
+        label: 'Eros',
+        description: 'Romantic, passionate love',
+        color: 'bg-rose-400',
+        textColor: 'text-rose-500',
+        borderColor: 'border-rose-300',
+        extendedDescription: 'Eros is the "chemistry" operating system. It is heavily driven by physical attraction, aesthetics, and a desire for rapid, intense connection. It is what most movies depict as "falling in love."',
+        coreMotivation: 'Physical and emotional merging; intense fascination with the partner\'s physical being.',
+        metrics: [
+            { title: 'Proximity Seeking', description: 'You find yourself constantly wanting to close the physical distance between you two (e.g., sitting side-by-side rather than across a table).' },
+            { title: 'Aesthetic Fixation', description: 'You frequently notice and focus on their physical features.' },
+            { title: 'Rapid Escalation', description: 'You feel a drive to escalate the relationship quickly, sharing deep secrets or engaging physically early on.' },
+            { title: 'The "Spark"', description: 'You experience a noticeable physiological response (elevated heart rate, nervous energy) when you see them.' }
+        ]
+    },
+    {
+        id: 'ludus',
+        label: 'Ludus',
+        description: 'Playful, flirtatious love',
+        color: 'bg-orange-400',
+        textColor: 'text-orange-500',
+        borderColor: 'border-orange-300',
+        extendedDescription: 'Ludus views love as a game to be played or a dance to be enjoyed, rather than a heavy, long-term commitment. It is about the fun of the interaction without the weight of obligation.',
+        coreMotivation: 'Entertainment, freedom, and enjoying the "chase."',
+        metrics: [
+            { title: 'Lighthearted Communication', description: 'Conversations heavily feature banter, teasing, and flirting rather than deep, emotionally vulnerable topics.' },
+            { title: 'Avoidance of "The Future"', description: 'You (or they) actively change the subject or feel a spike of discomfort when asked to define the relationship or make plans months in advance.' },
+            { title: 'Multiple Outputs', description: 'You feel comfortable and perhaps prefer pursuing or entertaining multiple romantic interests simultaneously.' },
+            { title: 'Emotional Boundaries', description: 'You do not feel a strong need to integrate this person into your broader life (introducing them to family or close friends).' }
+        ]
+    },
+    {
+        id: 'storge',
+        label: 'Storge',
+        description: 'Unconditional, familial love',
+        color: 'bg-amber-400',
+        textColor: 'text-amber-500',
+        borderColor: 'border-amber-300',
+        extendedDescription: 'Storge is the "slow burn" operating system. It is love that grows gradually out of a foundation of deep friendship, shared values, and mutual trust. There is often no distinct moment of "falling" in love; it just becomes a fact over time.',
+        coreMotivation: 'Companionship, stability, and psychological comfort.',
+        metrics: [
+            { title: 'High Comfort Level', description: 'You feel entirely yourself around them. You do not feel the need to "perform" or hide your flaws.' },
+            { title: 'Shared Values Over Aesthetics', description: 'Your connection is built on shared interests, similar life goals, or intellectual alignment rather than physical chemistry.' },
+            { title: 'Slow Progression', description: 'Physical intimacy or romantic declarations happened significantly later in the relationship, feeling like a natural evolution of a friendship.' },
+            { title: 'Crisis Stability', description: 'In times of high stress, your first instinct is to lean on them for practical support and advice.' }
+        ]
+    },
+    {
+        id: 'pragma',
+        label: 'Pragma',
+        description: 'Enduring, logical love',
+        color: 'bg-emerald-400',
+        textColor: 'text-emerald-500',
+        borderColor: 'border-emerald-300',
+        extendedDescription: 'Pragma is the pragmatic, checklist-driven operating system. It is a highly cognitive approach to love where a partner is evaluated based on their practical compatibility for a successful life, family, or partnership.',
+        coreMotivation: 'Long-term compatibility, practical success, and life alignment.',
+        metrics: [
+            { title: 'Checklist Evaluation', description: 'You mentally (or literally) evaluate them against a set of criteria: financial stability, career trajectory, parenting potential, or lifestyle habits.' },
+            { title: 'Rational Vetoes', description: 'You have actively walked away from someone you found highly attractive or fun because they did not meet your logical criteria for a long-term partner.' },
+            { title: 'Logistical Harmony', description: 'The relationship is characterized by smooth planning, shared financial goals, and efficient division of labor.' },
+            { title: 'Head Over Heart', description: 'Decisions about the relationship are made based on what makes logical sense rather than emotional impulses.' }
+        ]
+    },
+    {
+        id: 'mania',
+        label: 'Mania',
+        description: 'Obsessive, intense love',
+        color: 'bg-violet-400',
+        textColor: 'text-violet-500',
+        borderColor: 'border-violet-300',
+        extendedDescription: 'Mania is an unstable, highly volatile operating system. It usually arises from low self-esteem or a fear of abandonment, leading to a desperate need for the partner\'s constant reassurance and attention.',
+        coreMotivation: 'Alleviating anxiety through complete possession and reassurance from the partner.',
+        metrics: [
+            { title: 'Metric of Response', description: 'You experience genuine distress, anxiety, or anger if they do not reply to a message within a specific timeframe.' },
+            { title: 'Extreme Jealousy', description: 'You feel highly threatened by their external friendships or independent activities.' },
+            { title: 'Emotional Rollercoaster', description: 'Your mood for the entire day is dictated entirely by how well your interactions with this person are going.' },
+            { title: 'Hyper-Vigilance', description: 'You frequently monitor their social media or whereabouts to ensure they are not abandoning you.' }
+        ]
+    },
+    {
+        id: 'agape',
+        label: 'Agape',
+        description: 'Selfless, universal love',
+        color: 'bg-blue-400',
+        textColor: 'text-blue-500',
+        borderColor: 'border-blue-300',
+        extendedDescription: 'Agape is the altruistic operating system. It is an entirely selfless love where the well-being and happiness of the partner are prioritized over your own, without any expectation of reward or reciprocation.',
+        coreMotivation: 'The unconditional care, nurturing, and betterment of the other person.',
+        metrics: [
+            { title: 'Willing Sacrifice', description: 'You consistently give up your own resources (time, money, comfort) to improve their situation, and you do not harbor resentment for it.' },
+            { title: 'Forgiveness', description: 'You have a high capacity to forgive their mistakes or flaws because you view them with deep empathy.' },
+            { title: 'Zero Keeping Score', description: 'You do not keep a mental tally of "who owes who" favors or effort in the relationship.' },
+            { title: 'Prioritizing Their Joy', description: 'You feel genuine satisfaction simply from seeing them happy, even if you did not directly cause it or benefit from it.' }
+        ]
+    },
+    {
+        id: 'selflessness',
+        label: 'Selflessness',
+        description: 'Complete lack of ego',
+        color: 'bg-slate-400',
+        textColor: 'text-slate-500',
+        borderColor: 'border-slate-300',
+        extendedDescription: 'In traditional psychological models, this overlaps almost completely with "Agape". It represents the absolute extreme end of the Agape spectrum.',
+        coreMotivation: 'Total removal of the "self" from the equation of the relationship.',
+        metrics: [
+            { title: 'Absence of Personal Demands', description: 'You do not enforce your own boundaries or needs if they conflict even slightly with the other person\'s.' },
+            { title: 'Identity Merging', description: 'You evaluate situations entirely through the lens of "what is best for them," completely omitting "what is best for me."' }
+        ]
+    }
 ];
 
 const Card = ({ children, className = '', style = {} }) => (
@@ -187,34 +290,93 @@ const CardStack = ({ versions, onEdit, onDelete, onAddVersion }) => {
 };
 
 
-const AboutModal = ({ onClose }) => (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/20 backdrop-blur-sm transition-all">
-        <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
-            <div className="p-6">
-                <div className="flex justify-between items-center mb-6 border-b border-slate-50 pb-4">
-                    <div>
-                        <h2 className="text-xl font-light text-slate-800">Love Categories</h2>
-                        <p className="text-xs text-slate-400 mt-1">Based on the Color Wheel Theory of Love</p>
+const AboutModal = ({ onClose }) => {
+    const [selectedCategory, setSelectedCategory] = useState(null);
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/20 backdrop-blur-sm transition-all">
+            <Card className="w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <div className="p-6 flex-shrink-0 flex justify-between items-center border-b border-slate-50">
+                    <div className="flex items-center gap-3">
+                        {selectedCategory && (
+                            <button
+                                onClick={() => setSelectedCategory(null)}
+                                className="p-1 -ml-2 text-slate-400 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition-colors"
+                                title="Back to Categories"
+                            >
+                                <ChevronLeft size={24} />
+                            </button>
+                        )}
+                        <div>
+                            <h2 className="text-xl font-light text-slate-800">
+                                {selectedCategory ? selectedCategory.label : 'Love Categories'}
+                            </h2>
+                            <p className="text-xs text-slate-400 mt-1">
+                                {selectedCategory ? 'Category Details' : 'Based on the Color Wheel Theory of Love'}
+                            </p>
+                        </div>
                     </div>
                     <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-50 transition-colors">
                         <X size={20} />
                     </button>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {CATEGORIES.map((cat) => (
-                        <div key={cat.id} className="p-4 rounded-xl border border-slate-50 bg-slate-50/50 hover:bg-white hover:shadow-sm transition-all">
-                            <div className="flex items-center gap-3 mb-2">
-                                <div className={`w-3 h-3 rounded-full ${cat.color}`} />
-                                <h3 className="font-medium text-slate-900">{cat.label}</h3>
-                            </div>
-                            <p className="text-sm text-slate-500 leading-relaxed font-light">{cat.description}</p>
+
+                <div className="p-6 overflow-y-auto">
+                    {!selectedCategory ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {CATEGORIES.map((cat) => (
+                                <div
+                                    key={cat.id}
+                                    onClick={() => setSelectedCategory(cat)}
+                                    className="p-4 rounded-xl border border-slate-50 bg-slate-50/50 hover:bg-white hover:shadow-sm hover:border-slate-200 transition-all cursor-pointer group"
+                                >
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <div className={`w-3 h-3 rounded-full ${cat.color} group-hover:scale-110 transition-transform`} />
+                                        <h3 className={`font-medium text-slate-900 group-hover:${cat.textColor} transition-colors`}>{cat.label}</h3>
+                                    </div>
+                                    <p className="text-sm text-slate-500 leading-relaxed font-light">{cat.description}</p>
+                                </div>
+                            ))}
                         </div>
-                    ))}
+                    ) : (
+                        <div className="space-y-6 animate-in slide-in-from-right-2 duration-200">
+                            <div className={`p-4 rounded-xl bg-slate-50 border-l-4 ${selectedCategory.borderColor}`}>
+                                <p className="text-sm text-slate-700 leading-relaxed font-medium mb-3">
+                                    {selectedCategory.extendedDescription}
+                                </p>
+                                <div className="text-sm">
+                                    <span className={`font-semibold ${selectedCategory.textColor}`}>Core Motivation: </span>
+                                    <span className="text-slate-600 italic">{selectedCategory.coreMotivation}</span>
+                                </div>
+                            </div>
+
+                            <div>
+                                <h4 className="text-sm font-semibold text-slate-800 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">
+                                    How to Detect It
+                                </h4>
+                                <div className="space-y-4">
+                                    {selectedCategory.metrics.map((metric, idx) => (
+                                        <div key={idx} className="flex gap-3">
+                                            <div className="flex-shrink-0 mt-0.5">
+                                                <div className={`w-1.5 h-1.5 rounded-full ${selectedCategory.color} opacity-70`} />
+                                            </div>
+                                            <div>
+                                                <h5 className="text-sm font-medium text-slate-900">{metric.title}</h5>
+                                                <p className="text-sm text-slate-500 font-light mt-0.5 leading-relaxed">
+                                                    {metric.description}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
-            </div>
-        </Card>
-    </div>
-);
+            </Card>
+        </div>
+    );
+};
 
 const PersonForm = ({ onClose, onSave, initialData, isNewVersion }) => {
     const [name, setName] = useState(initialData?.name || '');

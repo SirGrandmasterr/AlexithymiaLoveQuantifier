@@ -18,7 +18,7 @@ export default function Navbar({ isAuthenticated, onLogout }) {
                         <Heart className="text-rose-500" size={20} />
                     </div>
                     <span className="text-xl font-light text-slate-800">
-                        Love<span className="font-semibold">Metrics</span>
+                        Alexithymia<span className="font-semibold">LoveQuantifier</span>
                     </span>
                 </Link>
 
