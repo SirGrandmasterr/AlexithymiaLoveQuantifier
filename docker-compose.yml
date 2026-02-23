@@ -1,11 +1,47 @@
 version: '3.8'
 
 services:
-  app:
-    container_name: love-metrics-app
+  frontend:
+    container_name: love-metrics-frontend
     build:
       context: .
       dockerfile: Dockerfile
     ports:
       - "8080:80"
-    restart: always
+    depends_on:
+      - backend
+    
+
+  backend:
+    container_name: love-metrics-backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8080" # Expose backend on 8081 for direct access if needed, though Nginx proxies via 8080 internally.
+    environment:
+      - DB_HOST=postgres
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - DB_NAME=alexithymia
+      - DB_PORT=5432
+      - JWT_SECRET=supersecretkey # In production, this should be a real secret.
+    depends_on:
+      - postgres
+    
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: love-metrics-db
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=alexithymia
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    
+
+volumes:
+  postgres_data:
