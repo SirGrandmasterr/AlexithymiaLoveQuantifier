@@ -25,6 +25,13 @@ func UploadProfilePicture(c *gin.Context) {
 		return
 	}
 
+	// Validate file type natively via headers prior to decoding
+	fileType := file.Header.Get("Content-Type")
+	if fileType != "image/jpeg" && fileType != "image/png" && fileType != "image/webp" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid file type. Only JPEG, PNG, and WEBP are allowed"})
+		return
+	}
+
 	// Ensure uploads directory exists
 	uploadDir := "./uploads"
 	if err := os.MkdirAll(uploadDir, os.ModePerm); err != nil {

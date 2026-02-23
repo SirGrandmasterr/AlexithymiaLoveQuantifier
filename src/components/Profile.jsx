@@ -3,9 +3,7 @@ import { User, Mail, Shield, Save, Upload, Loader2, Info } from 'lucide-react';
 import axios from 'axios';
 
 // Create an axios instance for API calls, assuming token is stored in localStorage
-const api = axios.create({
-    baseURL: 'http://localhost:8080',
-});
+const api = axios.create();
 
 api.interceptors.request.use((config) => {
     const token = localStorage.getItem('token');
@@ -84,7 +82,7 @@ export default function Profile() {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             // Update the profile picture URL in form data
-            const fullUrl = `http://localhost:8080${res.data.url}`;
+            const fullUrl = res.data.url;
             setFormData(prev => ({ ...prev, profile_picture: fullUrl }));
             setMessage({ type: 'success', text: 'Image uploaded successfully. Remember to save changes.' });
         } catch (error) {
