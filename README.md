@@ -64,9 +64,10 @@ The backend uses GORM for auto-migration and schema definition. All models inher
 
 ## 🎨 Frontend Architecture & Key Behaviors
 
-- **Routing Logic (`App.jsx`):** Protects routes `/` (Dashboard) and `/profile` checking the presence of a JWT.
+- **Routing Logic (`App.jsx`):** Protects routes `/` (Dashboard) and `/profile` checking the presence of a JWT. It synchronously initializes global Axios headers with the stored JWT before the initial render to prevent unauthenticated data-fetching race conditions.
 - **`Dashboard.jsx` (Core View):**
   - Fetches and manages the list of `AnalysisSubject`s.
+  - **Category Explorer (`AboutModal`):** Features an interactive, dedicated view detailing the core motivations and behavioral metrics for accurately detecting each of the 7 love category styles in the real world.
   - **CardStack Versioning logic:** Subjects with the exact same `Name` are grouped together into "Stacks". Ordered by `Date` descending. Users can scroll (wheel event) over a card stack to flip between older and newer versions of their analysis for that specific person.
   - Generates a horizontal bar chart (`LoveChart`) using simple div widths mapped proportionally to the 0-100 value integers stored in the subject's `Stats` map.
 - **Handling forms:** `PersonForm` handles creates and updates. A subject can be edited, or a *new version* of an existing subject can be created (which instantiates a completely new `AnalysisSubject` record with the same Name but a newer Date).
