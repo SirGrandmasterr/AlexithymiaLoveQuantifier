@@ -106,14 +106,14 @@ sequenceDiagram
     B->>A: load bundle
     Note over A: module scope — before first render<br/>localStorage.getItem('token')<br/>axios.defaults.headers.common.Authorization = Bearer …
     A->>D: token truthy -> render Dashboard
-    D->>X: useEffect -> GET /api/subjects
+    D->>X: useEffect -> GET /api/subjects + GET /api/relationships (Promise.all)
     X->>M: Authorization: Bearer <jwt>
     M->>M: split header, ValidateToken (HS256)
     M->>H: c.Set("userID", claims.UserID)
-    H->>DB: WHERE user_id = ?
+    H->>DB: WHERE user_id = ? ORDER BY date IS NULL, date DESC, id DESC
     DB-->>H: []AnalysisSubject
-    H-->>D: 200 [{ID, name, date, stats, …}]
-    D->>D: setPeople -> useMemo groups by name -> CardStack per group
+    H-->>D: 200 [{ID, relationship_id, name, date, stats, …}]
+    D->>D: buildStacks(people, relationships) -> CardStack per relationship
 ```
 
 The header assignment at
@@ -133,7 +133,9 @@ into an effect.
    `PUT /api/subjects/:ID` for a true edit, otherwise `POST /api/subjects`.
 3. `CreateSubject` binds `CreateSubjectInput`, reads `userID` from context, trims `name`,
    validates `stats` keys/ranges and the tag limits, parses `date` strictly with layout
-   `2006-01-02`, and inserts. Any failure is a `400` naming the offending field.
+   `2006-01-02`, then — in one transaction — **finds or creates the relationship** for that
+   trimmed name and inserts the row pointing at it. Any validation failure is a `400` naming
+   the offending field.
 4. The response body — the full created row, including its server-assigned `ID` — is
    merged into local state (`setPeople([...people, response.data])`). **No refetch.**
    Optimistic-free but also round-trip-free: the client trusts the echoed row.
@@ -195,11 +197,12 @@ Properties of this design:
   `DeleteSubject` — preserve that pattern in any new subject endpoint.
 - **The signing key is captured once, at package init:**
   `var jwtKey = []byte(os.Getenv("JWT_SECRET"))`
-  ([`auth.go:12`](../backend/internal/auth/auth.go#L12)). It is read before `main()`
-  runs, so it cannot be reconfigured later, and if the variable is unset the key is the
-  empty byte slice — tokens still sign and verify, so local development appears to work
-  while producing forgeable tokens. See
-  [Known Issues](11-known-issues.md#jwt_secret-defaults-to-an-empty-key).
+  ([`auth.go`](../backend/internal/auth/auth.go)). It is read before `main()` runs, so it
+  cannot be reconfigured later. **An unset variable is now fatal:** `main()` calls
+  `auth.LoadSecret()` first and exits with an explanatory message. Before Phase 5 the key
+  silently became the empty byte slice — tokens still signed and verified, so the
+  application worked normally while every token was forgeable by anyone. That is the failure
+  mode the fail-fast exists to remove, and the reason the Vault page can claim what it does.
 
 ---
 
@@ -212,29 +215,26 @@ Properties of this design:
 | JWT | `localStorage['token']` | 24 h or until logout | Also mirrored into `axios.defaults`. |
 | Subject list | `useState` in `Dashboard` | Per mount | Fetched once on mount; mutated locally afterwards. |
 | Active card index per stack | `useState` in each `CardStack` | Per mount | Reset to 0 whenever `versions.length` changes. |
+| Which stack dialog is open | `stackDialog` in `Dashboard` | Until closed | Stores the relationship **id**, not the stack, so it re-reads live state. |
 | Hidden chart lines | `useState(new Set())` in `AnalysisTimeline` | Per mount | Lost when navigating back to the grid. |
-| Timeline selection | `selectedTimelineStack` in `Dashboard` | Per mount | Non-null replaces the whole grid — see below. |
+| Radar comparison mode | `useState('first')` in `AnalysisTimeline` | Per mount | `first \| previous \| none`. |
 
-### The timeline is not a route
+### The subject list is shared, and the timeline is a route
 
-`AnalysisTimeline` is shown by a **conditional swap inside the dashboard**, not by a URL:
+`people` lives in `SubjectsProvider`
+([`src/context/SubjectsContext.jsx`](../src/context/SubjectsContext.jsx)), mounted around
+the whole route table. `Dashboard` and `TimelineRoute` both consume it, so a mutation made
+on one screen is visible on the other with no refetch and no staleness.
 
-```jsx
-// src/components/Dashboard.jsx:588-620
-{selectedTimelineStack ? (
-    <AnalysisTimeline versions={selectedTimelineStack} onBack={…} categories={CATEGORIES_EXPORT} />
-) : (
-    <div className="grid …">{groupedPeople.map(…)}</div>
-)}
-```
+`AnalysisTimeline` is reached by URL — `/relationships/:id/timeline` — so it is linkable,
+bookmarkable, and correct under the back button. It renders from the shared
+`SubjectsContext`, so an edit made on the dashboard is never stale here.
 
-So the timeline is not linkable, not bookmarkable, and the browser Back button leaves the
-dashboard entirely rather than returning to the grid. If deep-linking is ever required
-this is the exact place to introduce a route such as `/timeline/:name`.
-
-Note also that `selectedTimelineStack` holds a **snapshot array** captured at click time.
-Editing a version while the timeline is open will not update the chart until you go back
-and re-enter it.
+> The route is keyed by the relationship **id**, so a bookmark survives a rename. The
+> pre-Phase-4 `/timeline/:name` form still resolves: `LegacyTimelineRedirect` looks the name
+> up in the loaded list and redirects. That path is best-effort by construction — a stack
+> renamed since the link was made cannot be found by name, which is the fragility the id
+> route ends.
 
 ---
 
@@ -262,5 +262,6 @@ Where to hook in, if the system needs to grow:
 | Add a persisted field to a subject | `models.go` → `CreateSubjectInput` → both handlers → `PersonForm` → card render. [Recipe](10-agent-guide.md#recipe-2-add-a-field-to-analysissubject) |
 | Add an eighth category | `CATEGORIES` + `CATEGORY_COLORS`. Nothing server-side. [Recipe](10-agent-guide.md#recipe-1-add-or-change-a-love-category) |
 | Introduce a service layer | Insert between `handlers/` and `database.DB`; the handler tests would move from `sqlmock` to interface mocks. |
-| Make subjects first-class entities | Replace name-grouping with a `subjects` table + `analysis_versions` child table. This is the largest available refactor; see [Data Model](03-data-model.md#6-there-is-no-person-entity). |
-| Add server-side validation of stats | `CreateSubjectInput` binding in [`subjects.go:13-18`](../backend/internal/handlers/subjects.go#L13-L18) — currently the only validation is `binding:"required"` on `name`. |
+| Attach anything to a relationship as a whole | The `Relationship` model, plus `summaryQuery`'s select list in [`relationships.go`](../backend/internal/handlers/relationships.go). This is the seam Phase 5's per-relationship cadence and coherent export hang off; it is what the entity exists for. |
+| Drop the denormalized `AnalysisSubject.Name` | Remove the field, delete the sync in rename and merge, and have every reader take the name from the relationship. Deliberately deferred past Phase 4 so rollback stays trivial. |
+| Add server-side validation of stats | Already done — `validateStats` and friends in [`subjects.go`](../backend/internal/handlers/subjects.go) check every key against `domain.CategoryIDs` and every value against `0..100`. |

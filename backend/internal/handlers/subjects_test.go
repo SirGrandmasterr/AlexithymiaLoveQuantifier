@@ -46,6 +46,21 @@ func setupMockDB(t *testing.T) (sqlmock.Sqlmock, *gorm.DB) {
 	return mock, gormDB
 }
 
+// expectFindOrCreateRelationship mocks the resolution the write path runs before it
+// touches analysis_subjects. `found` picks between reusing an existing relationship and
+// creating one; either way the write ends up pointing at relationship 7.
+func expectFindOrCreateRelationship(mock sqlmock.Sqlmock, found bool) {
+	lookup := mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "relationships"`))
+	if found {
+		lookup.WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "name"}).AddRow(7, 1, "Alex"))
+		return
+	}
+	// An empty result set is what makes GORM's First report ErrRecordNotFound.
+	lookup.WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "name"}))
+	mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "relationships"`)).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(7))
+}
+
 // setupGinTestRouter sets up a Gin router with a given user ID injected into the context.
 func setupGinTestRouter(handler gin.HandlerFunc, userID uint, authenticated bool) *gin.Engine {
 	gin.SetMode(gin.TestMode)
@@ -86,8 +101,9 @@ func TestCreateSubject(t *testing.T) {
 			},
 			mockBehavior: func(mock sqlmock.Sqlmock) {
 				mock.ExpectBegin()
-				mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "analysis_subjects" ("created_at","updated_at","deleted_at","user_id","name","description","date","stats","tags","uncertain","guide_answers") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING "id"`)).
-					WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1, "New Subject", "Test Description", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+				expectFindOrCreateRelationship(mock, false)
+				mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "analysis_subjects" ("created_at","updated_at","deleted_at","user_id","relationship_id","name","kind","description","date","stats","tags","uncertain","guide_answers") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING "id"`)).
+					WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1, 7, "New Subject", "full", "Test Description", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
 					WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 				mock.ExpectCommit()
 			},
@@ -100,8 +116,26 @@ func TestCreateSubject(t *testing.T) {
 			requestBody:   map[string]interface{}{"name": "  Alex  "},
 			mockBehavior: func(mock sqlmock.Sqlmock) {
 				mock.ExpectBegin()
+				expectFindOrCreateRelationship(mock, false)
 				mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "analysis_subjects"`)).
-					WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1, "Alex", "", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+					WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1, 7, "Alex", "full", "", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+					WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+				mock.ExpectCommit()
+			},
+			expectedStatus: http.StatusCreated,
+		},
+		{
+			// The compatibility contract: a name-only client still lands in the right
+			// stack, and reusing an existing name creates no second relationship.
+			name:          "Existing Name Reuses Its Relationship",
+			authenticated: true,
+			userID:        1,
+			requestBody:   map[string]interface{}{"name": "  Alex  "},
+			mockBehavior: func(mock sqlmock.Sqlmock) {
+				mock.ExpectBegin()
+				expectFindOrCreateRelationship(mock, true)
+				mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "analysis_subjects"`)).
+					WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1, 7, "Alex", "full", "", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
 					WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 				mock.ExpectCommit()
 			},
@@ -114,6 +148,7 @@ func TestCreateSubject(t *testing.T) {
 			requestBody:   map[string]interface{}{"name": "Alex", "stats": map[string]int{"storge": 40}},
 			mockBehavior: func(mock sqlmock.Sqlmock) {
 				mock.ExpectBegin()
+				expectFindOrCreateRelationship(mock, false)
 				mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "analysis_subjects"`)).
 					WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 				mock.ExpectCommit()
@@ -264,6 +299,7 @@ func TestCreateSubject(t *testing.T) {
 			},
 			mockBehavior: func(mock sqlmock.Sqlmock) {
 				mock.ExpectBegin()
+				expectFindOrCreateRelationship(mock, false)
 				mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "analysis_subjects"`)).
 					WillReturnError(errors.New("db connection failed"))
 				mock.ExpectRollback()
@@ -310,6 +346,7 @@ func TestCreateSubjectPersistsContext(t *testing.T) {
 	database.DB = gormDB
 
 	mock.ExpectBegin()
+	expectFindOrCreateRelationship(mock, false)
 	mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "analysis_subjects"`)).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	mock.ExpectCommit()
@@ -349,6 +386,9 @@ func TestCreateSubjectPersistsContext(t *testing.T) {
 	if created.GuideAnswers["mania"]["0"] != 3 || created.GuideAnswers["mania"]["2"] != 1 {
 		t.Errorf("Expected guide answers to round-trip, got %v", created.GuideAnswers)
 	}
+	if created.RelationshipID == nil || *created.RelationshipID != 7 {
+		t.Errorf("Expected the response to carry its relationship_id, got %v", created.RelationshipID)
+	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("Unmet sqlmock expectations: %s", err)
 	}
@@ -357,6 +397,7 @@ func TestCreateSubjectPersistsContext(t *testing.T) {
 func TestGetSubjects(t *testing.T) {
 	tests := []struct {
 		name           string
+		query          string
 		authenticated  bool
 		userID         uint
 		mockBehavior   func(sqlmock.Sqlmock)
@@ -364,19 +405,44 @@ func TestGetSubjects(t *testing.T) {
 		expectedLen    int
 	}{
 		{
-			name:          "Valid Request - Returns List",
+			// The ORDER BY is asserted here because it is a contract with the client:
+			// `date IS NULL` first is the portable spelling of NULLS LAST.
+			name:          "Valid Request - Returns List Newest First",
 			authenticated: true,
 			userID:        1,
 			mockBehavior: func(mock sqlmock.Sqlmock) {
 				rows := sqlmock.NewRows([]string{"id", "user_id", "name", "description"}).
 					AddRow(1, 1, "Subject 1", "Desc 1").
 					AddRow(2, 1, "Subject 2", "Desc 2")
-				mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "analysis_subjects"`)).
+				mock.ExpectQuery(regexp.QuoteMeta(`ORDER BY date IS NULL,date DESC,id DESC`)).
 					WithArgs(1).
 					WillReturnRows(rows)
 			},
 			expectedStatus: http.StatusOK,
 			expectedLen:    2,
+		},
+		{
+			name:          "Filtered By Relationship",
+			query:         "?relationship_id=7",
+			authenticated: true,
+			userID:        1,
+			mockBehavior: func(mock sqlmock.Sqlmock) {
+				rows := sqlmock.NewRows([]string{"id", "user_id", "relationship_id", "name"}).
+					AddRow(1, 1, 7, "Alex")
+				mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "analysis_subjects"`)).
+					WithArgs(1, 7).
+					WillReturnRows(rows)
+			},
+			expectedStatus: http.StatusOK,
+			expectedLen:    1,
+		},
+		{
+			name:           "Non-Numeric Relationship Filter",
+			query:          "?relationship_id=alex",
+			authenticated:  true,
+			userID:         1,
+			mockBehavior:   func(sqlmock.Sqlmock) {},
+			expectedStatus: http.StatusBadRequest,
 		},
 		{
 			name:           "Unauthorized",
@@ -410,7 +476,7 @@ func TestGetSubjects(t *testing.T) {
 			r := setupGinTestRouter(GetSubjects, tt.userID, tt.authenticated)
 			r.GET("/subjects", GetSubjects)
 
-			req, _ := http.NewRequest(http.MethodGet, "/subjects", nil)
+			req, _ := http.NewRequest(http.MethodGet, "/subjects"+tt.query, nil)
 
 			w := httptest.NewRecorder()
 			r.ServeHTTP(w, req)
@@ -471,10 +537,58 @@ func TestUpdateSubject(t *testing.T) {
 					WithArgs("1", 1, 1). // id comes as string "1" from router param usually
 					WillReturnRows(rows)
 
-				// Mocks for Save()
+				// Mocks for Save(). The stored row carries no relationship_id, so this also
+				// covers a legacy row being linked on its way through an edit.
+				mock.ExpectBegin()
+				expectFindOrCreateRelationship(mock, false)
+				mock.ExpectExec(regexp.QuoteMeta(`UPDATE "analysis_subjects"`)).
+					WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1, 7, "Updated Subject", sqlmock.AnyArg(), "Updated Desc", &parsedDate, sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1).
+					WillReturnResult(sqlmock.NewResult(1, 1))
+				mock.ExpectCommit()
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			// Renaming one version has always split it out of its stack. It still does —
+			// but the split is now a relationship_id change instead of an emergent
+			// consequence of two strings no longer matching.
+			name:          "Renaming A Version Re-Resolves Its Relationship",
+			subjectID:     "1",
+			authenticated: true,
+			userID:        1,
+			requestBody:   map[string]interface{}{"name": "Sam"},
+			mockBehavior: func(mock sqlmock.Sqlmock) {
+				rows := sqlmock.NewRows([]string{"id", "user_id", "relationship_id", "name"}).AddRow(1, 1, 3, "Alex")
+				mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "analysis_subjects"`)).
+					WithArgs("1", 1, 1).
+					WillReturnRows(rows)
+
+				mock.ExpectBegin()
+				expectFindOrCreateRelationship(mock, false)
+				mock.ExpectExec(regexp.QuoteMeta(`UPDATE "analysis_subjects"`)).
+					WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1, 7, "Sam", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1).
+					WillReturnResult(sqlmock.NewResult(1, 1))
+				mock.ExpectCommit()
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			// Resending the same name — which the edit form does on every save — must not
+			// churn the relationship.
+			name:          "Resending The Same Name Keeps The Relationship",
+			subjectID:     "1",
+			authenticated: true,
+			userID:        1,
+			requestBody:   map[string]interface{}{"name": "  Alex  "},
+			mockBehavior: func(mock sqlmock.Sqlmock) {
+				rows := sqlmock.NewRows([]string{"id", "user_id", "relationship_id", "name"}).AddRow(1, 1, 3, "Alex")
+				mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "analysis_subjects"`)).
+					WithArgs("1", 1, 1).
+					WillReturnRows(rows)
+
 				mock.ExpectBegin()
 				mock.ExpectExec(regexp.QuoteMeta(`UPDATE "analysis_subjects"`)).
-					WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1, "Updated Subject", "Updated Desc", &parsedDate, sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1).
+					WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1, 3, "Alex", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1).
 					WillReturnResult(sqlmock.NewResult(1, 1))
 				mock.ExpectCommit()
 			},
@@ -622,15 +736,17 @@ func TestUpdateSubjectPartialMerge(t *testing.T) {
 	mock, gormDB := setupMockDB(t)
 	database.DB = gormDB
 
-	rows := sqlmock.NewRows([]string{"id", "user_id", "name", "description", "date", "stats", "tags", "uncertain", "guide_answers"}).
-		AddRow(1, 1, "Alex", "rough month", storedDate, `{"eros":85}`, `["conflict","distance"]`, `["eros"]`, `{"eros":{"0":2}}`)
+	rows := sqlmock.NewRows([]string{"id", "user_id", "relationship_id", "name", "description", "date", "stats", "tags", "uncertain", "guide_answers"}).
+		AddRow(1, 1, 7, "Alex", "rough month", storedDate, `{"eros":85}`, `["conflict","distance"]`, `["eros"]`, `{"eros":{"0":2}}`)
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "analysis_subjects"`)).
 		WithArgs("1", 1, 1).
 		WillReturnRows(rows)
 
+	// The name is untouched and the row already has a relationship, so nothing is
+	// re-resolved: an edit to the scores must not move the snapshot between stacks.
 	mock.ExpectBegin()
 	mock.ExpectExec(regexp.QuoteMeta(`UPDATE "analysis_subjects"`)).
-		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1, "Alex", "rough month", &storedDate, sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1, 7, "Alex", sqlmock.AnyArg(), "rough month", &storedDate, sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
 
@@ -687,15 +803,15 @@ func TestUpdateSubjectExplicitClear(t *testing.T) {
 	mock, gormDB := setupMockDB(t)
 	database.DB = gormDB
 
-	rows := sqlmock.NewRows([]string{"id", "user_id", "name", "description", "date", "tags"}).
-		AddRow(1, 1, "Alex", "rough month", storedDate, `["conflict"]`)
+	rows := sqlmock.NewRows([]string{"id", "user_id", "relationship_id", "name", "description", "date", "tags"}).
+		AddRow(1, 1, 7, "Alex", "rough month", storedDate, `["conflict"]`)
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "analysis_subjects"`)).
 		WithArgs("1", 1, 1).
 		WillReturnRows(rows)
 
 	mock.ExpectBegin()
 	mock.ExpectExec(regexp.QuoteMeta(`UPDATE "analysis_subjects"`)).
-		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1, "Alex", "", nil, sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1, 7, "Alex", sqlmock.AnyArg(), "", nil, sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
 

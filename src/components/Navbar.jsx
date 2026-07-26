@@ -1,8 +1,8 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Heart, User, LogOut, LogIn } from 'lucide-react';
+import { Heart, User, LogOut, LogIn, Archive, Eye, EyeOff } from 'lucide-react';
 
-export default function Navbar({ isAuthenticated, onLogout }) {
+export default function Navbar({ isAuthenticated, onLogout, discreet = false, onToggleDiscretion }) {
     const navigate = useNavigate();
 
     const handleLogout = () => {
@@ -25,6 +25,26 @@ export default function Navbar({ isAuthenticated, onLogout }) {
                 <div className="flex items-center gap-4">
                     {isAuthenticated ? (
                         <>
+                            {/* Ctrl+. does the same thing without reaching for the mouse. */}
+                            <button
+                                onClick={onToggleDiscretion}
+                                aria-pressed={discreet}
+                                aria-label={discreet ? 'Turn off discretion mode' : 'Turn on discretion mode'}
+                                title={discreet ? 'Show names and notes (Ctrl+.)' : 'Hide names and notes (Ctrl+.)'}
+                                className={`p-2 rounded-lg transition-all ${discreet
+                                    ? 'text-slate-800 bg-slate-100'
+                                    : 'text-slate-400 hover:text-slate-700 hover:bg-slate-50'
+                                    }`}
+                            >
+                                {discreet ? <EyeOff size={18} /> : <Eye size={18} />}
+                            </button>
+                            <Link
+                                to="/vault"
+                                className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900 px-3 py-2 rounded-lg hover:bg-slate-50 transition-all"
+                            >
+                                <Archive size={18} />
+                                <span>Vault</span>
+                            </Link>
                             <Link
                                 to="/profile"
                                 className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900 px-3 py-2 rounded-lg hover:bg-slate-50 transition-all"

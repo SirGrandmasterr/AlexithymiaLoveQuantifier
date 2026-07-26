@@ -24,8 +24,13 @@ Two terminals:
 # Terminal 1 — backend on :8080, SQLite fallback
 cd backend
 go mod download
-go run ./cmd/server
+JWT_SECRET=dev-only-change-me go run ./cmd/server
 ```
+
+> **`JWT_SECRET` is required and the server will not start without it.** Since Phase 5 an
+> unset secret is a fatal startup error rather than a silent empty signing key. On
+> PowerShell: `$env:JWT_SECRET='dev-only-change-me'` once per terminal. Use a real value
+> anywhere that is not your own machine — `openssl rand -hex 32`.
 
 ```bash
 # Terminal 2 — frontend on :5173, proxying to :8080
@@ -42,7 +47,15 @@ No DB_HOST provided, falling back to local SQLite database: alexithymia.db
 Database connection established
 Running migrations...
 Database migrated
+backfill: 0 relationships, 0 snapshots linked
 Server starting on port 8080...
+```
+
+Without the secret it stops there instead, which is the intended behaviour:
+
+```
+JWT_SECRET is not set: every token would be signed with an empty key and forgeable by
+anyone. Set it before starting the server, e.g. JWT_SECRET=$(openssl rand -hex 32)
 ```
 
 Working-directory note: run the backend **from `backend/`**. Both the SQLite file and the
@@ -114,7 +127,7 @@ The backend is the only process that reads any.
 | `DB_PASSWORD` | `Connect()` | — | Postgres password |
 | `DB_NAME` | `Connect()` | — | Postgres database name |
 | `DB_PORT` | `Connect()` | — | Postgres port |
-| `JWT_SECRET` | **package init of `internal/auth`** | `""` | HS256 signing key |
+| `JWT_SECRET` | package init of `internal/auth`, re-read by `auth.LoadSecret()` | **none — startup fails** | HS256 signing key. `main()` calls `LoadSecret` before anything else and exits if it is unset or empty. |
 
 Notes:
 

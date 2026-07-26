@@ -41,9 +41,18 @@ func Connect() {
 	log.Println("Database connection established")
 
 	log.Println("Running migrations...")
-	err = DB.AutoMigrate(&models.User{}, &models.AnalysisSubject{})
+	err = DB.AutoMigrate(&models.User{}, &models.Relationship{}, &models.AnalysisSubject{})
 	if err != nil {
 		log.Fatalf("Failed to migrate database: %v", err)
 	}
 	log.Println("Database migrated")
+
+	// Idempotent, so it runs on every boot: the first one after upgrading links the
+	// existing snapshots, every one after that reports zero. Back up the database before
+	// the first run — see docs/09-deployment.md.
+	result, err := BackfillRelationships(DB)
+	if err != nil {
+		log.Fatalf("Failed to backfill relationships: %v", err)
+	}
+	log.Printf("backfill: %d relationships, %d snapshots linked", result.Relationships, result.Snapshots)
 }

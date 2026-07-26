@@ -76,7 +76,11 @@ func TestDatabaseIntegration_UserConstraints(t *testing.T) {
 
 // additiveColumns are the columns added after the original schema. Every one must be
 // nullable and AutoMigrate-compatible: no phase before Phase 4 may need a real migration.
-var additiveColumns = []string{"tags", "uncertain", "guide_answers"}
+//
+// Phase 4's relationship_id is deliberately absent: SQLite cannot drop a column a foreign
+// key references, so this test's drop-and-re-add trick does not work on it. The real
+// upgrade is covered by TestUpgradeFromPreRelationshipSchema instead.
+var additiveColumns = []string{"tags", "uncertain", "guide_answers", "kind"}
 
 // TestAutoMigrateAddsNewColumns simulates a legacy database: the columns added by later
 // phases are dropped from an existing table with existing rows, and AutoMigrate must add
@@ -133,6 +137,81 @@ func TestAutoMigrateAddsNewColumns(t *testing.T) {
 	}
 	if len(legacy.GuideAnswers) != 0 {
 		t.Errorf("Expected no guide answers on a legacy row, got %v", legacy.GuideAnswers)
+	}
+	// Kind carries a column default rather than being nullable, so every pre-Phase-5 row
+	// reads back as a full snapshot. Without the default these rows would be NULL, and
+	// scanning NULL into a Go string fails outright — every read would break, not just
+	// look odd.
+	if legacy.Kind != "full" {
+		t.Errorf("Expected a legacy row to default to kind %q, got %q", "full", legacy.Kind)
+	}
+}
+
+// legacyAnalysisSubject is the model exactly as it stood before Phase 4: no
+// RelationshipID, and no relationships table beside it. Migrating this struct is how the
+// tests build a genuinely pre-Phase-4 database — hand-writing the DDL would only test the
+// migrator against a schema GORM never produced, and dropping the column afterwards is not
+// possible on SQLite once a foreign key references it.
+type legacyAnalysisSubject struct {
+	gorm.Model
+	UserID       uint                      `json:"user_id"`
+	Name         string                    `gorm:"not null" json:"name"`
+	Description  string                    `json:"description"`
+	Date         *time.Time                `json:"date"`
+	Stats        map[string]int            `gorm:"serializer:json" json:"stats"`
+	Tags         []string                  `gorm:"serializer:json" json:"tags"`
+	Uncertain    []string                  `gorm:"serializer:json" json:"uncertain"`
+	GuideAnswers map[string]map[string]int `gorm:"serializer:json" json:"guide_answers"`
+}
+
+func (legacyAnalysisSubject) TableName() string { return "analysis_subjects" }
+
+// TestUpgradeFromPreRelationshipSchema walks the actual Phase 4 upgrade on a file
+// database: a schema with no relationships table and no relationship_id, carrying rows.
+// AutoMigrate has to build the table and column, and the backfill has to reproduce the
+// stacks the user saw before the upgrade.
+func TestUpgradeFromPreRelationshipSchema(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "pre-phase-4.db")
+	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("Failed to open SQLite file database: %v", err)
+	}
+	t.Cleanup(func() {
+		if sqlDB, err := db.DB(); err == nil {
+			sqlDB.Close()
+		}
+	})
+
+	if err := db.AutoMigrate(&models.User{}, &legacyAnalysisSubject{}); err != nil {
+		t.Fatalf("Failed to build the legacy schema: %v", err)
+	}
+
+	seed := `INSERT INTO analysis_subjects (user_id, name, created_at, updated_at) VALUES (?, ?, datetime('now'), datetime('now'))`
+	for _, name := range []string{"Alex", "Alex ", "Sam"} {
+		if err := db.Exec(seed, 1, name).Error; err != nil {
+			t.Fatalf("Failed to seed %q: %v", name, err)
+		}
+	}
+
+	// The upgrade, in the order Connect runs it.
+	if err := db.AutoMigrate(&models.User{}, &models.Relationship{}, &models.AnalysisSubject{}); err != nil {
+		t.Fatalf("Upgrade migration failed: %v", err)
+	}
+	result, err := BackfillRelationships(db)
+	if err != nil {
+		t.Fatalf("Backfill failed: %v", err)
+	}
+
+	// Two stacks before the upgrade — "Alex" and "Alex " were one stack, since Phase 1
+	// trims on write and the frontend grouped on the trimmed string.
+	if result.Relationships != 2 || result.Snapshots != 3 {
+		t.Errorf("Expected 2 relationships and 3 snapshots linked, got %d and %d", result.Relationships, result.Snapshots)
+	}
+
+	var unlinked int64
+	db.Model(&models.AnalysisSubject{}).Where("relationship_id IS NULL").Count(&unlinked)
+	if unlinked != 0 {
+		t.Errorf("Expected every snapshot to be linked, %d were not", unlinked)
 	}
 }
 

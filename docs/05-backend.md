@@ -11,17 +11,25 @@ Module: `alexithymia-backend` ([`backend/go.mod`](../backend/go.mod))
 backend/
 ├── cmd/server/main.go              composition root, ~39 lines
 ├── internal/
-│   ├── auth/auth.go                bcrypt + JWT primitives (HTTP-agnostic)
+│   ├── auth/
+│   │   ├── auth.go                 bcrypt + JWT primitives (HTTP-agnostic)
+│   │   └── auth_test.go            secret loading, token round-trip, forgery
 │   ├── database/
-│   │   ├── database.go             driver selection, global DB, AutoMigrate
-│   │   └── database_test.go        SQLite integration + additive-migration tests
+│   │   ├── database.go             driver selection, global DB, AutoMigrate, backfill
+│   │   ├── backfill.go             find-or-create + the Phase 4 relationship backfill
+│   │   ├── database_test.go        SQLite integration + migration tests
+│   │   └── backfill_test.go        backfill grouping, idempotency, soft deletes
 │   ├── domain/categories.go        the seven stats-key ids (validation allowlist)
 │   ├── handlers/
 │   │   ├── middleware.go           AuthMiddleware
 │   │   ├── auth.go                 Signup, Login, GetUserProfile, UpdateUserProfile
-│   │   ├── subjects.go             CRUD for AnalysisSubject
+│   │   ├── subjects.go             CRUD for AnalysisSubject (one snapshot)
+│   │   ├── relationships.go        list, update, merge, delete (a whole stack)
+│   │   ├── vault.go                export, import, meta
 │   │   ├── upload.go               UploadProfilePicture
 │   │   ├── subjects_test.go        sqlmock table-driven handler tests
+│   │   ├── relationships_test.go   real-SQLite behaviour tests
+│   │   ├── vault_test.go           export/import round-trip tests
 │   │   └── upload_test.go          multipart handler tests
 │   └── models/models.go            GORM schema
 ├── Dockerfile                      multi-stage, CGO_ENABLED=0
@@ -79,6 +87,10 @@ Points that matter when editing:
 
 ```go
 var jwtKey = []byte(os.Getenv("JWT_SECRET"))
+
+// LoadSecret re-reads JWT_SECRET and reports whether tokens can be signed safely.
+// main() calls it first and exits on failure.
+func LoadSecret() error
 
 type Claims struct {
 	UserID uint `json:"user_id"`
@@ -232,11 +244,63 @@ if input.Date != nil {
 ```
 
 `Name` is `strings.TrimSpace`d in both handlers and rejected when empty after trimming, so
-`"Alex "` can no longer split a stack. This applies to new writes only — legacy rows keep
-their whitespace.
+`"Alex "` can no longer split a stack. Since Phase 4 the trimmed name is also what
+find-or-create resolves against, and the startup backfill has normalized the legacy rows
+that used to keep their whitespace.
 
 `DeleteSubject` captures the GORM result and returns `404 {"error":"Subject not found"}`
-when `RowsAffected == 0`, so a delete of an unknown or unowned row is reported honestly.
+when `RowsAffected == 0`, so a delete of an unknown or unowned row is reported honestly. It
+deletes one version; the relationship survives even if that was its last snapshot.
+
+**Both write paths resolve a relationship**, inside a transaction with the row write:
+
+```go
+// CreateSubject — one transaction, so a failed insert leaves no empty relationship
+err = database.DB.Transaction(func(tx *gorm.DB) error {
+    relationship, err := database.FindOrCreateRelationship(tx, subject.UserID, name)
+    if err != nil { return err }
+    subject.RelationshipID = &relationship.ID
+    return tx.Create(&subject).Error
+})
+
+// UpdateSubject — only when the name actually changed, or the row arrived unlinked
+needsRelationship := subject.RelationshipID == nil ||
+    (input.Name != nil && subject.Name != originalName)
+```
+
+The `subject.RelationshipID == nil` half matters: it links a legacy row on its way through
+an edit, so a database whose backfill has not run cannot save a row back still unlinked.
+
+### 4.4a `relationships.go` — the stack as a whole
+
+Four handlers, all sharing one grouped query and one ownership rule.
+
+`summaryQuery(userID)` is the single source of the `{ID, name, snapshot_count, latest_date}`
+shape — the list endpoint orders it, rename and merge re-read one row through it, so every
+response has the same shape. The join is `LEFT` with `deleted_at IS NULL` **in the join
+condition** rather than a `WHERE`, so soft-deleted snapshots drop out of the count without
+dropping their relationship from the result.
+
+```go
+func findOwnedRelationship(tx *gorm.DB, relationshipID uint, userID uint) (*models.Relationship, error)
+```
+
+Every mutating route calls it, on **both** sides of a merge — which is what stops a merge
+reaching across users. A miss is `404`, never `403`.
+
+Two details that are easy to get wrong:
+
+- **Rename syncs the denormalized name `Unscoped()`**, so a soft-deleted snapshot does not
+  keep a stale name it would come back under if restored. Merge moves soft-deleted snapshots
+  for the same reason: nothing should still point at a retired relationship.
+- **`errNameTaken` and `errSameRelationship` are sentinel errors** returned *out* of the
+  transaction closure, so the 409 and the 400 are decided outside it. Writing the response
+  inside the closure would leave the transaction to commit around an already-sent error.
+
+`aggregateTime` handles `MAX(date)`: SQLite returns a string (the aggregate drops the
+column's declared type) where Postgres returns a `time.Time`. It also implements `Value()`,
+unused, because GORM refuses to scan into a struct field that implements only half of the
+`Valuer`/`Scanner` pair.
 
 ### 4.5 `upload.go`
 
@@ -265,6 +329,41 @@ Implementation notes:
   its uploader. Associating it would mean writing `user.ProfilePicture` here rather than
   relying on a follow-up `PUT /api/me`.
 
+### 4.5a `vault.go` — export, import, meta
+
+The export document is the app's promise that the data is yours, so its shape is chosen for
+a human reading the file: no internal ids, dates in `YYYY-MM-DD`, and optional fields
+omitted when empty.
+
+**The password is absent by construction.** `ExportUser` has no such field, rather than a
+field with `json:"-"`. A tag can be removed by accident; a field that does not exist cannot
+leak. The test asserts on the raw response bytes for the same reason.
+
+Import is three phases, and the split is the point:
+
+```go
+prepared, err := prepareImport(document)   // validate everything, touch nothing
+err = database.DB.Transaction(func(tx *gorm.DB) error {
+    if err := applyImport(tx, userID, prepared, &result); err != nil { return err }
+    if dryRun { return errDryRun }         // same path, then roll back
+    return nil
+})
+```
+
+- **Validation before any write** means one bad value rejects the file whole. `prepareImport`
+  reuses `validateStats`, `validateTags`, `validateUncertain`, `validateGuideAnswers`,
+  `normalizeKind` and `parseSubjectDate` — an import must never be a way around the rules the
+  create endpoint enforces.
+- **`errDryRun` rolls back after doing the work**, so the preview and the real run cannot
+  disagree. Reporting what a *different* code path would have done is how preview features
+  start lying.
+- **Duplicate detection is date + stats together** (`isDuplicateSnapshot`). Date alone would
+  reject two genuine readings from one day; stats alone would reject an unchanged
+  relationship snapshotted months apart, which is the signal the app exists to record.
+
+`GetMeta` returns counts and `database.DB.Dialector.Name()`. Deliberately no DSN, no paths,
+no configuration — the Vault page needs to say *where* the data is, not how to reach it.
+
 ### 4.6 `internal/domain` — the shared id contract
 
 [`categories.go`](../backend/internal/domain/categories.go) holds `CategoryIDs` (the seven
@@ -291,8 +390,16 @@ Detailed in [Data Model §5](03-data-model.md#5-driver-selection-and-migration).
   hardcoded. TLS to the database is therefore off and not configurable without a code
   change.
 - Failures call `log.Fatalf` — no retry, no backoff, no readiness wait.
-- `AutoMigrate(&models.User{}, &models.AnalysisSubject{})` runs on every boot. New models
-  must be added to this call or their tables will never be created.
+- `AutoMigrate(&models.User{}, &models.Relationship{}, &models.AnalysisSubject{})` runs on
+  every boot. New models must be added to this call or their tables will never be created.
+- `BackfillRelationships(DB)` runs immediately after, on every boot, and logs one summary
+  line. It is idempotent — it only touches rows with `relationship_id IS NULL` — so the
+  second and every later boot report `0, 0`. See
+  [Deployment §5](09-deployment.md#5-the-phase-4-relationship-migration) for the backup step
+  and what a healthy log looks like.
+- `FindOrCreateRelationship` lives in `backfill.go` beside the backfill **on purpose**: the
+  write path and the migration must resolve a name to a relationship by the same rule, or a
+  stack splits in half.
 
 ---
 

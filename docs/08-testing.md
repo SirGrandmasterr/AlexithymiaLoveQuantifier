@@ -5,7 +5,7 @@ Three layers, three runners. Status below was verified by running each suite
 
 | Layer | Runner | Location | Verified status |
 | :---- | :----- | :------- | :-------------- |
-| Frontend unit | Vitest + Testing Library + jsdom | `src/components/*.test.jsx` | ✅ **50/50 pass** |
+| Frontend unit | Vitest + Testing Library + jsdom | `src/**/*.test.{js,jsx}` | ✅ **161/161 pass** |
 | Backend unit / integration | `go test` + sqlmock + in-memory SQLite | `backend/internal/**/*_test.go` | ✅ **all packages pass** |
 | End-to-end | Playwright | `tests/` | ❌ **failing** — needs servers that nothing starts |
 
@@ -41,7 +41,20 @@ in `tests/` and fail on `@playwright/test` imports.
 
 ### Coverage today
 
-Four files, 50 tests, all passing.
+Twelve files, 161 tests, all passing.
+
+Two components now need providers to render at all — `Dashboard` reads `useSubjects()` and
+navigates, `TimelineRoute` does both — so their tests wrap in `MemoryRouter` +
+`SubjectsProvider`. `Dashboard.test.jsx` has a `renderDashboard()` helper for exactly this;
+copy it rather than rendering the component bare.
+
+> **`axios.get` must be mocked per URL, not once.** Since Phase 4 the provider loads
+> `/api/subjects` **and** `/api/relationships` in parallel, so a bare
+> `axios.get.mockResolvedValue({data: [...]})` hands the same array to both and the
+> relationship list ends up full of snapshots. Both `Dashboard.test.jsx` and
+> `SubjectsContext.test.jsx` have a `mockFetch` helper that dispatches on the URL; use it.
+> `Dashboard.test.jsx`'s variant derives the relationships from the snapshots, so most
+> fixtures only need a `relationship_id` on each row.
 
 [`src/components/Auth.test.jsx`](../src/components/Auth.test.jsx) — 7 tests:
 
@@ -65,24 +78,95 @@ the pure helpers, the exported `PersonForm`, and the whole `Dashboard` screen:
 | Context capsule | trimmed-name payload including `uncertain`/`guide_answers`; Enter adds a tag instead of submitting; edit seeds note + tags; new version starts empty |
 | Guided scoring | the anchor phrase follows the slider; answering a metric renders the band **without moving the slider**; `Use 70` sets exactly the midpoint; the saved payload carries the answers |
 | Skip / unsure | a skipped category is absent from `stats` (not zero); an unsure id is listed; skipping a category drops its unsure flag; edit seeds both from the snapshot; a new version inherits scores but not uncertainty |
-| Card surface | note icon and up to three chips, `+1` overflow, `—` for five skipped categories and `≈60%` for an unsure one, and **no** `0%` anywhere |
+| Card surface | note icon and up to three chips, `+1` overflow, `—` for five skipped categories and `≈60%` for an unsure one, and **no** `0%` anywhere; the summary line; the bars ⇄ Love Shape flip |
+| Summary line | `summarizeStack` — dominant pair, taxonomy-order tie-break, suppressed below two scored categories, "most changed" withheld below three snapshots, and skipped snapshots excluded from a range |
+| Wheel trap | the wheel is swallowed only while a version remains to scrub to; a single-version stack and a clamped stack both let the page scroll |
+| Routing | Deep Analysis navigates to `/relationships/<id>/timeline` |
+| Stack actions | two relationships sharing a display name render as **two** stacks (the case name-grouping could not express); rename updates every card and the stack header; a 409 keeps the dialog open with the typed name; the merge dialog offers only *other* stacks, states what will move, and disables confirm until a target is chosen; relationship delete names the snapshot count and leaves other stacks alone; setting a rhythm PATCHes the days, and turning it off sends an explicit `null` |
+| Quick Pulse | opens with seven collapsed rows carrying last time's answers; saves `kind: 'pulse'` with the scores and skips inherited and the context cleared; expanding one row reveals the slider and hides guided scoring; the name stays locked |
+| Cadence nudge | one calm sentence when a rhythm has elapsed, and nothing at all when none is set however long it has been; "Later" survives a remount via `localStorage`; dismissing does not come back in the same session and leaves the snooze store untouched; "Quick pulse" opens the pulse form pre-filled |
 | What Changed | appears after a new version, **not** after an in-place edit; shows the elapsed sentence and `↑30`; the note follow-up PUTs only `{description, tags}` |
 | Errors | fetch failure surfaces in `role="alert"`; a failed save keeps the form open with its input; the banner dismisses |
 
-[`src/components/WhatChanged.test.jsx`](../src/components/WhatChanged.test.jsx) — 15 tests.
+[`src/components/WhatChanged.test.jsx`](../src/components/WhatChanged.test.jsx) — 16 tests.
 Mostly pure-function tests of `computeDeltas` (ordering, steady collapse, not-comparable,
 uncertain propagation, and that a **score of 0 is not a skip**), `findPreviousVersion`
-(same-name only, backdated → `null`, undated fallback) and `elapsedSentence` (each unit
-boundary, same-day, undated), plus four screen tests covering the delta list, the note save,
-the note failure path, and dismissal.
+(same relationship only — including a namesake in a *different* relationship being ignored —
+backdated → `null`, undated fallback) and `elapsedSentence` (each unit boundary, same-day,
+undated), plus four screen tests covering the delta list, the note save, the note failure
+path, and dismissal.
 
 [`src/components/AnalysisTimeline.test.jsx`](../src/components/AnalysisTimeline.test.jsx) —
-4 tests. `makeDotRenderer` is tested directly (solid / dashed / nothing) because Recharts
-never calls it under jsdom, plus one render test for the conditional legend hint.
+12 tests. `makeDotRenderer` is tested directly (solid / dashed / nothing), then
+`buildTimelineData` for each of its honesty rules: real timestamps with proportional gaps,
+undated snapshots excluded **and counted**, same-day snapshots nudged 12h apart for display,
+and markers derived only from snapshots carrying tags or a note. Three render tests cover the
+undated footnote, the conditional dashed-point hint, and the compare selector.
 
-**Untested:** `Profile`, `Navbar`, `Landing`, and `App`'s routing guards (including the 401
-interceptor). Within `Dashboard`, the `groupedPeople` grouping and the `CardStack` offset
-transform table remain the highest-value additions.
+[`src/components/LoveShape.test.jsx`](../src/components/LoveShape.test.jsx) — 10 tests.
+`buildShapeData` (taxonomy order, `scored: false` for a skip, a genuine 0 distinguished from
+a skip, uncertainty carried through, no compare series without `compareTo`) and `ShapeDot`
+(filled / open-dashed / filled-dashed).
+
+[`src/components/TimelineRoute.test.jsx`](../src/components/TimelineRoute.test.jsx) — 8
+tests, rendered through `MemoryRouter` + `SubjectsProvider`. The id route: `timelinePath`,
+direct entry fetching and rendering, a name that would have needed URL encoding (it is no
+longer in the URL at all), the unknown-relationship empty state, and a load failure surfacing
+as an error rather than as "no analysis". The legacy route: an old `/timeline/:name` link
+redirecting to the id it names, single-decode of that name, and the explanatory empty state
+when the name no longer matches.
+
+[`src/context/SubjectsContext.test.jsx`](../src/context/SubjectsContext.test.jsx) — 18 tests.
+`groupPeople`, `findStack` and `buildStacks` as pure functions — including the two cases the
+entity exists for: two relationships sharing a display name stay apart, and a stack whose
+rows disagree on the name still groups together. Then the provider through a probe: both
+endpoints fetched once for all consumers, no fetch when disabled, a failure in *either*
+request surfacing, and every mutation (create, delete, rename, merge, delete-relationship)
+updating both the snapshot list and the relationship list.
+
+[`src/constants/cadence.test.js`](../src/constants/cadence.test.js) — 17 tests, all pure.
+`humanGap` and `latestSnapshotDate`, then `dueStacks` against every rule the feature promises:
+due on the exact day, never due without a rhythm, never due without a **dated** snapshot,
+silent while snoozed and speaking again once that lapses, dropped once seen this session,
+longest wait first. `nudgeSentence` is asserted against a forbidden-word list
+(`overdue`, `missed`, `streak`, `should`, `behind`, `!`) — the no-guilt rule is a product
+constraint, so it is tested like one.
+
+[`src/context/DiscretionContext.test.jsx`](../src/context/DiscretionContext.test.jsx) —
+9 tests: `initials` (including the never-empty fallback), off by default, names to initials
+and notes to blur when on, the tab title dropping the app name, `Ctrl+.`, and the choice
+surviving a remount.
+
+[`src/components/Vault.test.jsx`](../src/components/Vault.test.jsx) — 12 tests.
+`buildCSV` gets four of them because its one rule is easy to break: **a skipped category is
+an empty cell, never a zero.** Also quoting (commas and quotes in a note) and an undated
+snapshot. The page tests cover the storage summary, the four privacy claims being present
+verbatim, "Last export: never", the dry-run-then-confirm import flow (asserting the dry run
+posts first and nothing is written until Import is clicked), a malformed file, and the
+app-lock honesty copy.
+
+[`src/components/AppLock.test.jsx`](../src/components/AppLock.test.jsx) — 6 tests:
+pass-through when no passphrase is set, that `localStorage` holds a hash and never the
+passphrase, wrong-then-right unlocking, and that the "does not encrypt anything" copy is on
+the lock screen itself.
+
+[`src/App.test.jsx`](../src/App.test.jsx) — 3 tests covering the login handoff end to end:
+the auth header is present **at the moment the first fetch fires**, login lands on the
+dashboard rather than back on Landing, and a genuine 401 signs the user out.
+
+> This file needs a hand-written axios mock rather than `vi.mock('axios')`. The automock
+> returns `undefined` from `axios.create()`, which `Profile.jsx` calls at module scope, so
+> importing `App` throws. The mock also records the registered response interceptors, which
+> is what lets the third test fire the 401 path the way axios would.
+
+**Untested:** `Profile`, `Navbar`, and `Landing`. Within `Dashboard`, the `CardStack` offset
+transform table remains the highest-value addition.
+
+> **Recharts renders nothing under jsdom.** `ResponsiveContainer` measures its parent, which
+> is always 0×0 in a test DOM, so no SVG is produced and custom renderers are never called.
+> Every chart component therefore exports its data shaping and its dot renderers as pure
+> functions, and those are what the suites assert on. Do the same for any new chart: a test
+> that asserts on rendered SVG will pass vacuously or not at all.
 
 ### Patterns to copy
 
@@ -159,6 +243,34 @@ tag behaviour rather than mocking it.
   **Add any future additive column to that list.** Use `t.TempDir()` plus an explicit
   `sqlDB.Close()` in `t.Cleanup` for any new file-backed test — Windows cannot delete a
   SQLite file whose handle is still open.
+- **`TestUpgradeFromPreRelationshipSchema`** — the Phase 4 migration, on a file database.
+  It builds a genuinely pre-Phase-4 schema by migrating a `legacyAnalysisSubject` struct
+  (no `RelationshipID`, no `relationships` table), seeds rows including a name with trailing
+  whitespace, then runs the real `AutoMigrate` + `BackfillRelationships` and asserts the
+  stack count matches what the browser used to compute.
+
+  Two things this test discovered, both worth knowing before touching the schema:
+  `relationship_id` is **not** in `additiveColumns` because SQLite refuses to drop a column
+  that a foreign key references; and the legacy schema is built from a struct rather than
+  hand-written DDL because GORM's SQLite migrator only parses DDL it produced itself.
+
+### 2.1a `backfill_test.go` — the migration's semantics
+
+[`backend/internal/database/backfill_test.go`](../backend/internal/database/backfill_test.go)
+seeds unlinked rows with raw SQL (the model can no longer express an unlinked row as an
+intentional state) and asserts what the backfill promises:
+
+| Test | Asserts |
+| :--- | :------ |
+| `TestBackfillGroupsByTrimmedNamePerUser` | `"Alex"` and `"  Alex  "` join one stack; `Sam` gets its own; two users who each named their person Alex keep separate stacks; the stored name is normalized to the trimmed form |
+| `TestBackfillIsIdempotent` | A second pass reports `0, 0` and creates nothing — the property that makes running it on every boot safe |
+| `TestBackfillIncludesSoftDeletedSnapshots` | A soft-deleted row is linked alongside its siblings, so a restore stays coherent |
+| `TestBackfillReusesExistingRelationships` | The half-migrated case: rows already linked by the write path cause no duplicate relationship |
+| `TestBackfillOnAnEmptyDatabase` | Zeros, no error |
+
+Each test gets its **own** database DSN. The package's older `setupMemoryDB` helper shares
+one `file::memory:?cache=shared` across every caller, which would let one backfill test see
+another's rows.
 
 > These are the guard rails for the least obvious persistence behaviours in the project.
 > Any change to the serialized column types, to soft-delete semantics, or to
@@ -217,10 +329,10 @@ Table-driven cases per handler:
 
 | Handler | Cases |
 | :------ | :---- |
-| `TestCreateSubject` | Valid Request · Name Is Trimmed Server-Side · Partial Stats Are Accepted (missing keys are legal) · Whitespace-Only Name → 400 · Unknown Stats Key → 400 · Stats Value Above/Below Range → 400 · Malformed Date → 400 · Too Many Tags / Blank Tag / Overlong Tag → 400 · Unknown Uncertain Category → 400 · Uncertain About An Unscored Category → 400 · Unknown Guide Answer Category / Above Scale / Non-Index Key → 400 · Unauthorized · Missing Required Fields · Database Error (rollback → 500) |
+| `TestCreateSubject` | Valid Request · Name Is Trimmed Server-Side · **Existing Name Reuses Its Relationship** · Partial Stats Are Accepted (missing keys are legal) · Whitespace-Only Name → 400 · Unknown Stats Key → 400 · Stats Value Above/Below Range → 400 · Malformed Date → 400 · Too Many Tags / Blank Tag / Overlong Tag → 400 · Unknown Uncertain Category → 400 · Uncertain About An Unscored Category → 400 · Unknown Guide Answer Category / Above Scale / Non-Index Key → 400 · Unauthorized · Missing Required Fields · Database Error (rollback → 500) |
 | `TestCreateSubjectPersistsContext` | The note, the trimmed tags, the parsed date, the uncertain flags, and the nested guide answers all come back on the created row. |
-| `TestGetSubjects` | Valid (2 rows, length asserted after unmarshalling) · Unauthorized · Database Error |
-| `TestUpdateSubject` | Valid (SELECT then UPDATE; note the id arrives as the **string** `"1"` from the route param) · Not Found (`gorm.ErrRecordNotFound` → 404) · Invalid JSON → 400 · Unknown Stats Key → 400 · Malformed Date → 400 · Whitespace-Only Name → 400 · Guide Answer Out Of Range → 400 · **Stats Update Orphans An Uncertain Flag** → 400 (the post-merge invariant) |
+| `TestGetSubjects` | Valid — the expectation is the literal `ORDER BY date IS NULL,date DESC,id DESC`, because that clause is a contract with the client · Filtered By Relationship (`?relationship_id=7`) · Non-Numeric Relationship Filter → 400 · Unauthorized · Database Error |
+| `TestUpdateSubject` | Valid (SELECT then UPDATE; note the id arrives as the **string** `"1"` from the route param, and the stored row carries no `relationship_id`, so this also covers a legacy row being linked on its way through an edit) · **Renaming A Version Re-Resolves Its Relationship** · **Resending The Same Name Keeps The Relationship** · Not Found (`gorm.ErrRecordNotFound` → 404) · Invalid JSON → 400 · Unknown Stats Key → 400 · Malformed Date → 400 · Whitespace-Only Name → 400 · Guide Answer Out Of Range → 400 · **Stats Update Orphans An Uncertain Flag** → 400 (the post-merge invariant) |
 | `TestUpdateSubjectPartialMerge` | **The description-wipe regression guard.** A body of only `{"stats":…}` leaves name, description, date, tags, uncertain, and guide answers exactly as stored. |
 | `TestUpdateSubjectExplicitClear` | `{"description":"","date":"","tags":[]}` really does clear — absent ≠ empty. |
 | `TestDeleteSubject` | Valid (soft-delete UPDATE) · Not Found — Nothing Deleted (`RowsAffected == 0` → 404) · Unauthorized · Database Error |
@@ -228,6 +340,44 @@ Table-driven cases per handler:
 Validation subtests assert on the **error string** as well as the status, via an
 `expectedError` substring field on the table — status codes alone would not catch a check
 firing for the wrong reason.
+
+Since Phase 4 every write path runs find-or-create first, so the mocks need the relationship
+lookup (and, for a new name, its INSERT) *before* the `analysis_subjects` statement.
+`expectFindOrCreateRelationship(mock, found)` sets that up — call it rather than
+hand-writing the pair.
+
+### 2.2a `relationships_test.go` — real SQLite, not sqlmock
+
+[`backend/internal/handlers/relationships_test.go`](../backend/internal/handlers/relationships_test.go)
+deliberately breaks the pattern above and runs against an in-memory SQLite database.
+
+**Why:** rename and merge are multi-statement transactions whose whole point is what the rows
+look like afterwards. Asserting on the SQL that produced them would only restate the handler;
+asserting on the rows tests the behaviour. The same reasoning covers the find-or-create test
+— "a differently-whitespaced name reuses the relationship" is a claim about data, not
+about a query.
+
+| Test | Asserts |
+| :--- | :------ |
+| `TestGetRelationships` | Counts and latest dates per stack, most-recent-first with undated last, another user's relationships absent, and an emptied stack still listed as `0`/`null` |
+| `TestRenameRelationship` | The trimmed name comes back and **every** snapshot carries it |
+| `TestRenameRelationshipCollisionIs409` | 409, and the failed rename rolled back |
+| `TestRenameRelationshipToItsOwnNameSucceeds` | A name collides with *another* relationship, never with itself |
+| `TestRenameRelationshipRejectsEmptyName` | 400 |
+| `TestMergeRelationships` | All snapshots move and take the target's name; the source is soft-deleted; nothing still points at it |
+| `TestMergeRelationshipIntoItselfIs400` | The degenerate case is refused |
+| `TestDeleteRelationshipRemovesItsSnapshots` | Its snapshots go (as soft deletes, still readable `Unscoped`), other stacks untouched |
+| `TestRelationshipRoutesRejectOtherUsers` | Rename, merge in **both directions**, and delete all 404 on someone else's relationship — and nothing changed |
+| `TestRelationshipRoutesRequireAuth` | All four routes 401 without a user in context |
+| `TestCreateSubjectReusesRelationshipByName` | The compatibility contract: `"Alex"` and `"  Alex  "` share a relationship, `"Sam"` gets its own, exactly two relationships exist |
+| `TestGetSubjectsOrdersByDate` | The `ORDER BY` against a real engine: newest first, undated last |
+| `TestAggregateTimeScan` | The four shapes `MAX(date)` arrives as, including the RFC 3339 spelling found in databases written by older driver versions |
+
+That last one is worth keeping. `MAX()` drops a column's declared type, so SQLite hands back
+a **string** where Postgres hands back a `time.Time`; a plain `*time.Time` field fails to
+scan, and the failure only shows up once a relationship has a dated snapshot. GORM also
+refuses to scan into a struct field that implements only half of the `Valuer`/`Scanner` pair,
+which is why `aggregateTime` carries an otherwise-unused `Value()`.
 
 ### 2.3 `upload_test.go` — multipart handling
 
@@ -252,15 +402,44 @@ Two rough edges in this file, both cosmetic but worth knowing before editing it:
   `bytes.Index` check, and the unmarshalled `response` map is assigned but never asserted.
   Both are leftovers; substring matching on `w.Body` is what actually runs.
 
-### 2.4 Untested backend surface
+### 2.3a `vault_test.go` — export and import, on real SQLite
 
-`internal/auth` has **no tests at all** — bcrypt hashing, token generation, expiry, and
-tamper rejection are unverified. That is the single largest gap in the backend, and it is
-cheap to close (pure functions, no HTTP, no database). The one wrinkle: `jwtKey` is read at
-package init, so a test cannot set `JWT_SECRET` from inside a test function — it must
-either rely on the empty-key default or the code must be refactored to read the key lazily.
+[`backend/internal/handlers/vault_test.go`](../backend/internal/handlers/vault_test.go).
+Same reasoning as `relationships_test.go`: these are claims about data, not about queries.
 
-`Signup`, `Login`, `GetUserProfile`, and `UpdateUserProfile` also have no handler tests.
+| Test | Asserts |
+| :--- | :------ |
+| `TestExportShape` | The document's fields, dates as `YYYY-MM-DD`, an undated pulse last, another user's data absent — and, **on the raw response bytes**, that no form of `password` or a bcrypt prefix appears anywhere |
+| `TestExportImportRoundTrip` | Export from one account, import into an empty one, re-export: field for field identical |
+| `TestReimportIsANoOp` | The same file into the same account skips everything and changes no counts |
+| `TestImportDryRunWritesNothing` | The preview writes nothing **and** the real run then does exactly what the preview promised |
+| `TestImportRejectsBadDataWholesale` | Seven bad files (format, version, stats range, unknown category, bad kind, cadence bounds, nameless relationship) each 400 with nothing written |
+| `TestImportMergesIntoExistingStacks` | `"  Alex  "` lands in the existing Alex, creating no second relationship |
+| `TestImportKeepsALocalCadence` | A rhythm set here wins over the file's; an unset one takes the file's |
+| `TestImportRequiresAuth` | All three vault routes 401 without a user |
+| `TestGetMeta` | Counts scoped to the caller, the oldest date, the backend name, and no configuration detail in the payload |
+
+### 2.4 `auth_test.go` — the package that used to be untestable
+
+[`backend/internal/auth/auth_test.go`](../backend/internal/auth/auth_test.go) — 7 tests
+covering `LoadSecret` (empty rejected with an actionable message, set accepted), a token
+round-trip with its 24-hour expiry, rejection of a token signed with a different secret, an
+expired token, **forged claims** (keep the signature, swap the payload for one naming another
+user), and bcrypt hashing both ways.
+
+> This package had no tests at all until Phase 5, and the reason was structural: `jwtKey` was
+> captured at package init, so no test could set `JWT_SECRET` from inside a test function.
+> `LoadSecret` re-reads the variable, which is what made the whole file possible. If you add
+> a function here, `t.Setenv` + `LoadSecret()` is the pattern.
+>
+> One trap this file already hit: do **not** test tampering by flipping the last character of
+> the signature. It is base64url, and the final character can carry padding bits, so the flip
+> can decode to the same bytes and the token stays valid. Forge the payload instead — it is
+> also the attack that actually matters.
+
+### 2.5 Untested backend surface
+
+`Signup`, `Login`, `GetUserProfile`, and `UpdateUserProfile` have no handler tests.
 Testing `Signup`/`Login` through sqlmock is feasible but slow: bcrypt cost 14 makes each
 hash roughly a second.
 

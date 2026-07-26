@@ -12,6 +12,7 @@ import (
 	"alexithymia-backend/internal/models"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 const (
@@ -19,12 +20,19 @@ const (
 	maxTagLength  = 40
 	maxGuideScale = 3 // guide answers are scale indices: 0=Never … 3=Constantly
 	dateLayout    = "2006-01-02"
+
+	// KindFull is an ordinary snapshot; KindPulse is one taken through the 60-second
+	// quick-pulse path. Both are real versions — the distinction only changes how the
+	// timeline draws them.
+	KindFull  = "full"
+	KindPulse = "pulse"
 )
 
 type CreateSubjectInput struct {
 	Name         string                    `json:"name" binding:"required"`
 	Description  string                    `json:"description"`
 	Date         string                    `json:"date"`
+	Kind         string                    `json:"kind"` // "" means "full"
 	Stats        map[string]int            `json:"stats"`
 	Tags         []string                  `json:"tags"`
 	Uncertain    []string                  `json:"uncertain"`
@@ -38,10 +46,25 @@ type UpdateSubjectInput struct {
 	Name         *string                    `json:"name"`
 	Description  *string                    `json:"description"`
 	Date         *string                    `json:"date"` // nil = unchanged; "" = clear to null; value = parsed strictly
+	Kind         *string                    `json:"kind"`
 	Stats        *map[string]int            `json:"stats"`
 	Tags         *[]string                  `json:"tags"`
 	Uncertain    *[]string                  `json:"uncertain"`
 	GuideAnswers *map[string]map[string]int `json:"guide_answers"`
+}
+
+// normalizeKind defaults an absent kind to "full" and rejects anything else. Legacy rows
+// read back as "full" through the column default, so this is the only place the vocabulary
+// can widen.
+func normalizeKind(kind string) (string, error) {
+	switch kind {
+	case "":
+		return KindFull, nil
+	case KindFull, KindPulse:
+		return kind, nil
+	default:
+		return "", fmt.Errorf("kind must be %q or %q", KindFull, KindPulse)
+	}
 }
 
 // validateStats enforces the seven-category contract and the 0-100 range.
@@ -167,6 +190,12 @@ func CreateSubject(c *gin.Context) {
 		return
 	}
 
+	kind, err := normalizeKind(input.Kind)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	var dateParsed *time.Time
 	if input.Date != "" {
 		parsed, err := parseSubjectDate(input.Date)
@@ -180,6 +209,7 @@ func CreateSubject(c *gin.Context) {
 	subject := models.AnalysisSubject{
 		UserID:       userID.(uint),
 		Name:         name,
+		Kind:         kind,
 		Description:  input.Description,
 		Date:         dateParsed,
 		Stats:        input.Stats,
@@ -188,7 +218,19 @@ func CreateSubject(c *gin.Context) {
 		GuideAnswers: input.GuideAnswers,
 	}
 
-	if err := database.DB.Create(&subject).Error; err != nil {
+	// Find-or-create is what keeps every pre-Phase-4 client working: a caller that only
+	// knows about names still lands its snapshot in the right relationship, and the FK is
+	// populated on the way through. Both writes share a transaction so a failed insert
+	// cannot leave an empty relationship behind.
+	err = database.DB.Transaction(func(tx *gorm.DB) error {
+		relationship, err := database.FindOrCreateRelationship(tx, subject.UserID, name)
+		if err != nil {
+			return err
+		}
+		subject.RelationshipID = &relationship.ID
+		return tx.Create(&subject).Error
+	})
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create subject"})
 		return
 	}
@@ -203,8 +245,30 @@ func GetSubjects(c *gin.Context) {
 		return
 	}
 
+	query := database.DB.Where("user_id = ?", userID)
+
+	if raw := c.Query("relationship_id"); raw != "" {
+		relationshipID, err := strconv.ParseUint(raw, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "relationship_id must be a number"})
+			return
+		}
+		query = query.Where("relationship_id = ?", relationshipID)
+	}
+
+	// Newest first, undated last. `date IS NULL` sorts false before true on both engines,
+	// which is the portable spelling of NULLS LAST — SQLite has no such clause. The id
+	// tiebreaker keeps same-day snapshots in a stable order instead of the engine's whim.
+	//
+	// Pagination is deliberately absent: this is a single-user self-hosted app, and a
+	// dashboard would have to pass ~500 snapshots before the payload mattered.
 	var subjects []models.AnalysisSubject
-	if err := database.DB.Where("user_id = ?", userID).Find(&subjects).Error; err != nil {
+	err := query.
+		Order("date IS NULL").
+		Order("date DESC").
+		Order("id DESC").
+		Find(&subjects).Error
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch subjects"})
 		return
 	}
@@ -232,6 +296,8 @@ func UpdateSubject(c *gin.Context) {
 		return
 	}
 
+	originalName := subject.Name
+
 	// Only fields present in the request body are assigned.
 	if input.Name != nil {
 		name := strings.TrimSpace(*input.Name)
@@ -244,6 +310,15 @@ func UpdateSubject(c *gin.Context) {
 
 	if input.Description != nil {
 		subject.Description = *input.Description
+	}
+
+	if input.Kind != nil {
+		kind, err := normalizeKind(*input.Kind)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		subject.Kind = kind
 	}
 
 	if input.Stats != nil {
@@ -295,7 +370,26 @@ func UpdateSubject(c *gin.Context) {
 		}
 	}
 
-	if err := database.DB.Save(&subject).Error; err != nil {
+	// Renaming a single version detaches it to the relationship that name belongs to,
+	// creating it if it is new. That is what renaming a version has always done — it split
+	// the stack — except now the split is a visible fact in the data rather than an
+	// emergent property of string equality. Renaming the *stack* is PATCH /relationships/:id.
+	// A row that arrives without a relationship (a legacy row on a database whose backfill
+	// has not run) is resolved here too, so it never gets saved back still unlinked.
+	needsRelationship := subject.RelationshipID == nil ||
+		(input.Name != nil && subject.Name != originalName)
+
+	err := database.DB.Transaction(func(tx *gorm.DB) error {
+		if needsRelationship {
+			relationship, err := database.FindOrCreateRelationship(tx, subject.UserID, subject.Name)
+			if err != nil {
+				return err
+			}
+			subject.RelationshipID = &relationship.ID
+		}
+		return tx.Save(&subject).Error
+	})
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update subject"})
 		return
 	}

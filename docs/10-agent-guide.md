@@ -12,10 +12,15 @@ the changes most likely to be requested.
 React 19 SPA (src/)  ──HTTP /api──►  Go + Gin (backend/)  ──GORM──►  Postgres or SQLite
 ```
 
-- Two records exist: `User` and `AnalysisSubject`. That is the entire schema
-  ([`models.go`](../backend/internal/models/models.go), 27 lines).
-- A "person" is not stored — it is `AnalysisSubject` rows grouped by identical `name`
-  **in the browser**.
+- Three records exist: `User`, `Relationship`, and `AnalysisSubject`. That is the entire
+  schema ([`models.go`](../backend/internal/models/models.go)).
+- **`JWT_SECRET` must be set or the server exits.** `go run ./cmd/server` without it now
+  fails by design.
+- A "person" is a `Relationship`; a "snapshot" is an `AnalysisSubject` pointing at one. The
+  stack you see on the dashboard is a relationship and its snapshots, grouped **by
+  `relationship_id`**. The `name` on each snapshot is a denormalized label, not the key.
+- Every write resolves the relationship from the trimmed name (**find-or-create**), so a
+  client that only sends `{name, stats}` still works.
 - The seven love categories exist **only** in the frontend `CATEGORIES` constant. The
   backend stores an untyped `map[string]int`.
 - Auth is a stateless 24-hour JWT in `localStorage`; the middleware puts `userID` in the
@@ -34,7 +39,12 @@ Breaking any of these produces a silent or confusing failure rather than a clean
 | # | Invariant | Why |
 | :- | :-------- | :-- |
 | 1 | **The primary key is `person.ID`, uppercase.** | `gorm.Model` has no JSON tags. `person.id` is `undefined`; the request goes to `/api/subjects/undefined`. [Details](03-data-model.md#2-gormmodel-and-the-id-casing-trap) |
-| 2 | **Never move the axios header assignment in `App.jsx` into an effect.** | Child effects run before parent effects; the dashboard's first fetch would go out unauthenticated. [Details](06-frontend.md#the-module-scope-header-assignment) |
+| 2 | **Never write the axios auth header from an effect.** `applyToken` is called synchronously at import and from `setToken`. | Child effects run before parent effects, so the first fetch after login would go out unauthenticated, 401, and log the user straight back out — looking exactly like "login is broken". [Details](06-frontend.md#applytoken--the-header-is-never-written-from-an-effect) |
+| 2a | **Group stacks by `relationship_id`, never by `name`.** | Two relationships may legitimately share a display name now. Name-grouping would silently merge two different people — the exact bug the entity exists to fix. |
+| 2b | **The write path and the backfill must resolve names the same way.** Both go through `database.FindOrCreateRelationship`. | Two different rules for "which relationship is this name?" split a stack in half, and the halves cannot be told apart afterwards. |
+| 2c | **The cadence nudge never guilt-trips.** No streaks, no badges, no counts of missed check-ins, no red, no urgency vocabulary. | It is a product rule, not a style preference — a missed month must not read as a failure. `nudgeSentence` is tested against a forbidden-word list; keep it that way. |
+| 2d | **Reminders are computed in the browser, never scheduled on the server.** | "Nothing leaves this machine" is a claim the Vault page makes in writing. A scheduler or an email digest would make it false. |
+| 2e | **Every claim on the Vault page must be true of the code as written.** | It says nothing is sent anywhere, there are no AI features, and the database is not encrypted. If you add a network call or a background service, that page is the first thing to fix. |
 | 3 | **Category `id`s are permanent, and now live in two languages.** | They are the stored `stats` keys, the `uncertain` entries, the `guide_answers` outer keys, *and* the server's validation allowlist ([`domain.CategoryIDs`](../backend/internal/domain/categories.go)). Renaming one orphans every historical value and starts 400-ing the new one. |
 | 4 | **Tailwind colour classes must be complete literal strings.** | The JIT scanner cannot see `` `bg-${x}-400` ``; interpolated classes are purged and render colourless. |
 | 5 | **Register protected routes inside the `protected` group** in `main.go`. | Outside it, the route is public with no warning — that is how `/uploads` became unauthenticated. |
@@ -49,6 +59,9 @@ Breaking any of these produces a silent or confusing failure rather than a clean
 | 14 | **Absent ≠ zero, in `stats`.** | A missing key means the category was skipped. Read it with a presence check (`isScored`), never `stats[id] \|\| 0`. |
 | 15 | **The user authors every number.** | The guided-scoring band is a suggestion drawn on the track; only an explicit "Use N" click moves the slider. No code path may write a score the user did not confirm. |
 | 16 | **Guide answers store the scale *index* (0-3), not its value (0/35/70/100).** | The band arithmetic maps index → value through `GUIDE_SCALE`. Confusing them yields a band that looks reasonable and is wrong. |
+| 17 | **The subject list lives in `SubjectsContext`.** | Fetching it again in a screen re-introduces the stale-copy bug the context exists to kill. Use `useSubjects()`. |
+| 18 | **Radar axis order is `CATEGORIES` order, always.** | A Love Shape is only recognisable if a given category sits at the same angle every time. Do not sort the shape data. |
+| 19 | **Recharts renders nothing under jsdom.** | Chart logic must live in exported pure functions; a test asserting on rendered SVG proves nothing. |
 
 ---
 
@@ -68,15 +81,36 @@ Ranked by how much time they waste.
    on every failure.
 5. **The `animate-*` classes do nothing.** `tailwindcss-animate` is not installed. Do not
    debug "why the modal doesn't animate" — install the plugin or drop the classes.
-6. **`GET /api/subjects` has no `ORDER BY`.** Never assume ordering; both consumers sort
-   client-side, in opposite directions (cards descending, timeline ascending).
+6. **`GET /api/subjects` is ordered newest-first** (`date IS NULL, date DESC, id DESC`), but
+   both consumers still sort client-side anyway — cards descending, timeline ascending.
+   Do not remove those sorts on the strength of the server's order.
 7. **`uncertain` must stay consistent with `stats`.** Change which categories are scored and
    you must send `uncertain` in the same request, or the server rejects the update.
 8. **`npm run preview` has no API proxy** — `server.proxy` is dev-only. Use Docker to test
    a production build against the API.
 9. **Run the backend from `backend/`.** `alexithymia.db` and `uploads/` are CWD-relative.
 10. **`go test ./...` leaves files behind** in `backend/internal/handlers/uploads/` (the
-    test's cleanup glob does not match the handler's naming scheme). Check `git status`.
+    test's cleanup glob does not match the handler's naming scheme). Check `git status` —
+    and note four such files are *tracked*, so delete only the untracked ones.
+10a. **`MAX(date)` scans as a string on SQLite** and as a `time.Time` on Postgres, because
+    the aggregate drops the column's declared type. `aggregateTime` in
+    [`relationships.go`](../backend/internal/handlers/relationships.go) absorbs both. Any new
+    aggregate over a time column needs the same treatment, and the failure only appears once
+    real dated data exists.
+10b. **SQLite cannot drop a column a foreign key references**, so `relationship_id` cannot
+    be exercised by `database_test.go`'s drop-and-re-add trick. It has its own test.
+10c. **Mock `axios.get` per URL in frontend tests.** The provider loads `/api/subjects` and
+    `/api/relationships` together; one blanket `mockResolvedValue` feeds snapshots to both.
+    Copy the `mockFetch` helper. `Vault` adds `/api/meta` to the list.
+10d. **`Dashboard` and `TimelineRoute` need `DiscretionProvider` as well as
+    `SubjectsProvider`.** `useDiscretion()` throws without it; copy `renderDashboard`.
+10e. **A JSON `null` is indistinguishable from an absent key through a pointer field**, at
+    any pointer depth — `**int` does not help. `cadence_days` needs all three states, which is
+    why `UpdateRelationship` decodes into `map[string]json.RawMessage` and reads presence from
+    the keys. Any future nullable-and-optional field needs the same treatment.
+10f. **A new column on `AnalysisSubject` that is not nullable needs a `default` tag.**
+    Scanning NULL into a Go `string` fails outright, so a missing default breaks *every read*
+    of every legacy row, not just the new field.
 11. **`Profile.jsx` is outside the global axios interceptors.** It has its own instance, so
     the 401 auto-logout in `App.jsx` does not cover the profile screen.
 12. **Port 8080 is the backend in dev but the frontend under Docker.** They collide.
@@ -91,31 +125,28 @@ Ranked by how much time they waste.
 server's validation allowlist — skip step 3 and every save carrying the new key 400s.
 
 1. Append to `CATEGORIES` in
-   [`src/components/Dashboard.jsx`](../src/components/Dashboard.jsx), matching the
-   existing shape exactly: `id`, `label`, `description`, `color`, `textColor`,
+   [`src/constants/categories.js`](../src/constants/categories.js), matching the
+   existing shape exactly: `id`, `label`, `description`, `color`, `hex`, `textColor`,
    `borderColor`, `extendedDescription`, `coreMotivation`, `metrics[{title, description}]`,
    `anchors[{min, max, phrase}]`. Use **literal** Tailwind class strings. The anchor bands
-   must start at 0, end at 100 and be contiguous — a unit test enforces it.
-2. Add the matching hex to `CATEGORY_COLORS` in
-   [`src/components/AnalysisTimeline.jsx`](../src/components/AnalysisTimeline.jsx#L15-L23) —
-   Recharts needs a real colour for the SVG stroke. **This step is the one most often
-   forgotten**; a missing entry yields an invisible line.
-3. Add the `id` to `CategoryIDs` in
+   must start at 0, end at 100 and be contiguous — a unit test enforces it. `hex` must match
+   `color`; it is what the SVG charts stroke with.
+2. Add the `id` to `CategoryIDs` in
    [`backend/internal/domain/categories.go`](../backend/internal/domain/categories.go).
    Ids only — no labels, colours, or prose migrate to Go.
-4. Optionally mirror the prose into
+3. Optionally mirror the prose into
    [`TestImplementationDetails.txt`](../TestImplementationDetails.txt), the editorial
    source for this copy.
-5. Verify: the slider list, the bar chart, the category grid and detail view, and the
-   timeline legend all pick it up automatically — they iterate `CATEGORIES`.
+4. Verify: the slider list, the bar chart, the radar axes, the category grid and detail
+   view, and the timeline legend all pick it up automatically — they iterate `CATEGORIES`.
 
 Existing subjects simply have no key for the new id and render as 0%.
 
 **To rename a category's `id`**, you must also migrate stored data — every existing
 `stats` JSON blob carries the old key. Prefer changing only the `label`.
 
-**To recolour**, change both `color` (Tailwind class) and the `CATEGORY_COLORS` hex, and
-keep them consistent — the bar chart and line chart must agree.
+**To recolour**, change `color` and `hex` on the same object and keep them describing the
+same colour — the bars, the lines and the radar vertices must agree.
 
 ### Recipe 2: Add a field to `AnalysisSubject`
 
@@ -159,26 +190,20 @@ Example: `GET /api/subjects/:id`.
 5. Client call: plain `axios.get('/api/subjects/' + id)` — the global default header is
    already set. Do not create a new axios instance (see Recipe 6).
 
-### Recipe 4: Make the timeline a real route
+### Recipe 4: Add a screen that reads subjects
 
-The most commonly wanted structural change: today the timeline is a conditional swap, so
-it is not linkable and Back leaves the dashboard
-([Architecture §5](02-architecture.md#the-timeline-is-not-a-route)).
+The pattern `TimelineRoute` established, and the one to copy for any new screen over the
+same data:
 
-1. Add `<Route path="/timeline/:name" element={token ? <TimelinePage /> : <Navigate to="/login" />} />`
-   in [`App.jsx`](../src/App.jsx#L42-L55).
-2. Create a `TimelinePage` wrapper that reads `useParams().name`, fetches
-   `GET /api/subjects`, filters by name, and renders `AnalysisTimeline`. `CATEGORIES_EXPORT`
-   is already exported for exactly this.
-3. Replace `onAnalyze={setSelectedTimelineStack}` with
-   `navigate('/timeline/' + encodeURIComponent(person.name))`, and delete
-   `selectedTimelineStack` plus the conditional block at
-   [`Dashboard.jsx:588-620`](../src/components/Dashboard.jsx#L588-L620).
-4. `onBack` becomes `navigate('/')`.
-
-Watch out: names can contain `/`, `#`, and `?` — encode on the way out and decode on the
-way in. This also fixes the current snapshot-staleness (the chart not reflecting edits made
-while it is open).
+1. Register the route **inside** the `SubjectsProvider` in
+   [`App.jsx`](../src/App.jsx), guarded on `token` like `/profile`.
+2. Read data with `useSubjects()` — never fetch `GET /api/subjects` again. Handle all three
+   states it exposes: `loading` (someone may have landed here directly), `loadError`, and
+   the empty case.
+3. Link to it through an exported path builder that encodes its params, the way
+   `timelinePath` does. Read params back with `useParams` and **do not** decode again.
+4. Back is `navigate(-1)`, falling back to `/` when `location.key === 'default'`.
+5. Test it through `MemoryRouter` + `SubjectsProvider` with `axios` mocked.
 
 ### Recipe 5: Surface an error on a new screen
 
@@ -250,7 +275,7 @@ Three rules when adding to it:
 ## 5. Before you finish
 
 ```bash
-npm test                        # vitest run — must stay 50/50
+npm test                        # vitest run — must stay 161/161
 cd backend && gofmt -l .        # must print nothing
 cd backend && go vet ./...
 cd backend && go test ./...     # must stay all-pass
@@ -266,8 +291,9 @@ Then check, specifically:
 
 - Did you touch `models.go` or `subjects.go`? The sqlmock SQL expectations may need
   updating.
-- Did you add a category? `CATEGORIES` (with `anchors`), `CATEGORY_COLORS`, **and**
+- Did you add a category? `CATEGORIES` (with `hex` and `anchors`) **and**
   `domain.CategoryIDs`.
+- Did you add a screen? Inside `SubjectsProvider`, reading through `useSubjects()`.
 - Did you add a form field? It must appear in the `onSave` payload, and its
   `UpdateSubjectInput` counterpart must be a pointer.
 - Did you add a model column? Add it to `additiveColumns` in `database_test.go`.
@@ -283,13 +309,17 @@ Then check, specifically:
 
 | Looking for | Go to |
 | :---------- | :---- |
-| The seven categories, all copy | `CATEGORIES`, [`Dashboard.jsx`](../src/components/Dashboard.jsx) |
+| The seven categories, all copy, colours and anchors | `CATEGORIES`, [`constants/categories.js`](../src/constants/categories.js) |
 | The seven ids, server-side | `CategoryIDs`, [`domain/categories.go`](../backend/internal/domain/categories.go) |
-| Slider anchor phrases | the `anchors` array on each `CATEGORIES` entry |
-| Guided-scoring scale and band maths | `GUIDE_SCALE` / `guideBand`, [`Dashboard.jsx`](../src/components/Dashboard.jsx) |
+| Chart colours | the `hex` field on each `CATEGORIES` entry (`CATEGORY_COLORS` is gone) |
+| Guided-scoring scale and band maths | `GUIDE_SCALE` / `guideBand`, [`constants/categories.js`](../src/constants/categories.js) |
+| Card summary arithmetic | `summarizeStack`, [`constants/categories.js`](../src/constants/categories.js) |
 | Preset context tags | `CONTEXT_TAGS`, [`ContextCapsule.jsx`](../src/components/ContextCapsule.jsx) |
 | Delta arithmetic and elapsed phrasing | [`WhatChanged.jsx`](../src/components/WhatChanged.jsx) |
-| Chart hex colours | `CATEGORY_COLORS`, [`AnalysisTimeline.jsx:15-23`](../src/components/AnalysisTimeline.jsx#L15-L23) |
+| The shared subject list and its mutations | [`context/SubjectsContext.jsx`](../src/context/SubjectsContext.jsx) |
+| Timeline shaping, markers, time axis | `buildTimelineData`, [`AnalysisTimeline.jsx`](../src/components/AnalysisTimeline.jsx) |
+| The radar polygon | [`LoveShape.jsx`](../src/components/LoveShape.jsx) |
+| Timeline URL builder | `timelinePath`, [`TimelineRoute.jsx`](../src/components/TimelineRoute.jsx) |
 | Database schema | [`models.go`](../backend/internal/models/models.go) |
 | Route table | [`main.go:17-35`](../backend/cmd/server/main.go#L17-L35) |
 | Request validation helpers | `validateStats` / `validateTags` / `parseSubjectDate`, [`subjects.go`](../backend/internal/handlers/subjects.go) |
@@ -297,7 +327,13 @@ Then check, specifically:
 | Token → `userID` in context | [`middleware.go`](../backend/internal/handlers/middleware.go) |
 | 401 auto-logout | the response interceptor in [`App.jsx`](../src/App.jsx) |
 | Driver choice + migrations | [`database.go`](../backend/internal/database/database.go) |
-| Name grouping into stacks | `groupedPeople`, [`Dashboard.jsx`](../src/components/Dashboard.jsx) |
+| Grouping snapshots into stacks | `groupPeople` / `buildStacks`, [`SubjectsContext.jsx`](../src/context/SubjectsContext.jsx) |
+| Whether a relationship is due for a check-in | `dueStacks`, [`constants/cadence.js`](../src/constants/cadence.js) |
+| The export document's shape | `ExportDocument` and friends, [`vault.go`](../backend/internal/handlers/vault.go) |
+| What counts as a duplicate on import | `isDuplicateSnapshot`, [`vault.go`](../backend/internal/handlers/vault.go) |
+| Name masking and the blur class | [`DiscretionContext.jsx`](../src/context/DiscretionContext.jsx) |
+| Resolving a name to a relationship | `FindOrCreateRelationship`, [`backfill.go`](../backend/internal/database/backfill.go) |
+| Rename / merge / delete a whole stack | [`relationships.go`](../backend/internal/handlers/relationships.go) + [`RelationshipDialogs.jsx`](../src/components/RelationshipDialogs.jsx) |
 | Card-stack wheel + transforms | `CardStack`, [`Dashboard.jsx`](../src/components/Dashboard.jsx) |
 | One category's scoring row | `CategorySliderRow`, [`Dashboard.jsx`](../src/components/Dashboard.jsx) |
 | The create/edit/new-version form | `PersonForm`, [`Dashboard.jsx`](../src/components/Dashboard.jsx) |

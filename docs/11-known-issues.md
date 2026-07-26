@@ -14,6 +14,20 @@ self-hosted personal tool. Severity assumes eventual public exposure.
 > **Closed by Phase 2** (guided scoring & feedback), 2026-07-26: missing-key-≡-zero in the
 > UI, and the dead "Learn the Theory" control.
 >
+> **Closed by Phase 3** (visualisations & routing), 2026-07-26: the categorical timeline
+> x-axis, the timeline not being addressable, the stale timeline snapshot, the card-stack
+> wheel-scroll trap, and the `CATEGORY_COLORS` palette duplication.
+>
+> **Closed by Phase 4** (domain model evolution), 2026-07-26: the no-subject-entity
+> limitation and everything downstream of it — stacks can now be renamed and merged, two
+> people sharing a name no longer collapse into one stack, the timeline route is keyed by
+> id, `GET /api/subjects` has an `ORDER BY`, and `analysis_subjects` has a declared foreign
+> key (enforced on Postgres; see the register below for the SQLite caveat).
+>
+> **Closed by Phase 5** (retention, trust & portability), 2026-07-26: `JWT_SECRET`
+> defaulting to an empty key (startup now fails), and `internal/auth` having no tests. The
+> app gained in-app reminders, quick pulses, a full export/import vault, and discretion mode.
+>
 > Closed entries are removed rather than annotated; see
 > [`product_vision/`](../product_vision/) for what replaced them.
 
@@ -91,27 +105,6 @@ incorrect.
 
 Reasonable for a personal, locally-hosted tool; all are blockers before public exposure.
 
-### `JWT_SECRET` defaults to an empty key
-
-**Severity: critical if unset.**
-
-```go
-var jwtKey = []byte(os.Getenv("JWT_SECRET"))   // auth.go:12 — package init
-```
-
-Read once, before `main()`. If the variable is unset the key is `[]byte{}`, and HS256 signs
-and verifies happily with it — so the application **works normally while every token is
-forgeable by anyone**. Nothing warns. The local-dev path (`go run ./cmd/server` with no env)
-hits this by default.
-
-*Fix:* fail fast at startup:
-
-```go
-func init() {
-    if len(jwtKey) == 0 { log.Fatal("JWT_SECRET must be set") }
-}
-```
-
 ### Secrets are committed
 
 `JWT_SECRET=supersecretkey` and `DB_PASSWORD=password` are in
@@ -120,10 +113,14 @@ anywhere in the stack. Tracked as a TODO in the root README and still open.
 
 ### The development SQLite database is committed to git
 
-`backend/alexithymia.db` (28 KB) is tracked, currently shows as modified in `git status`,
-and is not covered by [`.gitignore`](../.gitignore). It contains dev users and their bcrypt
-hashes. Every local signup dirties the working tree, and it is copied into the Docker build
-context (no `.dockerignore`).
+`backend/alexithymia.db` (28 KB) is tracked and is not covered by
+[`.gitignore`](../.gitignore). It contains dev users and their bcrypt hashes. Every local
+signup dirties the working tree, and it is copied into the Docker build context (no
+`.dockerignore`).
+
+Sharper since Phase 4: booting this version against that file **rewrites it** — the
+migration recreates `analysis_subjects` and the backfill populates `relationship_id` on
+every row. That is a schema change landing in a tracked binary as an unreviewable diff.
 
 *Fix:* add `*.db` and `backend/uploads/` to `.gitignore`, `git rm --cached
 backend/alexithymia.db`, and purge history if it ever held real credentials.
@@ -189,8 +186,8 @@ hardcodes `sslmode=disable`. Remove the port mapping unless external access is n
 ### CI runs only the suite that cannot pass
 
 [`playwright.yml`](../.github/workflows/playwright.yml) is the only workflow. `vitest`
-(50/50 green) and `go test` (all green) are **not** run in CI, nor are `eslint` or `go vet`.
-The pipeline is red by construction while both healthy suites go unverified.
+(161/161 green) and `go test` (all green) are **not** run in CI, nor are `eslint` or
+`go vet`. The pipeline is red by construction while both healthy suites go unverified.
 
 ### `npm run lint` is broken in this checkout
 
@@ -211,25 +208,27 @@ This is an installation/packaging problem rather than a defect in project code. 
 reinstalling (`rm -rf node_modules && npm ci`) or pinning a known-good plugin version. Note
 lint is not in CI either, so nothing currently enforces the rules.
 
-### `internal/auth` has no tests
-
-Hashing, token generation, expiry, and tamper rejection are entirely unverified — the
-largest backend gap, and the cheapest to close. Complication: `jwtKey` is captured at
-package init, so a test cannot set `JWT_SECRET` from inside a test function.
-
 ### Frontend coverage has gaps at the edges
 
-`Auth`, `Dashboard` (including `PersonForm`, guided scoring, and the card surface),
-`WhatChanged`, and `AnalysisTimeline`'s dot renderer are covered — 50 tests. Still untested:
-`Profile`, `Navbar`, `Landing`, `App`'s routing guards and 401 interceptor, the
-name-grouping `useMemo`, and the `CardStack` offset transform table.
+`Auth`, `Dashboard` (including `PersonForm`, guided scoring, the card surface, the summary
+line, the wheel handler, quick pulse, the cadence nudge and the stack-level dialogs),
+`WhatChanged`, `LoveShape`, `AnalysisTimeline`, `TimelineRoute` (both the id route and the
+legacy redirect), `SubjectsContext`, `DiscretionContext`, `Vault`, `AppLock`, the cadence
+arithmetic, and `App`'s login handoff are covered — 161 tests. Still untested: `Profile`,
+`Navbar`, `Landing`, `StackActions`'s click-outside dismissal, `AppLock`'s idle timer (it
+needs fake timers), and the `CardStack` offset transform table.
+
+Note that Recharts renders nothing under jsdom (`ResponsiveContainer` measures zero), so the
+chart components are tested through their exported pure functions and dot renderers rather
+than by asserting on SVG. Visual regressions in the charts are **not** covered by any suite.
 
 ### `upload_test.go` leaves files behind
 
 The cleanup glob is `uploads/profile_test_*.jpg`, but the handler names files
 `profile_<UnixNano><ext>` and ignores the uploaded filename — so nothing matches. Four
-generated images are already committed under
-`backend/internal/handlers/uploads/`.
+generated images are already committed under `backend/internal/handlers/uploads/`, and every
+`go test ./...` adds two more untracked ones. When clearing them, delete only the untracked
+files — the four committed ones are tracked and removing them is a separate decision.
 
 *Fix:* glob `uploads/profile_*`, and preferably make the upload directory configurable so
 tests can use `t.TempDir()`.
@@ -268,15 +267,14 @@ nothing.
 - "Change Password" — [`Profile.jsx:247`](../src/components/Profile.jsx#L247), no `onClick`.
   The last one: "Learn the Theory" on the Landing page now opens `AboutModal`.
 
-### Card stacks trap wheel scrolling
+### The development SQLite database is missing from the working tree
 
-`CardStack` registers `wheel` with `{ passive: false }` and always calls
-`preventDefault()` — even for single-version stacks, where there is nothing to scrub. On a
-dashboard taller than the viewport the page stops scrolling whenever the pointer crosses a
-card.
+**Severity: low — recoverable.**
 
-*Fix:* skip `preventDefault()` when `sortedVersions.length === 1`, or when the index is
-already clamped at the relevant end.
+`backend/alexithymia.db` currently shows as deleted (` D`, unstaged). It is still tracked, so
+`git checkout -- backend/alexithymia.db` restores the committed copy. If the removal was
+deliberate, finish the job — `git rm --cached backend/alexithymia.db` and add `*.db` to
+`.gitignore` — so it stops reappearing on the next checkout.
 
 ### Two axios conventions coexist
 
@@ -303,12 +301,6 @@ the favicon is the default `vite.svg`. The Compose containers are named `love-me
 the Makefile header says "LoveMetrics React App", and the UI says
 "AlexithymiaLoveQuantifier" — four different names for one product.
 
-### The timeline is not addressable
-
-Rendered by a conditional swap, so it cannot be linked or bookmarked, Back exits the
-dashboard entirely, and `selectedTimelineStack` is a snapshot that goes stale if a version is
-edited while it is open. See [Recipe 4](10-agent-guide.md#recipe-4-make-the-timeline-a-real-route).
-
 ---
 
 ## Architectural limitations
@@ -318,13 +310,21 @@ migration.
 
 | Limitation | Consequence |
 | :--------- | :---------- |
-| **No subject entity** — identity is the `name` string | Cannot rename a stack, cannot merge stacks, two different people sharing a name merge silently. Whitespace no longer splits stacks (names are trimmed on write) but case still does, and legacy rows keep their whitespace until a backfill. [Details](03-data-model.md#6-there-is-no-person-entity) |
+| **Relationship uniqueness is enforced in handlers, not the database** | Soft deletes would need a partial unique index, spelled differently on SQLite and Postgres. Two simultaneous creates of the same new name could race into duplicate relationships. Worst case is two stacks the user can merge; acceptable for a single-user tool. |
+| **The `relationship_id` foreign key is not enforced on upgraded SQLite databases** | GORM writes the constraint into `CREATE TABLE`, so a *fresh* SQLite database and Postgres both get it, but SQLite cannot retrofit one onto an existing table. Handler-level `user_id` checks are the effective guarantee everywhere. (Same reason SQLite refuses to drop that column — which is why it has its own migration test.) |
+| **`AnalysisSubject.Name` is still denormalized** | Rename and merge sync it in a transaction, but the same fact lives in two tables. Retained deliberately this phase so rollback is trivial and old clients keep working; removing it is a follow-up. |
+| **Merging is one-way** | Nothing records which snapshots came from where, so a merge cannot be undone in-app. The dialog says so before acting; restoring a backup is the only reversal. |
+| **An emptied relationship lingers** | Deleting a stack's last version leaves the relationship row with `snapshot_count: 0`. Intentional — posting that name again reuses it, so the stack returns with its identity and URL intact — but it does mean `GET /api/relationships` can list stacks the dashboard does not draw. |
 | **`stats` is an opaque JSON column** | No SQL filtering or aggregation per category (and `stats->>'x'` would be Postgres-only, breaking the SQLite fallback). All analysis is client-side. |
-| **No `ORDER BY`, no pagination** | Every subject is fetched on every dashboard mount and sorted in the browser. Degrades with hundreds of rows. |
+| **No pagination** | Every subject is fetched on every dashboard mount. Ordered server-side since Phase 4, but still unbounded; deliberately deferred until a real dashboard exceeds ~500 snapshots. |
 | **Soft deletes only** | The database grows monotonically; nothing is ever reclaimed; `users.email` stays reserved by a soft-deleted user (latent — no user-delete endpoint exists). |
-| **`AutoMigrate` only** | No migration files, no version table. Renames, type narrowing, and constraint changes need hand-written SQL per environment. |
-| **No `user_id` foreign key** | No referential integrity; deleting a user would orphan their subjects. |
-| **Timeline x-axis is categorical** | Points are evenly spaced regardless of the real gap between dates, so a day and a year look the same. |
+| **`AutoMigrate` plus one hand-written backfill** | No migration files and no version table. The Phase 4 backfill is idempotent Go run at boot, not a versioned migration — it works, but a second structural change would want real tooling. Renames, type narrowing, and constraint changes still need hand-written SQL per environment. |
+| **No `user_id` foreign key** | No referential integrity; deleting a user would orphan their relationships and subjects. Unchanged by Phase 4 — no user-delete endpoint exists. |
+| **Reminders exist only while the app is open** | Cadence is computed in the browser from data already loaded. That is a deliberate trade for "nothing leaves this machine", but it does mean a rhythm you never visit never nudges you. An email digest would need a scheduler, an outbound connection, and a different privacy claim. |
+| **Discretion mode is visual only** | Names and notes are masked on screen; the data, the API responses, the export, and assistive-technology labels are unchanged. It defends against the person next to you, not against anyone with access to the machine. |
+| **The app lock encrypts nothing** | A SHA-256 hash in `localStorage` gates the UI. The database is exactly as readable as before, there is no recovery flow, and clearing site data removes the lock. The Vault page says all three. |
+| **Export omits avatars** | Format version 1 carries `profile_picture` only as a path; the image bytes are not included, so a restore into a fresh install has no avatar. |
+| **Nothing is encrypted at rest** | The SQLite file or Postgres database holds notes and scores in plain text. Passwords are bcrypt-hashed; nothing else is protected. |
 | **No CORS middleware** | Only same-origin deployments work; a split-origin deployment fails in the browser with nothing logged server-side. |
 | **`stats` is still an opaque blob for reads** | Skipped categories are honoured end to end, but "show me every snapshot where `mania` was skipped" is a client-side scan, not a query. |
 | **Backend port is hardcoded** | `:8080` literal in `main.go`; no `PORT` variable. |

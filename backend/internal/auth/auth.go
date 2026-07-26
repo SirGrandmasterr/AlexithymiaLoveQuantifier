@@ -9,7 +9,29 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// jwtKey is read at package init so every handler shares one key. An empty key is the
+// dangerous case: HS256 signs and verifies with it perfectly happily, so the application
+// works normally while every token is forgeable by anyone. LoadSecret is what turns that
+// into a refusal to start.
 var jwtKey = []byte(os.Getenv("JWT_SECRET"))
+
+// ErrNoSecret is returned when JWT_SECRET is unset or empty.
+var ErrNoSecret = errors.New(
+	"JWT_SECRET is not set: every token would be signed with an empty key and forgeable by " +
+		"anyone. Set it before starting the server, e.g. JWT_SECRET=$(openssl rand -hex 32)")
+
+// LoadSecret re-reads JWT_SECRET and reports whether this process can safely sign tokens.
+// main calls it at startup and exits on failure.
+//
+// It re-reads rather than only inspecting the init-time value so a test can set the
+// variable and call this — the package was previously untestable for exactly that reason.
+func LoadSecret() error {
+	jwtKey = []byte(os.Getenv("JWT_SECRET"))
+	if len(jwtKey) == 0 {
+		return ErrNoSecret
+	}
+	return nil
+}
 
 type Claims struct {
 	UserID uint `json:"user_id"`

@@ -12,7 +12,7 @@ import { CATEGORIES_EXPORT } from './Dashboard';
 const categories = CATEGORIES_EXPORT;
 
 const snapshot = (overrides) => ({
-    ID: 1, name: 'Alex', date: '2026-03-01T00:00:00Z', stats: {}, uncertain: [], tags: [], description: '',
+    ID: 1, relationship_id: 1, name: 'Alex', date: '2026-03-01T00:00:00Z', stats: {}, uncertain: [], tags: [], description: '',
     ...overrides
 });
 
@@ -86,8 +86,15 @@ describe('findPreviousVersion', () => {
     });
 
     it('ignores other people entirely', () => {
-        const all = [snapshot({ ID: 9, name: 'Sam', date: '2026-02-20T00:00:00Z' }), current];
+        const all = [snapshot({ ID: 9, relationship_id: 2, name: 'Sam', date: '2026-02-20T00:00:00Z' }), current];
         expect(findPreviousVersion(current, all)).toBeNull();
+    });
+
+    it('matches on the relationship, not the name', () => {
+        // Two stacks may share a display name since Phase 4; comparing across them would
+        // be comparing two different people.
+        const namesake = snapshot({ ID: 9, relationship_id: 2, name: 'Alex', date: '2026-02-20T00:00:00Z' });
+        expect(findPreviousVersion(current, [namesake, current])).toBeNull();
     });
 
     it('returns nothing when the new snapshot predates everything else', () => {

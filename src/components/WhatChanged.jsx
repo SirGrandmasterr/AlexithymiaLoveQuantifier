@@ -1,13 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import { X, StickyNote, Check } from 'lucide-react';
 import ContextCapsuleFields from './ContextCapsule';
+import LoveShape from './LoveShape';
+import { CATEGORIES, isScored } from '../constants/categories';
+import { humanGap } from '../constants/cadence';
 
 // Movements smaller than this are reported as "steady" rather than listed one by one.
 export const STEADY_THRESHOLD = 5;
 
 const MS_PER_DAY = 86400000;
-
-const hasScore = (stats, id) => stats != null && stats[id] !== undefined && stats[id] !== null;
 
 /**
  * The snapshot this one should be compared against: the most recent other version of the
@@ -15,7 +16,9 @@ const hasScore = (stats, id) => stats != null && stats[id] !== undefined && stat
  * with — a backdated snapshot older than everything else has no "before".
  */
 export const findPreviousVersion = (current, all) => {
-    const others = all.filter(p => p.ID !== current.ID && p.name === current.name);
+    // Matched on the relationship, not the name: two stacks may legitimately share a
+    // display name now, and comparing across them would be comparing two different people.
+    const others = all.filter(p => p.ID !== current.ID && p.relationship_id === current.relationship_id);
     if (others.length === 0) return null;
 
     const currentTime = current.date ? new Date(current.date).getTime() : Infinity;
@@ -38,16 +41,8 @@ export const elapsedSentence = (previous, current, name) => {
     const days = Math.round((new Date(current.date) - new Date(previous.date)) / MS_PER_DAY);
     if (days <= 0) return `Another snapshot of ${name}, the same day as the last one.`;
 
-    // Weeks stay useful up to about a quarter — "11 weeks" reads more concretely than
-    // "3 months" at the scale people actually re-snapshot.
-    const unit = (count, singular) => `${count} ${singular}${count === 1 ? '' : 's'}`;
-    let elapsed;
-    if (days < 14) elapsed = unit(days, 'day');
-    else if (days < 90) elapsed = unit(Math.round(days / 7), 'week');
-    else if (days < 730) elapsed = unit(Math.round(days / 30.44), 'month');
-    else elapsed = unit(Math.round(days / 365.25), 'year');
-
-    return `${elapsed} since your last snapshot of ${name}.`;
+    // Shared with the cadence nudge so the app has one vocabulary for elapsed time.
+    return `${humanGap(days)} since your last snapshot of ${name}.`;
 };
 
 /**
@@ -55,12 +50,12 @@ export const elapsedSentence = (previous, current, name) => {
  * A category missing from either side is not comparable; a category either side flagged
  * unsure keeps that flag so the delta can be shown as approximate.
  */
-export const computeDeltas = (current, previous, categories) => {
+export const computeDeltas = (current, previous, categories = CATEGORIES) => {
     const compared = [];
     const notComparable = [];
 
     categories.forEach(category => {
-        if (!hasScore(current.stats, category.id) || !hasScore(previous.stats, category.id)) {
+        if (!isScored(current.stats, category.id) || !isScored(previous.stats, category.id)) {
             notComparable.push(category);
             return;
         }
@@ -84,7 +79,7 @@ export const computeDeltas = (current, previous, categories) => {
     };
 };
 
-export default function WhatChanged({ current, previous, categories, onSaveContext, onDone }) {
+export default function WhatChanged({ current, previous, categories = CATEGORIES, onSaveContext, onDone }) {
     const [noteOpen, setNoteOpen] = useState(false);
     const [description, setDescription] = useState(current.description || '');
     const [tags, setTags] = useState(current.tags || []);
@@ -131,6 +126,15 @@ export default function WhatChanged({ current, previous, categories, onSaveConte
                             <X size={20} />
                         </button>
                     </div>
+
+                    {/* The shapes first: the polygon shows the whole reading at once,
+                        the list below says exactly how much each axis moved. */}
+                    <div className="flex justify-center mb-2">
+                        <LoveShape snapshot={current} compareTo={previous} size={230} />
+                    </div>
+                    <p className="text-center text-[11px] text-slate-400 font-light mb-5">
+                        Solid: this snapshot. Dashed rose: the one before it.
+                    </p>
 
                     <div className="space-y-3">
                         {moved.length === 0 && steady.length === 0 && (

@@ -188,7 +188,9 @@ postgres:
 ```
 
 Data survives `down`/`up` via `postgres_data`. Schema creation is handled entirely by the
-backend's `AutoMigrate` on boot — there are no init scripts.
+backend's `AutoMigrate` on boot — there are no init scripts. Since Phase 4 the same boot also
+runs an idempotent data backfill; [§5](#5-the-phase-4-relationship-migration) covers what to
+back up first and what the log should say.
 
 **Port 5432 is published to the host** with the password `password`. On any non-isolated
 network that is an open database. Drop the `ports` block unless you need external access;
@@ -237,7 +239,60 @@ B is preferable — it also helps Kubernetes, systemd, and bare-metal deployment
 
 ---
 
-## 5. Configuration and secrets
+## 5. The Phase 4 relationship migration
+
+> ⚠️ **Back up the database before the first boot on this version.** This is the only
+> structural migration in the project's history, and it does two things at once.
+
+**Why a backup is not optional here.** The new `analysis_subjects.relationship_id` column
+carries a foreign key, and GORM's SQLite migrator cannot express that as a plain
+`ALTER TABLE ADD COLUMN` — it **recreates the table**: create `analysis_subjects__temp`,
+copy every row across by column name, drop the original, rename. On Postgres it is an
+ordinary `ALTER TABLE`. Either way, a startup backfill then rewrites `relationship_id` (and
+normalizes `name`) on every existing row.
+
+Take the backup:
+
+```bash
+# SQLite (no DB_HOST): the whole database is one file
+cp backend/alexithymia.db backend/alexithymia.db.pre-phase-4
+
+# Postgres under Compose
+docker-compose exec -T postgres pg_dump -U postgres alexithymia > alexithymia.pre-phase-4.sql
+```
+
+**What a successful boot looks like.** `Connect()` migrates, then runs
+`BackfillRelationships` and logs one line:
+
+```
+2026/07/26 03:47:38 Running migrations...
+2026/07/26 03:47:38 Database migrated
+2026/07/26 03:47:38 backfill: 3 relationships, 5 snapshots linked
+```
+
+Reboot and the same line reads `backfill: 0 relationships, 0 snapshots linked` — the pass is
+idempotent, filtering on `relationship_id IS NULL`, which is what makes running it on every
+boot safe. **If the counts are non-zero on a second boot, something is wrong** — stop and
+investigate rather than restarting again.
+
+**Verified against a real database**, not only in tests: a pre-Phase-1 SQLite file (no
+`tags`, `uncertain`, or `guide_answers` columns at all) carrying 5 snapshots across 3 users
+migrated to 3 relationships / 5 snapshots, reported `0, 0` on reboot, and served the full
+API afterwards.
+
+**Rolling back** is restoring the backup. There is no down-migration, but the phase is
+deliberately cheap to reverse: `AnalysisSubject.Name` is still populated on every row, so an
+older binary reads the migrated database correctly and simply ignores the extra column and
+table.
+
+**Count parity is the check that matters.** After the first boot, the number of stacks on
+the dashboard and the number of cards in each must be exactly what they were before. The
+backfill reproduces the browser's old grouping rule — one relationship per
+`(user_id, TRIM(name))` — so any difference means the rule diverged, not that data was lost.
+
+---
+
+## 6. Configuration and secrets
 
 Everything is inline in
 [`docker-compose.yml:22-28`](../docker-compose.yml#L22-L28):
@@ -259,17 +314,24 @@ backend:
 ```
 
 Compose interpolates from a local `.env` (git-ignored) or the shell, and `:?` fails fast
-instead of silently defaulting. Note especially that an **absent `JWT_SECRET` does not
-fail** in Go — it produces an empty signing key
-([Known Issues](11-known-issues.md#jwt_secret-defaults-to-an-empty-key)) — so failing at
-Compose level is genuinely valuable.
+instead of silently defaulting.
+
+**Since Phase 5 an absent `JWT_SECRET` is fatal at startup**: `main()` calls
+`auth.LoadSecret()` before anything else and exits with an explanatory message. That closes
+the old failure mode where an unset variable produced an empty signing key and the
+application ran normally while every token was forgeable. Compose already sets the variable,
+so containers are unaffected; a bare `go run ./cmd/server` now needs it
+([Development §2](07-development.md#2-fastest-path--no-containers-no-database)).
+
+The `${VAR:?}` form above is still worth adopting — failing at the Compose level names the
+missing variable before a container is even created.
 
 Also worth knowing: `docker-compose.yml` declares `version: '3.8'`, which current Compose
 versions warn is obsolete. Harmless; deleting the line silences it.
 
 ---
 
-## 6. CI
+## 7. CI
 
 [`.github/workflows/playwright.yml`](../.github/workflows/playwright.yml) is the only
 workflow. It runs Playwright on push/PR to `main`/`master` and uploads the HTML report.
@@ -279,13 +341,14 @@ deployed by any automation; deployment is manual `docker-compose up`.
 
 ---
 
-## 7. Production readiness checklist
+## 8. Production readiness checklist
 
 Nothing here is required for personal self-hosting; all of it matters before exposing the
 app to the internet.
 
 **Blocking**
-- [ ] Move `JWT_SECRET` and `DB_PASSWORD` out of the repository; fail startup if unset.
+- [x] ~~Fail startup if `JWT_SECRET` is unset~~ — done in Phase 5.
+- [ ] Move `JWT_SECRET` and `DB_PASSWORD` out of the repository (they are still committed in `docker-compose.yml`).
 - [ ] Mount a volume for `/root/uploads`, or move storage to object storage.
 - [ ] Add the `/uploads/` proxy block to `nginx.conf`.
 - [ ] Add a Postgres readiness gate (healthcheck and/or connect retry).

@@ -1,211 +1,27 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import axios from 'axios';
-import { Plus, X, Trash2, Edit2, Info, Activity, Layers, Calendar, ChevronLeft, TrendingUp, StickyNote, HelpCircle, MinusCircle } from 'lucide-react';
-import AnalysisTimeline from './AnalysisTimeline';
+import { useNavigate } from 'react-router-dom';
+import { Plus, X, Trash2, Edit2, Info, Activity, Calendar, ChevronLeft, TrendingUp, StickyNote, HelpCircle, MinusCircle, Radar as RadarIcon, BarChart3, Zap, Check } from 'lucide-react';
 import WhatChanged, { findPreviousVersion } from './WhatChanged';
 import ContextCapsuleFields from './ContextCapsule';
+import LoveShape from './LoveShape';
+import StackActions from './StackActions';
+import CadenceNudge from './CadenceNudge';
+import { RenameRelationshipDialog, MergeRelationshipDialog, DeleteRelationshipDialog, CadenceDialog } from './RelationshipDialogs';
+import { timelinePath } from './TimelineRoute';
+import { useSubjects } from '../context/SubjectsContext';
+import { useDiscretion } from '../context/DiscretionContext';
+import { CATEGORIES, GUIDE_SCALE, anchorFor, guideBand, isScored, summarizeStack } from '../constants/categories';
 
-const CATEGORIES = [
-    {
-        id: 'eros',
-        label: 'Eros',
-        description: 'Romantic, passionate love',
-        color: 'bg-rose-400',
-        textColor: 'text-rose-500',
-        borderColor: 'border-rose-300',
-        extendedDescription: 'Eros is the "chemistry" operating system. It is heavily driven by physical attraction, aesthetics, and a desire for rapid, intense connection. It is what most movies depict as "falling in love."',
-        coreMotivation: 'Physical and emotional merging; intense fascination with the partner\'s physical being.',
-        metrics: [
-            { title: 'Proximity Seeking', description: 'You find yourself constantly wanting to close the physical distance between you two (e.g., sitting side-by-side rather than across a table).' },
-            { title: 'Aesthetic Fixation', description: 'You frequently notice and focus on their physical features.' },
-            { title: 'Rapid Escalation', description: 'You feel a drive to escalate the relationship quickly, sharing deep secrets or engaging physically early on.' },
-            { title: 'The "Spark"', description: 'You experience a noticeable physiological response (elevated heart rate, nervous energy) when you see them.' }
-        ],
-        anchors: [
-            { min: 0, max: 20, phrase: 'You notice them the way you notice anyone.' },
-            { min: 21, max: 45, phrase: 'There is attraction, but it sits in the background of the day.' },
-            { min: 46, max: 70, phrase: 'You look forward to being near them, and you notice when you are not.' },
-            { min: 71, max: 100, phrase: 'Their physical presence organises your attention; distance is felt in the body.' }
-        ]
-    },
-    {
-        id: 'ludus',
-        label: 'Ludus',
-        description: 'Playful, flirtatious love',
-        color: 'bg-orange-400',
-        textColor: 'text-orange-500',
-        borderColor: 'border-orange-300',
-        extendedDescription: 'Ludus views love as a game to be played or a dance to be enjoyed, rather than a heavy, long-term commitment. It is about the fun of the interaction without the weight of obligation.',
-        coreMotivation: 'Entertainment, freedom, and enjoying the "chase."',
-        metrics: [
-            { title: 'Lighthearted Communication', description: 'Conversations heavily feature banter, teasing, and flirting rather than deep, emotionally vulnerable topics.' },
-            { title: 'Avoidance of "The Future"', description: 'You (or they) actively change the subject or feel a spike of discomfort when asked to define the relationship or make plans months in advance.' },
-            { title: 'Multiple Outputs', description: 'You feel comfortable and perhaps prefer pursuing or entertaining multiple romantic interests simultaneously.' },
-            { title: 'Emotional Boundaries', description: 'You do not feel a strong need to integrate this person into your broader life (introducing them to family or close friends).' }
-        ],
-        anchors: [
-            { min: 0, max: 20, phrase: 'Nothing here is a game; the tone stays earnest throughout.' },
-            { min: 21, max: 45, phrase: 'Banter happens, but the conversation goes deep when it needs to.' },
-            { min: 46, max: 70, phrase: 'You enjoy the play more than the plan, and you keep the future vague.' },
-            { min: 71, max: 100, phrase: 'The pleasure is in the chase itself; pinning it down would spoil it.' }
-        ]
-    },
-    {
-        id: 'storge',
-        label: 'Storge',
-        description: 'Unconditional, familial love',
-        color: 'bg-amber-400',
-        textColor: 'text-amber-500',
-        borderColor: 'border-amber-300',
-        extendedDescription: 'Storge is the "slow burn" operating system. It is love that grows gradually out of a foundation of deep friendship, shared values, and mutual trust. There is often no distinct moment of "falling" in love; it just becomes a fact over time.',
-        coreMotivation: 'Companionship, stability, and psychological comfort.',
-        metrics: [
-            { title: 'High Comfort Level', description: 'You feel entirely yourself around them. You do not feel the need to "perform" or hide your flaws.' },
-            { title: 'Shared Values Over Aesthetics', description: 'Your connection is built on shared interests, similar life goals, or intellectual alignment rather than physical chemistry.' },
-            { title: 'Slow Progression', description: 'Physical intimacy or romantic declarations happened significantly later in the relationship, feeling like a natural evolution of a friendship.' },
-            { title: 'Crisis Stability', description: 'In times of high stress, your first instinct is to lean on them for practical support and advice.' }
-        ],
-        anchors: [
-            { min: 0, max: 20, phrase: 'You are still performing a version of yourself around them.' },
-            { min: 21, max: 45, phrase: 'Comfortable in stretches, guarded in others.' },
-            { min: 46, max: 70, phrase: 'You can be unedited with them, and silence is not awkward.' },
-            { min: 71, max: 100, phrase: 'They are where you go first — in a crisis, or with nothing to say at all.' }
-        ]
-    },
-    {
-        id: 'pragma',
-        label: 'Pragma',
-        description: 'Enduring, logical love',
-        color: 'bg-emerald-400',
-        textColor: 'text-emerald-500',
-        borderColor: 'border-emerald-300',
-        extendedDescription: 'Pragma is the pragmatic, checklist-driven operating system. It is a highly cognitive approach to love where a partner is evaluated based on their practical compatibility for a successful life, family, or partnership.',
-        coreMotivation: 'Long-term compatibility, practical success, and life alignment.',
-        metrics: [
-            { title: 'Checklist Evaluation', description: 'You mentally (or literally) evaluate them against a set of criteria: financial stability, career trajectory, parenting potential, or lifestyle habits.' },
-            { title: 'Rational Vetoes', description: 'You have actively walked away from someone you found highly attractive or fun because they did not meet your logical criteria for a long-term partner.' },
-            { title: 'Logistical Harmony', description: 'The relationship is characterized by smooth planning, shared financial goals, and efficient division of labor.' },
-            { title: 'Head Over Heart', description: 'Decisions about the relationship are made based on what makes logical sense rather than emotional impulses.' }
-        ],
-        anchors: [
-            { min: 0, max: 20, phrase: 'Practical compatibility has not entered your thinking.' },
-            { min: 21, max: 45, phrase: 'You have noticed how the logistics would work, without dwelling on it.' },
-            { min: 46, max: 70, phrase: 'You weigh the practical fit alongside how you feel.' },
-            { min: 71, max: 100, phrase: 'You assess this like a shared plan: criteria, timelines, and fit.' }
-        ]
-    },
-    {
-        id: 'mania',
-        label: 'Mania',
-        description: 'Obsessive, intense love',
-        color: 'bg-violet-400',
-        textColor: 'text-violet-500',
-        borderColor: 'border-violet-300',
-        extendedDescription: 'Mania is an unstable, highly volatile operating system. It usually arises from low self-esteem or a fear of abandonment, leading to a desperate need for the partner\'s constant reassurance and attention.',
-        coreMotivation: 'Alleviating anxiety through complete possession and reassurance from the partner.',
-        metrics: [
-            { title: 'Metric of Response', description: 'You experience genuine distress, anxiety, or anger if they do not reply to a message within a specific timeframe.' },
-            { title: 'Extreme Jealousy', description: 'You feel highly threatened by their external friendships or independent activities.' },
-            { title: 'Emotional Rollercoaster', description: 'Your mood for the entire day is dictated entirely by how well your interactions with this person are going.' },
-            { title: 'Hyper-Vigilance', description: 'You frequently monitor their social media or whereabouts to ensure they are not abandoning you.' }
-        ],
-        anchors: [
-            { min: 0, max: 20, phrase: 'Their attention is welcome rather than required.' },
-            { min: 21, max: 45, phrase: 'A slow reply registers, then passes.' },
-            { min: 46, max: 70, phrase: 'Your day tilts with how the last exchange went.' },
-            { min: 71, max: 100, phrase: 'You track where they are and when they will answer; settling depends on it.' }
-        ]
-    },
-    {
-        id: 'agape',
-        label: 'Agape',
-        description: 'Selfless, universal love',
-        color: 'bg-blue-400',
-        textColor: 'text-blue-500',
-        borderColor: 'border-blue-300',
-        extendedDescription: 'Agape is the altruistic operating system. It is an entirely selfless love where the well-being and happiness of the partner are prioritized over your own, without any expectation of reward or reciprocation.',
-        coreMotivation: 'The unconditional care, nurturing, and betterment of the other person.',
-        metrics: [
-            { title: 'Willing Sacrifice', description: 'You consistently give up your own resources (time, money, comfort) to improve their situation, and you do not harbor resentment for it.' },
-            { title: 'Forgiveness', description: 'You have a high capacity to forgive their mistakes or flaws because you view them with deep empathy.' },
-            { title: 'Zero Keeping Score', description: 'You do not keep a mental tally of "who owes who" favors or effort in the relationship.' },
-            { title: 'Prioritizing Their Joy', description: 'You feel genuine satisfaction simply from seeing them happy, even if you did not directly cause it or benefit from it.' }
-        ],
-        anchors: [
-            { min: 0, max: 20, phrase: 'You keep your own needs squarely in view.' },
-            { min: 21, max: 45, phrase: 'You give when giving is easy.' },
-            { min: 46, max: 70, phrase: 'Their wellbeing regularly outranks your convenience.' },
-            { min: 71, max: 100, phrase: 'You give without tallying, and their good fortune is enough on its own.' }
-        ]
-    },
-    {
-        id: 'selflessness',
-        label: 'Selflessness',
-        description: 'Complete lack of ego',
-        color: 'bg-slate-400',
-        textColor: 'text-slate-500',
-        borderColor: 'border-slate-300',
-        extendedDescription: 'In traditional psychological models, this overlaps almost completely with "Agape". It represents the absolute extreme end of the Agape spectrum.',
-        coreMotivation: 'Total removal of the "self" from the equation of the relationship.',
-        metrics: [
-            { title: 'Absence of Personal Demands', description: 'You do not enforce your own boundaries or needs if they conflict even slightly with the other person\'s.' },
-            { title: 'Identity Merging', description: 'You evaluate situations entirely through the lens of "what is best for them," completely omitting "what is best for me."' }
-        ],
-        // Three bands rather than four: this category has two metrics, and the middle
-        // ground between "boundaries hold" and "no self left" is one recognisable state.
-        anchors: [
-            { min: 0, max: 30, phrase: 'Your boundaries hold, even when holding them costs something.' },
-            { min: 31, max: 65, phrase: 'You set your own needs aside often, and notice afterwards.' },
-            { min: 66, max: 100, phrase: 'The question "what do I want here?" has stopped being asked.' }
-        ]
-    }
-];
-
-// The guided-scoring frequency scale. The index (0-3) is what gets stored in
-// guide_answers; the value is what the suggestion band averages.
-const GUIDE_SCALE = [
-    { label: 'Never', value: 0 },
-    { label: 'Sometimes', value: 35 },
-    { label: 'Often', value: 70 },
-    { label: 'Constantly', value: 100 }
-];
-
-// How far the suggested range extends either side of the average answer.
-const GUIDE_BAND_RADIUS = 8;
-
-/** The anchor band containing `value`, or null if the value falls outside every band. */
-export const anchorFor = (category, value) =>
-    (category.anchors || []).find(a => value >= a.min && value <= a.max) || null;
-
-/**
- * Plain arithmetic over the answered metrics of one category: the mean of the chosen
- * frequency values, and a range of ±8 around it. Returns null when nothing is answered.
- * Nothing here writes a score — the band is a suggestion the user may ignore.
- */
-export const guideBand = (answers) => {
-    const values = Object.values(answers || {})
-        .filter(i => GUIDE_SCALE[i] !== undefined)
-        .map(i => GUIDE_SCALE[i].value);
-    if (values.length === 0) return null;
-
-    const average = values.reduce((sum, v) => sum + v, 0) / values.length;
-    const midpoint = Math.round(average);
-    return {
-        count: values.length,
-        midpoint,
-        min: Math.max(0, midpoint - GUIDE_BAND_RADIUS),
-        max: Math.min(100, midpoint + GUIDE_BAND_RADIUS)
-    };
-};
+// The taxonomy and its helpers now live in src/constants/categories.js. They are
+// re-exported here because the dashboard is where callers have always looked for them.
+export { CATEGORIES, anchorFor, guideBand, isScored };
+export const CATEGORIES_EXPORT = CATEGORIES;
 
 const Card = ({ children, className = '', style = {} }) => (
     <div className={`bg-white rounded-2xl shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] border border-slate-100 ${className}`} style={style}>
         {children}
     </div>
 );
-
-/** True when the snapshot actually carries a score for this category. */
-const isScored = (stats, id) => stats != null && stats[id] !== undefined && stats[id] !== null;
 
 const LoveChart = ({ stats, uncertain = [] }) => {
     if (!stats) return null;
@@ -239,9 +55,32 @@ const LoveChart = ({ stats, uncertain = [] }) => {
     );
 };
 
-export const CATEGORIES_EXPORT = CATEGORIES;
+/**
+ * The one-line stack summary: which styles lead, and what has moved most.
+ * The ⓘ states the arithmetic, because every number shown must be explainable.
+ */
+const SummaryLine = ({ versions }) => {
+    const summary = useMemo(() => summarizeStack(versions), [versions]);
+    if (!summary) return null;
 
-const CardStack = ({ versions, onEdit, onDelete, onAddVersion, onAnalyze }) => {
+    const formula = summary.mostChanged
+        ? 'Dominant: the highest two scores in your latest snapshot. Most changed: the widest range across all snapshots.'
+        : 'Dominant: the highest two scores in your latest snapshot.';
+
+    return (
+        <p className="text-[11px] text-slate-400 font-light mt-2 flex items-center gap-1 flex-wrap">
+            <span>
+                {summary.dominant.map(cat => cat.label).join(' · ')} dominant
+                {summary.mostChanged && ` — ${summary.mostChanged.label} most changed`}
+            </span>
+            <span title={formula} aria-label={formula} className="cursor-help text-slate-300">
+                <Info size={11} />
+            </span>
+        </p>
+    );
+};
+
+const CardStack = ({ versions, maskName = (name) => name, blurClass = '', onEdit, onDelete, onAddVersion, onPulse, onAnalyze }) => {
     // Sort versions by date DESC (newest first)
     const sortedVersions = useMemo(() => {
         return [...versions].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
@@ -249,6 +88,7 @@ const CardStack = ({ versions, onEdit, onDelete, onAddVersion, onAnalyze }) => {
 
     const [activeIndex, setActiveIndex] = useState(0);
     const [openNoteId, setOpenNoteId] = useState(null);
+    const [showShape, setShowShape] = useState(false);
     const containerRef = useRef(null);
 
     // Reset active index when versions change (e.g. new version added)
@@ -267,32 +107,28 @@ const CardStack = ({ versions, onEdit, onDelete, onAddVersion, onAnalyze }) => {
         if (!container) return;
 
         const handleWheel = (e) => {
-            // Prevent page scroll
+            const last = sortedVersions.length - 1;
+            const goingDown = e.deltaY > 0;
+
+            // Only swallow the wheel when there is actually a version to scrub to.
+            // Otherwise the page stops scrolling whenever the pointer crosses a card.
+            const canScrub = goingDown ? activeIndex < last : activeIndex > 0;
+            if (!canScrub) return;
+
+            // { passive: false } above is what makes preventDefault work here
             e.preventDefault();
             e.stopPropagation();
-
-            if (e.deltaY > 0) {
-                // Scroll Down -> Reveal older version (increment index)
-                setActiveIndex(prev => {
-                    if (prev < sortedVersions.length - 1) return prev + 1;
-                    return prev;
-                });
-            } else {
-                // Scroll Up -> Return to newer version (decrement index)
-                setActiveIndex(prev => {
-                    if (prev > 0) return prev - 1;
-                    return prev;
-                });
-            }
+            setActiveIndex(prev => (goingDown ? Math.min(prev + 1, last) : Math.max(prev - 1, 0)));
         };
 
-        // { passive: false } is crucial for preventDefault to work
         container.addEventListener('wheel', handleWheel, { passive: false });
 
         return () => {
             container.removeEventListener('wheel', handleWheel);
         };
-    }, [sortedVersions.length]);
+        // activeIndex is read directly rather than through the state updater, so the
+        // listener must be re-registered when it changes.
+    }, [sortedVersions.length, activeIndex]);
 
     return (
         <div
@@ -349,7 +185,7 @@ const CardStack = ({ versions, onEdit, onDelete, onAddVersion, onAnalyze }) => {
                     >
                         <div className="flex justify-between items-start mb-6">
                             <div>
-                                <h3 className="text-xl font-light text-slate-900">{person.name}</h3>
+                                <h3 className="text-xl font-light text-slate-900">{maskName(person.name)}</h3>
                                 <div className="flex items-center gap-2 mt-1">
                                     <Calendar size={12} className="text-slate-400" />
                                     <span className="text-xs text-slate-500 font-mono">
@@ -377,7 +213,7 @@ const CardStack = ({ versions, onEdit, onDelete, onAddVersion, onAnalyze }) => {
                                             </button>
                                         )}
                                         {tags.slice(0, 3).map((tag) => (
-                                            <span key={tag} className="text-[10px] text-slate-400 bg-slate-50 border border-slate-100 px-2 py-0.5 rounded-full">
+                                            <span key={tag} className={`text-[10px] text-slate-400 bg-slate-50 border border-slate-100 px-2 py-0.5 rounded-full ${blurClass}`}>
                                                 {tag}
                                             </span>
                                         ))}
@@ -386,13 +222,26 @@ const CardStack = ({ versions, onEdit, onDelete, onAddVersion, onAnalyze }) => {
                                         )}
                                     </div>
                                 )}
+
+                                {isActive && <SummaryLine versions={versions} />}
                             </div>
 
                             {/* Actions only visible if it's the active card */}
                             {isActive && (
                                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 bg-white/80 backdrop-blur-sm rounded-lg">
-                                    <button onClick={() => onAnalyze(versions)} className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Deep Analysis">
+                                    <button
+                                        onClick={() => setShowShape(s => !s)}
+                                        aria-pressed={showShape}
+                                        className="p-2 text-slate-300 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-colors"
+                                        title={showShape ? 'Show bars' : 'Show Love Shape'}
+                                    >
+                                        {showShape ? <BarChart3 size={16} /> : <RadarIcon size={16} />}
+                                    </button>
+                                    <button onClick={onAnalyze} className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Deep Analysis">
                                         <TrendingUp size={16} />
+                                    </button>
+                                    <button onClick={() => onPulse(person)} className="p-2 text-slate-300 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-colors" title="Quick Pulse">
+                                        <Zap size={16} />
                                     </button>
                                     <button onClick={() => onAddVersion(person)} className="p-2 text-slate-300 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="Add New Version">
                                         <Plus size={16} />
@@ -408,13 +257,19 @@ const CardStack = ({ versions, onEdit, onDelete, onAddVersion, onAnalyze }) => {
                         </div>
 
                         {isActive && isNoteOpen && (
-                            <p className="text-xs text-slate-500 font-light leading-relaxed bg-slate-50 rounded-lg p-3 mb-4 whitespace-pre-wrap max-h-24 overflow-y-auto">
+                            <p className={`text-xs text-slate-500 font-light leading-relaxed bg-slate-50 rounded-lg p-3 mb-4 whitespace-pre-wrap max-h-24 overflow-y-auto ${blurClass}`}>
                                 {person.description}
                             </p>
                         )}
 
                         <div className="border-t border-slate-50 pt-4 flex-grow">
-                            <LoveChart stats={person.stats} uncertain={person.uncertain || []} />
+                            {showShape ? (
+                                <div className="flex justify-center">
+                                    <LoveShape snapshot={person} size={260} />
+                                </div>
+                            ) : (
+                                <LoveChart stats={person.stats} uncertain={person.uncertain || []} />
+                            )}
                         </div>
 
                         <div className="absolute inset-x-0 bottom-4 px-6 text-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
@@ -530,6 +385,9 @@ export const CategorySliderRow = ({
     uncertain,
     skipped,
     guideAnswers,
+    collapsed = false,
+    hideGuide = false,
+    onExpand,
     onValueChange,
     onToggleSkip,
     onToggleUncertain,
@@ -538,6 +396,33 @@ export const CategorySliderRow = ({
     const [guideOpen, setGuideOpen] = useState(false);
     const band = guideBand(guideAnswers);
     const anchor = anchorFor(category, value);
+
+    // Quick pulse: one line per category, carrying last time's answer, until the user says
+    // this one moved. Opening a row is the whole interaction — a pulse where nothing
+    // changed costs zero clicks beyond saving.
+    if (collapsed) {
+        return (
+            <button
+                type="button"
+                onClick={onExpand}
+                aria-label={`Adjust ${category.label}`}
+                className="w-full flex items-center justify-between gap-3 py-2 px-1 -mx-1 rounded-lg text-left hover:bg-slate-50 transition-colors"
+            >
+                <span className="flex items-center gap-2 min-w-0">
+                    <Check size={14} className="text-emerald-500 flex-shrink-0" />
+                    <span className="text-sm font-medium text-slate-700 truncate">{category.label}</span>
+                </span>
+                <span className="flex items-center gap-3 flex-shrink-0">
+                    <span className="text-[11px] text-slate-400">
+                        {skipped ? 'still not scored' : 'unchanged'}
+                    </span>
+                    <span className="text-sm font-mono w-10 text-right text-slate-500">
+                        {skipped ? '—' : value}
+                    </span>
+                </span>
+            </button>
+        );
+    }
 
     return (
         <div className={skipped ? 'opacity-50' : ''}>
@@ -615,15 +500,19 @@ export const CategorySliderRow = ({
                         <p className="text-[11px] text-slate-500 font-light leading-snug">{anchor.phrase}</p>
                     )}
 
-                    <button
-                        type="button"
-                        onClick={() => setGuideOpen(o => !o)}
-                        aria-expanded={guideOpen}
-                        className="mt-2 flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-slate-600 transition-colors"
-                    >
-                        <HelpCircle size={12} />
-                        {guideOpen ? 'Hide guide' : 'Guide me'}
-                    </button>
+                    {/* Guided scoring is hidden in a pulse: the fast path and the slow,
+                        careful path are different tools for different days. */}
+                    {!hideGuide && (
+                        <button
+                            type="button"
+                            onClick={() => setGuideOpen(o => !o)}
+                            aria-expanded={guideOpen}
+                            className="mt-2 flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-slate-600 transition-colors"
+                        >
+                            <HelpCircle size={12} />
+                            {guideOpen ? 'Hide guide' : 'Guide me'}
+                        </button>
+                    )}
 
                     {guideOpen && (
                         <div className="mt-3 p-3 bg-slate-50 rounded-lg space-y-3">
@@ -680,17 +569,24 @@ export const CategorySliderRow = ({
     );
 };
 
-export const PersonForm = ({ onClose, onSave, initialData, isNewVersion }) => {
+export const PersonForm = ({ onClose, onSave, initialData, isNewVersion, isPulse }) => {
+    // A pulse is a new version taken the fast way: same name, today's date, context
+    // cleared. Everything that was true of "new version" is true of it.
+    const isNewSnapshot = isNewVersion || isPulse;
     const [name, setName] = useState(initialData?.name || '');
 
     // If it's a new version, default to today. If editing existing, use its date.
     // If creating brand new subject, use today.
     const [date, setDate] = useState(() => {
-        if (isNewVersion || !initialData) {
+        if (isNewSnapshot || !initialData) {
             return new Date().toISOString().split('T')[0];
         }
         return initialData.date ? new Date(initialData.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
     });
+
+    // Which pulse rows the user has opened. Everything else keeps last time's answer,
+    // which is the point: "nothing moved" should cost nothing to say.
+    const [expanded, setExpanded] = useState(() => new Set());
 
     // Every category needs a slider position even when its key is absent from the
     // stored snapshot, so the zeros are the floor and the stored values sit on top.
@@ -702,14 +598,20 @@ export const PersonForm = ({ onClose, onSave, initialData, isNewVersion }) => {
     // Context describes a period, so it is never inherited by a new version — only
     // an edit of an existing snapshot seeds it. The same goes for uncertainty and
     // guide answers: last time's doubt is not this time's.
-    const isEditing = Boolean(initialData) && !isNewVersion;
+    const isEditing = Boolean(initialData) && !isNewSnapshot;
     const [description, setDescription] = useState(isEditing ? (initialData.description || '') : '');
     const [tags, setTags] = useState(isEditing ? (initialData.tags || []) : []);
     const [uncertain, setUncertain] = useState(isEditing ? (initialData.uncertain || []) : []);
     const [guideAnswers, setGuideAnswers] = useState(isEditing ? (initialData.guide_answers || {}) : {});
     // A skipped category is one with no key in the stored stats — Phase 1's semantics.
+    //
+    // A pulse inherits them: "unchanged" has to mean unchanged, so a category left unscored
+    // last time stays unscored unless the user opens it. A full new version does the
+    // opposite — everything is scorable again.
     const [skipped, setSkipped] = useState(() => (
-        isEditing ? CATEGORIES.filter(cat => !isScored(initialData.stats, cat.id)).map(cat => cat.id) : []
+        (isEditing || isPulse) && initialData
+            ? CATEGORIES.filter(cat => !isScored(initialData.stats, cat.id)).map(cat => cat.id)
+            : []
     ));
 
     const handleSliderChange = (id, value) => {
@@ -756,6 +658,7 @@ export const PersonForm = ({ onClose, onSave, initialData, isNewVersion }) => {
         onSave({
             name: name.trim(),
             date,
+            kind: isPulse ? 'pulse' : 'full',
             stats: scoredStats,
             description,
             tags,
@@ -770,7 +673,7 @@ export const PersonForm = ({ onClose, onSave, initialData, isNewVersion }) => {
                 <form onSubmit={handleSubmit} className="p-6">
                     <div className="flex justify-between items-center mb-6">
                         <h2 className="text-xl font-light text-slate-800">
-                            {initialData && !isNewVersion ? 'Edit Analysis' : isNewVersion ? 'New Version' : 'New Subject'}
+                            {isPulse ? 'Quick Pulse' : isEditing ? 'Edit Analysis' : isNewVersion ? 'New Version' : 'New Subject'}
                         </h2>
                         <button type="button" onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-50 transition-colors">
                             <X size={20} />
@@ -785,9 +688,9 @@ export const PersonForm = ({ onClose, onSave, initialData, isNewVersion }) => {
                                 placeholder="Enter name..."
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
-                                className={`w-full text-lg border-b-2 border-slate-200 py-2 focus:border-slate-800 focus:outline-none bg-transparent transition-colors placeholder:text-slate-300 text-slate-700 ${isNewVersion ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                className={`w-full text-lg border-b-2 border-slate-200 py-2 focus:border-slate-800 focus:outline-none bg-transparent transition-colors placeholder:text-slate-300 text-slate-700 ${isNewSnapshot ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 autoFocus={!initialData}
-                                disabled={isNewVersion}
+                                disabled={isNewSnapshot}
                             />
                         </div>
                         <div>
@@ -805,24 +708,33 @@ export const PersonForm = ({ onClose, onSave, initialData, isNewVersion }) => {
                         <div>
                             <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">Metrics</label>
                             <p className="text-[11px] text-slate-400 font-light mt-1">
-                                Every number is yours to set. Open <span className="italic">Guide me</span> to answer the
-                                behaviours instead, skip what you cannot judge today, or flag a score as unsure.
+                                {isPulse
+                                    ? 'Carried over from your last snapshot. Open anything that has moved — leave the rest.'
+                                    : <>
+                                        Every number is yours to set. Open <span className="italic">Guide me</span> to answer the
+                                        behaviours instead, skip what you cannot judge today, or flag a score as unsure.
+                                    </>}
                             </p>
                         </div>
-                        {CATEGORIES.map((cat) => (
-                            <CategorySliderRow
-                                key={cat.id}
-                                category={cat}
-                                value={stats[cat.id]}
-                                uncertain={uncertain.includes(cat.id)}
-                                skipped={skipped.includes(cat.id)}
-                                guideAnswers={guideAnswers[cat.id]}
-                                onValueChange={(value) => handleSliderChange(cat.id, value)}
-                                onToggleSkip={() => toggleSkip(cat.id)}
-                                onToggleUncertain={() => toggleUncertain(cat.id)}
-                                onGuideAnswer={(metricIndex, optionIndex) => setGuideAnswer(cat.id, metricIndex, optionIndex)}
-                            />
-                        ))}
+                        <div className={isPulse ? 'divide-y divide-slate-50 space-y-0' : 'contents'}>
+                            {CATEGORIES.map((cat) => (
+                                <CategorySliderRow
+                                    key={cat.id}
+                                    category={cat}
+                                    value={stats[cat.id]}
+                                    uncertain={uncertain.includes(cat.id)}
+                                    skipped={skipped.includes(cat.id)}
+                                    guideAnswers={guideAnswers[cat.id]}
+                                    collapsed={isPulse && !expanded.has(cat.id)}
+                                    hideGuide={isPulse}
+                                    onExpand={() => setExpanded(prev => new Set(prev).add(cat.id))}
+                                    onValueChange={(value) => handleSliderChange(cat.id, value)}
+                                    onToggleSkip={() => toggleSkip(cat.id)}
+                                    onToggleUncertain={() => toggleUncertain(cat.id)}
+                                    onGuideAnswer={(metricIndex, optionIndex) => setGuideAnswer(cat.id, metricIndex, optionIndex)}
+                                />
+                            ))}
+                        </div>
                     </div>
 
                     <div className="mt-8 pt-6 border-t border-slate-100">
@@ -840,7 +752,7 @@ export const PersonForm = ({ onClose, onSave, initialData, isNewVersion }) => {
                             disabled={!name.trim()}
                             className="px-6 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-slate-200"
                         >
-                            {initialData && !isNewVersion ? 'Update Analysis' : 'Analyze & Save'}
+                            {isPulse ? 'Save pulse' : isEditing ? 'Update Analysis' : 'Analyze & Save'}
                         </button>
                     </div>
                 </form>
@@ -853,53 +765,54 @@ export const PersonForm = ({ onClose, onSave, initialData, isNewVersion }) => {
 const errorText = (error, fallback) => error?.response?.data?.error || fallback;
 
 export default function Dashboard() {
-    const [people, setPeople] = useState([]);
+    const {
+        people,
+        stacks,
+        loadError,
+        dismissLoadError,
+        createSubject,
+        updateSubject,
+        deleteSubject,
+        renameRelationship,
+        setCadence,
+        mergeRelationships,
+        deleteRelationship
+    } = useSubjects();
+    const { maskName, blurClass } = useDiscretion();
+    const navigate = useNavigate();
+
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingPerson, setEditingPerson] = useState(null);
     const [isNewVersionMode, setIsNewVersionMode] = useState(false);
+    const [isPulseMode, setIsPulseMode] = useState(false);
     const [isAboutOpen, setIsAboutOpen] = useState(false);
-    const [selectedTimelineStack, setSelectedTimelineStack] = useState(null);
     const [notice, setNotice] = useState(null);
     const [whatChanged, setWhatChanged] = useState(null);
+    // Which stack-level dialog is open, and for which stack: { kind, relationshipId }.
+    const [stackDialog, setStackDialog] = useState(null);
 
-    useEffect(() => {
-        fetchSubjects();
-    }, []);
+    // Re-read from `stacks` rather than capturing the stack, so a dialog left open across
+    // a refresh is never acting on a stale snapshot count.
+    const dialogStack = stackDialog
+        ? stacks.find(stack => stack.relationship.ID === stackDialog.relationshipId)
+        : null;
 
-    const fetchSubjects = async () => {
-        try {
-            const response = await axios.get('/api/subjects');
-            setPeople(response.data);
-        } catch (error) {
-            console.error("Failed to fetch subjects", error);
-            setNotice({ type: 'error', text: errorText(error, 'Could not load your analyses. Check that the server is running, then reload.') });
-        }
+    // A failed load is the provider's to report; everything else is this screen's.
+    const banner = notice || (loadError ? { type: 'error', text: loadError } : null);
+    const dismissBanner = () => {
+        setNotice(null);
+        dismissLoadError();
     };
-
-    // Group people by name for the stacks
-    const groupedPeople = useMemo(() => {
-        const groups = {};
-        people.forEach(person => {
-            if (!groups[person.name]) {
-                groups[person.name] = [];
-            }
-            groups[person.name].push(person);
-        });
-        return Object.values(groups);
-    }, [people]);
 
     const handleSavePerson = async (personData) => {
         setNotice(null);
         try {
             if (editingPerson && !isNewVersionMode) {
                 // Update existing — an in-place correction, so no "What Changed" payoff.
-                const response = await axios.put(`/api/subjects/${editingPerson.ID}`, personData);
-                setPeople(people.map(p => p.ID === editingPerson.ID ? response.data : p));
+                await updateSubject(editingPerson.ID, personData);
             } else {
                 // Create new (or new version)
-                const response = await axios.post('/api/subjects', personData);
-                const saved = response.data;
-                setPeople([...people, saved]);
+                const saved = await createSubject(personData);
 
                 // Anything that lands in an existing stack has something to compare against.
                 const previous = findPreviousVersion(saved, people);
@@ -916,18 +829,15 @@ export default function Dashboard() {
     // The "add a note" follow-up on the What Changed screen: a partial PUT that writes
     // only the context capsule, leaving the scores exactly as they were just saved.
     const saveSnapshotContext = async ({ description, tags }) => {
-        const id = whatChanged.current.ID;
-        const response = await axios.put(`/api/subjects/${id}`, { description, tags });
-        setPeople(prev => prev.map(p => (p.ID === id ? response.data : p)));
-        setWhatChanged(prev => ({ ...prev, current: response.data }));
+        const updated = await updateSubject(whatChanged.current.ID, { description, tags });
+        setWhatChanged(prev => ({ ...prev, current: updated }));
     };
 
     const deletePerson = async (id) => {
         if (!window.confirm("Are you sure you want to delete this specific version?")) return;
         setNotice(null);
         try {
-            await axios.delete(`/api/subjects/${id}`);
-            setPeople(people.filter(p => p.ID !== id));
+            await deleteSubject(id);
             setNotice({ type: 'success', text: 'Version deleted.' });
         } catch (error) {
             console.error("Failed to delete subject", error);
@@ -939,18 +849,65 @@ export default function Dashboard() {
         setIsFormOpen(false);
         setEditingPerson(null);
         setIsNewVersionMode(false);
+        setIsPulseMode(false);
     };
 
     const startEdit = (person) => {
         setEditingPerson(person);
         setIsNewVersionMode(false);
+        setIsPulseMode(false);
         setIsFormOpen(true);
     };
 
     const startNewVersion = (person) => {
         setEditingPerson(person); // Pass current data as template
         setIsNewVersionMode(true);
+        setIsPulseMode(false);
         setIsFormOpen(true);
+    };
+
+    const startPulse = (person) => {
+        setEditingPerson(person);
+        setIsNewVersionMode(false);
+        setIsPulseMode(true);
+        setIsFormOpen(true);
+    };
+
+    // The nudge hands back a whole stack; both paths start from its newest snapshot.
+    const newestOf = (stack) => [...stack.versions].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))[0];
+
+    const openStackDialog = (kind, stack) => () => {
+        setNotice(null);
+        setStackDialog({ kind, relationshipId: stack.relationship.ID });
+    };
+    const closeStackDialog = () => setStackDialog(null);
+
+    // The dialogs report their own failures inline and stay open, so these deliberately
+    // let the rejection through rather than swallowing it into a banner.
+    const confirmRename = async (name) => {
+        await renameRelationship(dialogStack.relationship.ID, name);
+        setNotice({ type: 'success', text: `Renamed to ${name}.` });
+    };
+
+    const confirmMerge = async (targetId) => {
+        const merged = await mergeRelationships(targetId, dialogStack.relationship.ID);
+        setNotice({ type: 'success', text: `Merged into ${merged.name}.` });
+    };
+
+    const confirmCadence = async (days) => {
+        await setCadence(dialogStack.relationship.ID, days);
+        setNotice({
+            type: 'success',
+            text: days
+                ? `You'll see one line here when it's been ${days} days.`
+                : 'Reminders off for this relationship.'
+        });
+    };
+
+    const confirmDeleteRelationship = async () => {
+        const { name } = dialogStack.relationship;
+        await deleteRelationship(dialogStack.relationship.ID);
+        setNotice({ type: 'success', text: `Deleted every snapshot of ${name}.` });
     };
 
     return (
@@ -976,18 +933,18 @@ export default function Dashboard() {
                     </div>
                 </header>
 
-                {notice && (
+                {banner && (
                     <div
                         role="alert"
-                        className={`mb-6 p-4 rounded-lg flex items-center gap-3 ${notice.type === 'success'
+                        className={`mb-6 p-4 rounded-lg flex items-center gap-3 ${banner.type === 'success'
                             ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                             : 'bg-red-50 text-red-800 border border-red-200'
                             }`}
                     >
                         <Info size={18} className="flex-shrink-0" />
-                        <span className="flex-1 text-sm">{notice.text}</span>
+                        <span className="flex-1 text-sm">{banner.text}</span>
                         <button
-                            onClick={() => setNotice(null)}
+                            onClick={dismissBanner}
                             aria-label="Dismiss notification"
                             className="p-1 rounded hover:bg-white/50 transition-colors"
                         >
@@ -996,48 +953,60 @@ export default function Dashboard() {
                     </div>
                 )}
 
-                {selectedTimelineStack ? (
-                    <AnalysisTimeline
-                        versions={selectedTimelineStack}
-                        onBack={() => setSelectedTimelineStack(null)}
-                        categories={CATEGORIES_EXPORT}
-                    />
-                ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {people.length === 0 && (
-                            <div className="col-span-full flex flex-col items-center justify-center py-20 text-center">
-                                <Activity size={48} className="mb-4 opacity-20 text-slate-400" />
-                                <p className="text-lg font-light text-slate-600 max-w-md">
-                                    Map your first relationship — a past one works well: you already know how it ended.
-                                </p>
-                                <p className="text-sm font-light text-slate-400 mt-3 max-w-md">
-                                    Seven sliders, one date. You can answer the behaviours instead of guessing at a
-                                    number, and skip anything you cannot judge today.
-                                </p>
-                                <div className="flex gap-4 mt-6">
-                                    <button onClick={() => setIsFormOpen(true)} className="text-sm font-medium text-slate-600 hover:text-slate-900 underline underline-offset-4">
-                                        Begin first analysis
-                                    </button>
-                                    <button onClick={() => setIsAboutOpen(true)} className="text-sm font-medium text-slate-400 hover:text-slate-700 underline underline-offset-4">
-                                        Read the categories first
-                                    </button>
-                                </div>
-                            </div>
-                        )}
+                <CadenceNudge
+                    stacks={stacks}
+                    maskName={maskName}
+                    onPulse={(stack) => startPulse(newestOf(stack))}
+                    onSnapshot={(stack) => startNewVersion(newestOf(stack))}
+                    onSettings={(stack) => setStackDialog({ kind: 'cadence', relationshipId: stack.relationship.ID })}
+                />
 
-                        {groupedPeople.map((versions) => (
-                            <div key={versions[0].name}> {/* Key by name since it's the stable identifier for the stack */}
-                                <CardStack
-                                    versions={versions}
-                                    onEdit={startEdit}
-                                    onDelete={deletePerson}
-                                    onAddVersion={startNewVersion}
-                                    onAnalyze={setSelectedTimelineStack}
-                                />
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {people.length === 0 && (
+                        <div className="col-span-full flex flex-col items-center justify-center py-20 text-center">
+                            <Activity size={48} className="mb-4 opacity-20 text-slate-400" />
+                            <p className="text-lg font-light text-slate-600 max-w-md">
+                                Map your first relationship — a past one works well: you already know how it ended.
+                            </p>
+                            <p className="text-sm font-light text-slate-400 mt-3 max-w-md">
+                                Seven sliders, one date. You can answer the behaviours instead of guessing at a
+                                number, and skip anything you cannot judge today.
+                            </p>
+                            <div className="flex gap-4 mt-6">
+                                <button onClick={() => setIsFormOpen(true)} className="text-sm font-medium text-slate-600 hover:text-slate-900 underline underline-offset-4">
+                                    Begin first analysis
+                                </button>
+                                <button onClick={() => setIsAboutOpen(true)} className="text-sm font-medium text-slate-400 hover:text-slate-700 underline underline-offset-4">
+                                    Read the categories first
+                                </button>
                             </div>
-                        ))}
-                    </div>
-                )}
+                        </div>
+                    )}
+
+                    {/* Keyed by relationship id: the name is a label now, and two stacks
+                        are allowed to share one. */}
+                    {stacks.map((stack) => (
+                        <div key={stack.relationship.ID}>
+                            <StackActions
+                                stack={stack}
+                                onRename={openStackDialog('rename', stack)}
+                                onCadence={openStackDialog('cadence', stack)}
+                                onMerge={openStackDialog('merge', stack)}
+                                onDelete={openStackDialog('delete', stack)}
+                            />
+                            <CardStack
+                                versions={stack.versions}
+                                maskName={maskName}
+                                blurClass={blurClass}
+                                onEdit={startEdit}
+                                onDelete={deletePerson}
+                                onAddVersion={startNewVersion}
+                                onPulse={startPulse}
+                                onAnalyze={() => navigate(timelinePath(stack.relationship.ID))}
+                            />
+                        </div>
+                    ))}
+                </div>
             </div >
 
             {isFormOpen && (
@@ -1046,6 +1015,7 @@ export default function Dashboard() {
                     onSave={handleSavePerson}
                     initialData={editingPerson}
                     isNewVersion={isNewVersionMode}
+                    isPulse={isPulseMode}
                 />
             )
             }
@@ -1060,9 +1030,41 @@ export default function Dashboard() {
                 <WhatChanged
                     current={whatChanged.current}
                     previous={whatChanged.previous}
-                    categories={CATEGORIES_EXPORT}
                     onSaveContext={saveSnapshotContext}
                     onDone={() => setWhatChanged(null)}
+                />
+            )}
+
+            {dialogStack && stackDialog.kind === 'rename' && (
+                <RenameRelationshipDialog
+                    relationship={dialogStack.relationship}
+                    onRename={confirmRename}
+                    onClose={closeStackDialog}
+                />
+            )}
+
+            {dialogStack && stackDialog.kind === 'cadence' && (
+                <CadenceDialog
+                    relationship={dialogStack.relationship}
+                    onSave={confirmCadence}
+                    onClose={closeStackDialog}
+                />
+            )}
+
+            {dialogStack && stackDialog.kind === 'merge' && (
+                <MergeRelationshipDialog
+                    stack={dialogStack}
+                    otherStacks={stacks.filter(other => other.relationship.ID !== dialogStack.relationship.ID)}
+                    onMerge={confirmMerge}
+                    onClose={closeStackDialog}
+                />
+            )}
+
+            {dialogStack && stackDialog.kind === 'delete' && (
+                <DeleteRelationshipDialog
+                    stack={dialogStack}
+                    onDelete={confirmDeleteRelationship}
+                    onClose={closeStackDialog}
                 />
             )}
         </div >

@@ -73,9 +73,9 @@ Each category additionally carries, in code:
   behavioural meaning. See [Anchored sliders](#anchored-sliders) below.
 
 **Where this lives:** the `CATEGORIES` array,
-[`src/components/Dashboard.jsx:6-117`](../src/components/Dashboard.jsx#L6-L117).
-It is a plain module-level constant — the *only* definition of the taxonomy in the
-running application.
+[`src/constants/categories.js`](../src/constants/categories.js). It is a plain module-level
+constant — the *only* definition of the taxonomy in the running application, re-exported
+from `Dashboard.jsx` for callers that have always looked there.
 
 The backend knows the seven **ids** and nothing else: they are duplicated as a validation
 allowlist in [`backend/internal/domain/categories.go`](../backend/internal/domain/categories.go),
@@ -84,21 +84,36 @@ which `POST`/`PUT /api/subjects` check every `stats` key against
 Labels, colours, prose, and metrics stay frontend-owned — adding a category means editing
 `CATEGORIES`, `CATEGORY_COLORS`, **and** `domain.CategoryIDs`.
 
-> **Colour duplication.** Bar charts use the Tailwind class strings (`cat.color`), but
-> Recharts needs real hex values for SVG strokes, so the palette is restated as
-> `CATEGORY_COLORS` in
-> [`src/components/AnalysisTimeline.jsx:15-23`](../src/components/AnalysisTimeline.jsx#L15-L23).
-> Adding or recolouring a category requires editing **both** places.
+> **One palette, one place.** Bar charts use the Tailwind class string (`cat.color`) and the
+> SVG charts use `cat.hex` — both fields sit on the same category object. The old
+> `CATEGORY_COLORS` mirror in `AnalysisTimeline.jsx` is gone; recolouring is a single edit.
 
 ---
 
 ## 3. Domain vocabulary
 
-### Subject
-A **subject** is the target of one analysis — typically a person the user has feelings
-about. It is stored as one `AnalysisSubject` row. A subject carries:
+### Relationship
+A **relationship** is the person a stack of snapshots is about — one `Relationship` row,
+owned by a user, carrying a `name` that is unique among that user's relationships. It is
+the durable identity: renaming it renames every snapshot under it, and the timeline URL
+addresses it by id.
 
-- `name` — free text; also the grouping key (see below). Trimmed server-side on write.
+Names are compared exactly after trimming, so `"Alex "` and `"Alex"` are one relationship
+while `"alex"` and `"Alex"` are two. Uniqueness is enforced in the handlers rather than by a
+database constraint — see [Data Model](03-data-model.md#relationship).
+
+A relationship also carries an optional **check-in rhythm** (`cadence_days`) — see
+[Cadence](#cadence--the-one-nudge) below.
+
+### Subject
+A **subject** is the target of one analysis — one dated snapshot, stored as one
+`AnalysisSubject` row. (The name is historical: "subject" means the *snapshot*, which is why
+the durable entity added in Phase 4 is called `Relationship` instead.) A subject carries:
+
+- `relationship_id` — which relationship this is a snapshot of. Set by the server on every
+  write; never chosen by the client.
+- `name` — free text, kept denormalized on the row so old clients keep working. It is a
+  **label, not the identity**: rename and merge sync it across every version.
 - `date` — the *date of state*: the point in time the assessment describes, not the
   moment it was entered.
 - `stats` — the seven scores. A **missing key means "not scored"**, not zero; the server
@@ -108,6 +123,7 @@ about. It is stored as one `AnalysisSubject` row. A subject carries:
 - `tags` — the **context capsule**: up to 12 short event labels for the same period.
 - `uncertain` — category ids the user scored but does not trust.
 - `guide_answers` — the guided-scoring answers behind those scores, if any were used.
+- `kind` — `full` or `pulse`; how the snapshot was taken, not how much it counts.
 
 ### Context capsule (`description` + `tags`)
 A snapshot records *what* changed; the context capsule records *why it might have*. It is
@@ -126,41 +142,89 @@ seeds the existing note and tags, but starting a new version starts them empty. 
 computed from tags; they are raw material for the user's own reading of the timeline.
 
 ### Version
-A **version** is a subject row that shares its `name` with other rows. Creating a new
-version does not modify anything: it `POST`s a brand-new `AnalysisSubject` with the same
-`name` and a newer `date`. History is therefore append-only and every past assessment
-stays independently editable and deletable.
+A **version** is one snapshot in a relationship's history. Creating a new version does not
+modify anything: it `POST`s a brand-new `AnalysisSubject` with the same name and a newer
+`date`, and the server resolves it into the same relationship. History is therefore
+append-only and every past assessment stays independently editable and deletable.
 
-Realised by `startNewVersion` →`PersonForm` with `isNewVersion` →`handleSavePerson`'s
-POST branch, [`src/components/Dashboard.jsx:520-563`](../src/components/Dashboard.jsx#L520-L563).
-In new-version mode the name input is disabled so the grouping key cannot drift
-([`Dashboard.jsx:429-437`](../src/components/Dashboard.jsx#L429-L437)).
+Realised by `startNewVersion` → `PersonForm` with `isNewVersion` → `handleSavePerson`'s
+POST branch. In new-version mode the name input is disabled, which now matters less than it
+used to: the server would resolve the same relationship anyway.
 
 ### The "stack" abstraction
-A **stack** is all versions sharing one `name`, presented as a physical pile of cards.
-It is computed, never stored:
+A **stack** is all versions of one relationship, presented as a physical pile of cards.
+The pile is a view; the relationship is the record.
 
 ```js
-// src/components/Dashboard.jsx:509-518
-const groupedPeople = useMemo(() => {
-    const groups = {};
-    people.forEach(person => {
-        if (!groups[person.name]) groups[person.name] = [];
-        groups[person.name].push(person);
-    });
-    return Object.values(groups);
-}, [people]);
+// src/context/SubjectsContext.jsx — grouping is the relationship id
+export const stackKey = (person) => person.relationship_id ?? `unlinked-${person.ID}`;
 ```
 
-Consequences worth internalising before changing anything here:
+Before Phase 4 this grouped on the `name` string, which had three consequences the entity
+removes:
 
-- Grouping is by **exact string equality** on `name`. `"Alex"` and `"alex "` are two
-  different people.
-- Renaming one version splits it out of its stack.
-- Two genuinely different people who share a name are merged into one stack.
-- Version labels are positional, not stored: `v{sortedVersions.length - index}` after a
-  descending date sort, so the newest version always shows the highest number
-  ([`Dashboard.jsx:253-257`](../src/components/Dashboard.jsx#L253-L257)).
+| Before | Now |
+| :----- | :-- |
+| Renaming one version split it out of its stack, and nothing could rename the group. | The stack has a name of its own. Renaming it moves every version; renaming a single version still detaches it, deliberately. |
+| Two different people sharing a name silently became one stack. | Two relationships, two stacks. The dashboard shows them side by side. |
+| Nothing could be attached to a relationship as a whole. | Anything can — this is what Phase 5's per-relationship cadence and export hang off. |
+
+Still true: version labels are positional, not stored — `v{sortedVersions.length - index}`
+after a descending date sort, so the newest version always shows the highest number.
+
+**A stack is grouped by id, never by name.** A snapshot arriving without a
+`relationship_id` would be a server bug (the startup backfill and find-or-create between
+them leave no unlinked rows), so the client gives such a row a stack of its own rather than
+merging every unlinked row into one pile.
+
+### Rename and merge
+Two stack-level actions, reached from the `⋯` menu above each pile:
+
+- **Rename** changes the relationship's name; every card follows. Colliding with another of
+  your relationships is refused with a message suggesting merge instead.
+- **Merge** moves every snapshot of one stack into another and retires the source. It is
+  **one-way** — nothing records which snapshots came from where — so the dialog states
+  exactly what will happen (*"All 4 snapshots of Alex M will move into Alex. This cannot be
+  split apart automatically."*) before asking for confirmation.
+
+Deleting a whole relationship is the third action, worded to be unmistakable next to the
+per-version delete: it names the number of snapshots it will take.
+
+### Full and pulse
+Two ways to take a snapshot, one kind of record.
+
+- A **full** snapshot is the seven-slider form: anchors, optional guided scoring, skip and
+  unsure toggles, then the context step.
+- A **pulse** is the same snapshot taken in under a minute. Every category opens carrying
+  last time's answer marked *unchanged*; you open only what has moved. Guided scoring is
+  hidden — the careful path and the fast path are different tools for different days.
+
+**A pulse is a real version, not a lesser one.** It gets the same version badge, triggers
+the same [What Changed](#what-changed) payoff, and counts the same everywhere. The only
+difference in the product is that the timeline draws its point slightly smaller — a
+*quieter* mark, not a lower-status one. The distinction exists so that a rhythm can survive
+a busy month, not so that snapshots can be ranked.
+
+### Cadence — the one nudge
+A relationship can opt in to a **check-in rhythm**: monthly, quarterly, twice a year, or a
+custom interval between 7 and 365 days. Off is the default and always available.
+
+When more days have passed than the rhythm asks for, the dashboard shows **one calm
+sentence**: *"It's been 9 weeks since your last snapshot of Alex."* That is the entire
+feature.
+
+What it deliberately does **not** do, as a product rule rather than a style preference:
+
+| Not this | Because |
+| :------- | :------ |
+| Streaks, chains, badges | A missed month must not read as a failure. Coming back after six silent months looks exactly like coming back after six days. |
+| Counts of missed check-ins | Nothing is gained by telling someone how much they did not do. |
+| Red, urgency vocabulary, exclamation marks | The copy states an interval and stops. `nudgeSentence` is unit-tested against a list of forbidden words. |
+| Repeating within a session | Dismissing retires it until a new session; "Later" buys seven days. |
+| Email, push, or any server-side scheduler | Due-ness is computed **in the browser** from the latest snapshot's date. There is nothing to send, which is what keeps the privacy claim literally true. |
+
+A relationship with no dated snapshot is never due: an undated snapshot has no position in
+time, so it cannot make anything overdue.
 
 ### Stat / metric / anchor — three different things
 - A **stat** is one of the seven stored integers (`stats.eros === 85`).
@@ -237,11 +301,14 @@ switches itself back to the login view and shows *"Account created! Please log i
 ### The dashboard loop
 Once a token exists, `/` renders [`Dashboard.jsx`](../src/components/Dashboard.jsx):
 
-1. **Read** — a responsive grid of card stacks, one per distinct name. Each card shows
-   the name, its date, its version badge, and a seven-bar horizontal chart in which
-   unscored categories read `—` and unsure ones read `≈`. If the active snapshot carries
-   context, a note icon and up to three tag chips sit under the date; the icon expands the
-   note inline.
+1. **Read** — a responsive grid of card stacks, one per relationship. A quiet header above
+   each pile gives the snapshot count and a `⋯` menu holding the stack-level actions
+   (rename, merge, delete the whole relationship). Each card shows
+   the name, its date, its version badge, a one-line summary (*"Storge · Pragma dominant —
+   Mania most changed"*), and a seven-bar horizontal chart in which unscored categories read
+   `—` and unsure ones read `≈`. A toggle flips the bars to the Love Shape. If the active
+   snapshot carries context, a note icon and up to three tag chips sit under the date; the
+   icon expands the note inline.
 2. **Browse history** — hovering a stack and scrolling the mouse wheel flips through
    versions in place. Wheel-down reveals older, wheel-up returns to newer.
 3. **Create** — "New Analysis" opens `PersonForm`: name, date, seven anchored sliders —
@@ -252,16 +319,70 @@ Once a token exists, `/` renders [`Dashboard.jsx`](../src/components/Dashboard.j
 5. **Extend** — the plus action opens the same form pre-filled with the last scores, name
    locked, date reset to today, **context and uncertainty cleared**, and saves as a new row
    (`POST`) — which then opens [What Changed](#what-changed).
-6. **Analyse** — the trending-up action swaps the whole grid for the timeline view.
+6. **Analyse** — the trending-up action navigates to `/relationships/<id>/timeline`, a real
+   URL the user can bookmark or reload. Keyed by id, so the bookmark survives a rename.
 7. **Delete** — the trash action removes *one version* after a `window.confirm`, whose
-   wording deliberately says "this specific version".
+   wording deliberately says "this specific version". Removing the whole history is a
+   separate action in the stack menu, with its own dialog.
 
 ### Reflection — the timeline
-[`AnalysisTimeline.jsx`](../src/components/AnalysisTimeline.jsx) renders one stack as a
-Recharts multi-line chart: x-axis = version dates ascending, y-axis fixed to 0–100,
-seven coloured lines. Clicking a legend entry toggles that line's visibility, so a user
-can isolate, say, `mania` against `storge` over two years. This is the payoff of the
-whole versioning design — the one screen where drift over time becomes legible.
+`/relationships/:id/timeline` renders one stack as a Recharts multi-line chart: **x-axis proportional to
+real time**, y-axis fixed to 0–100, seven coloured lines. Clicking a legend entry toggles
+that line's visibility, so a user can isolate, say, `mania` against `storge` over two years.
+This is the payoff of the whole versioning design — the one screen where drift over time
+becomes legible.
+
+Because the axis is real time, a week's gap and a year's gap no longer look the same, and
+snapshots carrying tags or a note appear as **milestone markers**: a flag at the true date,
+opening a panel with the tags and the note. The marker states what else was happening; the
+app never claims one caused the other.
+
+The screen is a real route — bookmarkable, refreshable, back-button-correct — and it reads
+the same live subject list the dashboard does, so an edit made elsewhere is never stale here.
+
+The pre-Phase-4 form `/timeline/:name` still resolves: it looks the name up in the loaded
+list and redirects to the id route. Best-effort by construction — a stack renamed since the
+link was made cannot be found that way, which is exactly the fragility the id route ends.
+
+### Love Shape
+The same seven numbers drawn as a polygon on seven fixed axes. Because the axis order is
+always the taxonomy order, the *shape* becomes recognisable in a way seven bars are not —
+"this is what that relationship looked like". An unscored category is drawn as an open
+vertex at the centre rather than a confident zero, and a snapshot can be ghosted against
+another (the previous one, the first one, or one from a different stack) to see the
+difference directly. It appears on the card as a flip from the bars, in the timeline header,
+and in [What Changed](#what-changed).
+
+### The vault
+`/vault` answers three questions in one page: what is stored, what leaves the machine, and
+how to get it all out.
+
+- **Export** — one JSON document containing every relationship and snapshot with its notes,
+  tags, uncertainty flags and guided answers, plus a flat CSV for spreadsheets (one row per
+  snapshot, one column per category, a skipped category left as an **empty cell** rather
+  than a zero).
+- **Import** — the same JSON, back in. It always dry-runs first and shows what would happen
+  before writing anything, and a snapshot already present is skipped, so importing the same
+  file twice changes nothing.
+- **The privacy answers** are static copy, and every claim on the page has to be true of the
+  code as written: nothing is sent anywhere, there are no AI features, and **the database is
+  not encrypted**. Saying the last one plainly matters more than the first two.
+
+### Discretion mode
+An eye icon in the navbar (or `Ctrl+.`) collapses relationship names to initials, blurs
+notes and tag chips until you look directly at them, and drops the app name from the tab
+title. It is instant, reversible, and entirely client-side.
+
+It is scoped honestly: it defends against the person sitting next to you, not against
+anyone with access to the machine. The data, the API responses, and the labels read by
+assistive technology are all unchanged — hiding a name from a screen reader would harm a
+user without protecting them from anyone looking at the screen.
+
+An optional **app lock** adds a passphrase (stored as a SHA-256 hash in `localStorage`) that
+covers the app on load and after 15 minutes idle. The setting says outright what it is:
+*"This locks the screen on this device. It does not encrypt the database — anyone with
+access to the server files can read them."* There is no recovery flow, and the page says
+that too.
 
 ### Self-description
 [`Profile.jsx`](../src/components/Profile.jsx) stores facts about the *user*, not about
@@ -295,15 +416,29 @@ instrument the user calibrates against before touching a slider.
 Knowing the negative space prevents wrong assumptions when extending the project:
 
 - **No computation of scores.** No weighting, normalising, or summing. The seven values
-  are independent and need not total 100. The two pieces of arithmetic that do exist —
-  the guided-scoring suggestion band and the What Changed deltas — are mean-and-±8 and
-  subtraction respectively, are stated in words on screen, and never write a value the
-  user did not confirm.
+  are independent and need not total 100. The arithmetic that does exist — the
+  guided-scoring suggestion band, the What Changed deltas, and the card summary line — is
+  mean-and-±8, subtraction, and max-minus-min respectively. Each is stated in words on
+  screen, and none writes a value the user did not confirm.
+- **No causal claims.** Milestone markers put a tag beside a movement; they never assert
+  that the tagged event produced it. Vocabulary stays descriptive throughout: "most
+  changed", not "most volatile".
 - **No inter-user features.** No sharing, no comparing, no social graph. Every
-  `AnalysisSubject` is scoped to its owner by `user_id` on every query.
-- **No subject identity.** Subjects are strings, not records; see
-  [the stack abstraction](#the-stack-abstraction).
+  `AnalysisSubject` and `Relationship` is scoped to its owner by `user_id` on every query,
+  and a row belonging to someone else is reported as `404`, never `403`.
+- **No cross-relationship analysis.** Relationships are separate records with no links
+  between them — no "compare Alex and Sam", no aggregate profile. The entity makes such a
+  view *possible*; nothing implements one.
+- **No merge history.** Merging is one-way and records nothing about where a snapshot came
+  from, so it cannot be undone from within the app. The dialog says so before it acts.
 - **No clinical claim.** Nothing in the codebase performs alexithymia screening (no
   TAS-20 or similar). "Alexithymia" names the motivating problem, not a diagnostic
   feature.
-- **No notifications, reminders, or scheduling.**
+- **No notifications sent anywhere.** Reminders now exist, but they are in-app only, opt-in
+  per relationship, off by default, and computed in the browser. There is no scheduler, no
+  email, no push, and nothing that runs when the tab is closed.
+- **No gamification.** No streaks, no badges, no scores about your scoring. See
+  [Cadence](#cadence--the-one-nudge) for the rules this holds itself to.
+- **No encryption at rest.** The database is a plain file or your Postgres instance.
+  Passwords are hashed; notes and scores are not. The Vault page says so rather than
+  implying otherwise.

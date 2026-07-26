@@ -1,10 +1,47 @@
 import React from 'react';
 import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter, Routes, Route, useParams } from 'react-router-dom';
 import axios from 'axios';
 import Dashboard, { PersonForm, CATEGORIES_EXPORT, anchorFor, guideBand } from './Dashboard';
+import { SubjectsProvider } from '../context/SubjectsContext';
+import { DiscretionProvider } from '../context/DiscretionContext';
+import { summarizeStack } from '../constants/categories';
 
 vi.mock('axios');
+
+const TimelineProbe = () => {
+    const { id } = useParams();
+    return <div>timeline for relationship {id}</div>;
+};
+
+/** The dashboard now reads shared state and navigates, so it needs both providers. */
+const renderDashboard = () => render(
+    <MemoryRouter initialEntries={['/']}>
+        <DiscretionProvider>
+            <SubjectsProvider>
+                <Routes>
+                    <Route path="/" element={<Dashboard />} />
+                    <Route path="/relationships/:id/timeline" element={<TimelineProbe />} />
+                </Routes>
+            </SubjectsProvider>
+        </DiscretionProvider>
+    </MemoryRouter>
+);
+
+/**
+ * The provider loads both endpoints. Relationships are derived from the snapshots unless a
+ * test cares about them specifically, which keeps the fixtures to the thing under test.
+ */
+const mockFetch = (subjects = [], relationships) => {
+    const derived = relationships ?? [...new Map(
+        subjects.map(s => [s.relationship_id, { ID: s.relationship_id, name: s.name }])
+    ).values()];
+
+    axios.get.mockImplementation((url) => Promise.resolve({
+        data: url === '/api/relationships' ? derived : subjects
+    }));
+};
 
 const today = new Date().toISOString().split('T')[0];
 
@@ -16,6 +53,7 @@ const eros = CATEGORIES_EXPORT.find(c => c.id === 'eros');
 
 const subjectWithContext = {
     ID: 1,
+    relationship_id: 1,
     name: 'Alex',
     date: '2026-02-20T00:00:00Z',
     description: 'Rough month — we argued about the move.',
@@ -48,6 +86,7 @@ describe('PersonForm — context capsules', () => {
         expect(onSave).toHaveBeenCalledWith({
             name: 'Alex',
             date: today,
+            kind: 'full',
             stats: emptyStats,
             description: 'We talked it through.',
             tags: ['conflict', 'ski trip'],
@@ -264,16 +303,59 @@ describe('PersonForm — guided scoring, skipping and uncertainty', () => {
     });
 });
 
+describe('summarizeStack — the card summary line', () => {
+    const at = (id, stats) => ({ ID: id, name: 'Alex', date: `2026-0${id}-01T00:00:00Z`, stats });
+
+    it('names the two highest scores in the latest snapshot', () => {
+        const summary = summarizeStack([
+            at(1, { eros: 10, storge: 90, pragma: 80 }),
+            at(2, { eros: 20, storge: 70, pragma: 85 })
+        ]);
+
+        expect(summary.dominant.map(c => c.id)).toEqual(['pragma', 'storge']);
+    });
+
+    it('breaks ties by taxonomy order, not by object order', () => {
+        const summary = summarizeStack([at(1, { ludus: 50, eros: 50, storge: 10 })]);
+        expect(summary.dominant.map(c => c.id)).toEqual(['eros', 'ludus']);
+    });
+
+    it('says nothing at all when the latest snapshot scored fewer than two categories', () => {
+        expect(summarizeStack([at(1, { eros: 50 })])).toBeNull();
+        expect(summarizeStack([])).toBeNull();
+    });
+
+    it('withholds "most changed" until there are three snapshots', () => {
+        const versions = [
+            at(1, { eros: 10, mania: 30 }),
+            at(2, { eros: 90, mania: 35 })
+        ];
+        expect(summarizeStack(versions).mostChanged).toBeNull();
+
+        const third = [...versions, at(3, { eros: 50, mania: 40 })];
+        expect(summarizeStack(third).mostChanged.id).toBe('eros');
+    });
+
+    it('ignores snapshots that skipped a category when measuring its range', () => {
+        const summary = summarizeStack([
+            at(1, { eros: 10, mania: 20 }),
+            at(2, { mania: 90 }),            // eros skipped — not a zero
+            at(3, { eros: 15, mania: 80 })
+        ]);
+        expect(summary.mostChanged.id).toBe('mania');
+    });
+});
+
 describe('Dashboard — context surface and error handling', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        axios.get.mockResolvedValue({ data: [] });
+        mockFetch([]);
     });
 
     it('shows the note icon and up to three tag chips on the active card', async () => {
-        axios.get.mockResolvedValue({ data: [subjectWithContext] });
+        mockFetch([subjectWithContext]);
 
-        render(<Dashboard />);
+        renderDashboard();
 
         const noteButton = await screen.findByRole('button', { name: 'Show note' });
         expect(screen.getByText('conflict')).toBeInTheDocument();
@@ -288,9 +370,9 @@ describe('Dashboard — context surface and error handling', () => {
     });
 
     it('renders no context indicators for a snapshot created before Phase 1', async () => {
-        axios.get.mockResolvedValue({ data: [{ ID: 2, name: 'Sam', date: null, description: '', stats: emptyStats }] });
+        mockFetch([{ ID: 2, relationship_id: 2, name: 'Sam', date: null, description: '', stats: emptyStats }]);
 
-        render(<Dashboard />);
+        renderDashboard();
 
         expect(await screen.findByText('Sam')).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'Show note' })).not.toBeInTheDocument();
@@ -299,7 +381,7 @@ describe('Dashboard — context surface and error handling', () => {
     it('surfaces a fetch failure instead of showing an unexplained empty grid', async () => {
         axios.get.mockRejectedValue({ response: { data: { error: 'Failed to fetch subjects' } } });
 
-        render(<Dashboard />);
+        renderDashboard();
 
         expect(await screen.findByRole('alert')).toHaveTextContent('Failed to fetch subjects');
     });
@@ -307,7 +389,7 @@ describe('Dashboard — context surface and error handling', () => {
     it('keeps the form open with its input intact when a save fails', async () => {
         axios.post.mockRejectedValue(new Error('Network Error'));
 
-        render(<Dashboard />);
+        renderDashboard();
 
         await userEvent.click(screen.getByRole('button', { name: /new analysis/i }));
         await userEvent.type(screen.getByPlaceholderText('Enter name...'), 'Alex');
@@ -326,17 +408,16 @@ describe('Dashboard — context surface and error handling', () => {
     });
 
     it('renders a skipped category as blank and an unsure one as approximate', async () => {
-        axios.get.mockResolvedValue({
-            data: [{
-                ID: 3,
-                name: 'Sam',
-                date: '2026-02-20T00:00:00Z',
-                stats: { eros: 40, mania: 60 },   // ludus and the rest were skipped
-                uncertain: ['mania']
-            }]
-        });
+        mockFetch([{
+            ID: 3,
+            relationship_id: 3,
+            name: 'Sam',
+            date: '2026-02-20T00:00:00Z',
+            stats: { eros: 40, mania: 60 },   // ludus and the rest were skipped
+            uncertain: ['mania']
+        }]);
 
-        render(<Dashboard />);
+        renderDashboard();
 
         expect(await screen.findByText('Sam')).toBeInTheDocument();
         expect(screen.getByText('40%')).toBeInTheDocument();
@@ -348,15 +429,15 @@ describe('Dashboard — context surface and error handling', () => {
 
     it('shows What Changed after adding to an existing stack, but not after an edit', async () => {
         const existing = {
-            ID: 1, name: 'Alex', date: '2026-01-01T00:00:00Z', stats: { eros: 40 }, tags: [], description: ''
+            ID: 1, relationship_id: 1, name: 'Alex', date: '2026-01-01T00:00:00Z', stats: { eros: 40 }, tags: [], description: ''
         };
-        axios.get.mockResolvedValue({ data: [existing] });
+        mockFetch([existing]);
         axios.post.mockResolvedValue({
-            data: { ID: 2, name: 'Alex', date: '2026-03-19T00:00:00Z', stats: { eros: 70 }, tags: [], description: '' }
+            data: { ID: 2, relationship_id: 1, name: 'Alex', date: '2026-03-19T00:00:00Z', stats: { eros: 70 }, tags: [], description: '' }
         });
         axios.put.mockResolvedValue({ data: existing });
 
-        render(<Dashboard />);
+        renderDashboard();
         expect(await screen.findByText('Alex')).toBeInTheDocument();
 
         // An in-place edit is a correction, not a new reading — no payoff screen.
@@ -375,13 +456,13 @@ describe('Dashboard — context surface and error handling', () => {
     });
 
     it('saves a What Changed note without touching the scores', async () => {
-        const existing = { ID: 1, name: 'Alex', date: '2026-01-01T00:00:00Z', stats: { eros: 40 } };
-        const created = { ID: 2, name: 'Alex', date: '2026-03-19T00:00:00Z', stats: { eros: 70 }, tags: [], description: '' };
-        axios.get.mockResolvedValue({ data: [existing] });
+        const existing = { ID: 1, relationship_id: 1, name: 'Alex', date: '2026-01-01T00:00:00Z', stats: { eros: 40 } };
+        const created = { ID: 2, relationship_id: 1, name: 'Alex', date: '2026-03-19T00:00:00Z', stats: { eros: 70 }, tags: [], description: '' };
+        mockFetch([existing]);
         axios.post.mockResolvedValue({ data: created });
         axios.put.mockResolvedValue({ data: { ...created, description: 'The move happened.', tags: ['life change'] } });
 
-        render(<Dashboard />);
+        renderDashboard();
         expect(await screen.findByText('Alex')).toBeInTheDocument();
 
         await userEvent.click(screen.getByTitle('Add New Version'));
@@ -405,14 +486,389 @@ describe('Dashboard — context surface and error handling', () => {
         expect(await screen.findByText('Note saved.')).toBeInTheDocument();
     });
 
+    it('shows the summary line on the active card', async () => {
+        mockFetch([
+            { ID: 1, relationship_id: 1, name: 'Alex', date: '2026-01-01T00:00:00Z', stats: { storge: 80, pragma: 70, mania: 10 } },
+            { ID: 2, relationship_id: 1, name: 'Alex', date: '2026-02-01T00:00:00Z', stats: { storge: 82, pragma: 72, mania: 40 } },
+            { ID: 3, relationship_id: 1, name: 'Alex', date: '2026-03-01T00:00:00Z', stats: { storge: 85, pragma: 75, mania: 70 } }
+        ]);
+
+        renderDashboard();
+
+        expect(await screen.findByText(/Storge · Pragma dominant — Mania most changed/)).toBeInTheDocument();
+    });
+
+    it('navigates to the timeline route instead of swapping the grid', async () => {
+        mockFetch([{ ID: 1, relationship_id: 12, name: 'Sam & Jo', date: '2026-01-01T00:00:00Z', stats: { eros: 40 } }]);
+
+        renderDashboard();
+        await screen.findByText('Sam & Jo');
+
+        await userEvent.click(screen.getByTitle('Deep Analysis'));
+
+        expect(await screen.findByText('timeline for relationship 12')).toBeInTheDocument();
+    });
+
+    it('flips the active card between bars and its Love Shape', async () => {
+        mockFetch([{ ID: 1, relationship_id: 1, name: 'Alex', date: '2026-01-01T00:00:00Z', stats: { eros: 40 } }]);
+
+        renderDashboard();
+        await screen.findByText('Alex');
+
+        expect(screen.queryByTestId('love-shape')).not.toBeInTheDocument();
+
+        await userEvent.click(screen.getByTitle('Show Love Shape'));
+        expect(screen.getByTestId('love-shape')).toBeInTheDocument();
+
+        await userEvent.click(screen.getByTitle('Show bars'));
+        expect(screen.queryByTestId('love-shape')).not.toBeInTheDocument();
+    });
+
+    it('only swallows the wheel while there is a version left to scrub to', async () => {
+        mockFetch([
+            { ID: 1, relationship_id: 1, name: 'Alex', date: '2026-01-01T00:00:00Z', stats: { eros: 40 } },
+            { ID: 2, relationship_id: 1, name: 'Alex', date: '2026-02-01T00:00:00Z', stats: { eros: 60 } }
+        ]);
+
+        renderDashboard();
+        const card = (await screen.findAllByText('Alex'))[0].closest('.relative');
+
+        // Down from the newest: there is history below, so the page must not scroll.
+        const scrubbed = new WheelEvent('wheel', { deltaY: 10, cancelable: true, bubbles: true });
+        card.dispatchEvent(scrubbed);
+        expect(scrubbed.defaultPrevented).toBe(true);
+
+        // Down again from the oldest: nothing left to reveal, so let the page scroll.
+        await waitFor(() => {
+            const clamped = new WheelEvent('wheel', { deltaY: 10, cancelable: true, bubbles: true });
+            card.dispatchEvent(clamped);
+            expect(clamped.defaultPrevented).toBe(false);
+        });
+    });
+
+    it('lets the page scroll over a single-version stack', async () => {
+        mockFetch([{ ID: 1, relationship_id: 1, name: 'Alex', date: '2026-01-01T00:00:00Z', stats: { eros: 40 } }]);
+
+        renderDashboard();
+        const card = (await screen.findByText('Alex')).closest('.relative');
+
+        const event = new WheelEvent('wheel', { deltaY: 10, cancelable: true, bubbles: true });
+        card.dispatchEvent(event);
+
+        expect(event.defaultPrevented).toBe(false);
+    });
+
     it('dismisses the notice banner', async () => {
         axios.get.mockRejectedValue(new Error('Network Error'));
 
-        render(<Dashboard />);
+        renderDashboard();
 
         const banner = await screen.findByRole('alert');
         await userEvent.click(within(banner).getByRole('button', { name: 'Dismiss notification' }));
 
         expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+});
+
+describe('Quick Pulse', () => {
+    const onSave = vi.fn();
+    const onClose = vi.fn();
+
+    const lastSnapshot = {
+        ID: 5,
+        relationship_id: 1,
+        name: 'Alex',
+        date: '2026-01-10T00:00:00Z',
+        stats: { eros: 40, mania: 70 },   // everything else was skipped last time
+        uncertain: ['mania'],
+        tags: ['conflict'],
+        description: 'rough month',
+        guide_answers: { eros: { 0: 3 } }
+    };
+
+    beforeEach(() => vi.clearAllMocks());
+
+    const renderPulse = () => render(
+        <PersonForm onSave={onSave} onClose={onClose} initialData={lastSnapshot} isPulse />
+    );
+
+    it('opens collapsed, carrying last time\'s answers', () => {
+        renderPulse();
+
+        expect(screen.getByRole('heading', { name: 'Quick Pulse' })).toBeInTheDocument();
+        // Seven one-line rows; no sliders until something is opened.
+        expect(screen.getAllByRole('button', { name: /^Adjust / })).toHaveLength(7);
+        expect(screen.queryByLabelText('Eros')).not.toBeInTheDocument();
+
+        expect(screen.getAllByText('unchanged')).toHaveLength(2);        // eros and mania
+        expect(screen.getAllByText('still not scored')).toHaveLength(5); // the skipped rest
+    });
+
+    it('saves as a pulse without opening anything', async () => {
+        renderPulse();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Save pulse' }));
+
+        const payload = onSave.mock.calls[0][0];
+        expect(payload.kind).toBe('pulse');
+        expect(payload.name).toBe('Alex');
+        // Unchanged means unchanged: the scores carry over and the skips stay skipped.
+        expect(payload.stats).toEqual({ eros: 40, mania: 70 });
+        // Context describes a period, so a pulse starts it empty like any new version.
+        expect(payload.description).toBe('');
+        expect(payload.tags).toEqual([]);
+        expect(payload.uncertain).toEqual([]);
+    });
+
+    it('expands one category to the full row on request, and hides guided scoring', async () => {
+        renderPulse();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Adjust Eros' }));
+
+        expect(screen.getByLabelText('Eros')).toHaveValue('40');
+        // The fast path and the careful path are different tools.
+        expect(screen.queryByRole('button', { name: /guide me/i })).not.toBeInTheDocument();
+
+        fireEvent.change(screen.getByLabelText('Eros'), { target: { value: '65' } });
+        await userEvent.click(screen.getByRole('button', { name: 'Save pulse' }));
+
+        expect(onSave.mock.calls[0][0].stats).toEqual({ eros: 65, mania: 70 });
+    });
+
+    it('locks the name, exactly like a new version', () => {
+        renderPulse();
+        expect(screen.getByPlaceholderText('Enter name...')).toBeDisabled();
+    });
+});
+
+describe('Dashboard — the cadence nudge', () => {
+    const sixtyDaysAgo = new Date(Date.now() - 60 * 86400000).toISOString();
+
+    const overdue = [{
+        ID: 1, relationship_id: 1, name: 'Alex', date: sixtyDaysAgo, stats: { eros: 40 }
+    }];
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        localStorage.clear();
+        sessionStorage.clear();
+    });
+
+    it('says one calm sentence when a rhythm has elapsed', async () => {
+        mockFetch(overdue, [{ ID: 1, name: 'Alex', cadence_days: 30 }]);
+
+        renderDashboard();
+
+        const nudge = await screen.findByText(/It's been .* since your last snapshot of Alex\./);
+        expect(nudge).toBeInTheDocument();
+        // No streak, no count of what was missed, no alarm.
+        expect(screen.queryByText(/overdue|missed|streak/i)).not.toBeInTheDocument();
+    });
+
+    it('stays silent when no rhythm is set, however long it has been', async () => {
+        mockFetch(overdue, [{ ID: 1, name: 'Alex', cadence_days: null }]);
+
+        renderDashboard();
+        await screen.findByText('Alex');
+
+        expect(screen.queryByText(/since your last snapshot/)).not.toBeInTheDocument();
+    });
+
+    it('goes quiet for a week when told "Later"', async () => {
+        mockFetch(overdue, [{ ID: 1, name: 'Alex', cadence_days: 30 }]);
+
+        const first = renderDashboard();
+        await screen.findByText(/since your last snapshot of Alex/);
+        await userEvent.click(screen.getByRole('button', { name: 'Later' }));
+
+        expect(screen.queryByText(/since your last snapshot/)).not.toBeInTheDocument();
+
+        // A stored snooze outlives the session it was set in.
+        first.unmount();
+        sessionStorage.clear();
+        renderDashboard();
+        await screen.findByText('Alex');
+        expect(screen.queryByText(/since your last snapshot/)).not.toBeInTheDocument();
+    });
+
+    it('does not come back in the same session once dismissed', async () => {
+        mockFetch(overdue, [{ ID: 1, name: 'Alex', cadence_days: 30 }]);
+
+        const first = renderDashboard();
+        await screen.findByText(/since your last snapshot of Alex/);
+        await userEvent.click(screen.getByRole('button', { name: 'Dismiss reminder' }));
+
+        // Remounting is not a new session — and the snooze store is untouched by dismissal.
+        first.unmount();
+        renderDashboard();
+        await screen.findByText('Alex');
+        expect(screen.queryByText(/since your last snapshot/)).not.toBeInTheDocument();
+        expect(localStorage.getItem('alq:cadence-snoozed')).toBeNull();
+    });
+
+    it('opens a pulse pre-filled from the newest snapshot', async () => {
+        mockFetch(overdue, [{ ID: 1, name: 'Alex', cadence_days: 30 }]);
+
+        renderDashboard();
+        await screen.findByText(/since your last snapshot of Alex/);
+        await userEvent.click(screen.getByRole('button', { name: 'Quick pulse' }));
+
+        expect(await screen.findByRole('heading', { name: 'Quick Pulse' })).toBeInTheDocument();
+        expect(screen.getByText('unchanged')).toBeInTheDocument();
+    });
+});
+
+describe('Dashboard — stack-level actions', () => {
+    const alexV1 = { ID: 1, relationship_id: 1, name: 'Alex', date: '2026-01-01T00:00:00Z', stats: { eros: 40 } };
+    const alexV2 = { ID: 2, relationship_id: 1, name: 'Alex', date: '2026-02-01T00:00:00Z', stats: { eros: 60 } };
+    const alexM = { ID: 3, relationship_id: 2, name: 'Alex M', date: '2026-03-01T00:00:00Z', stats: { eros: 20 } };
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockFetch([alexV1, alexV2, alexM]);
+    });
+
+    const openMenu = async (name) => {
+        await screen.findByRole('button', { name: `Stack actions for ${name}` });
+        await userEvent.click(screen.getByRole('button', { name: `Stack actions for ${name}` }));
+    };
+
+    it('keeps two relationships that share a display name in separate stacks', async () => {
+        mockFetch([
+            { ID: 1, relationship_id: 1, name: 'Alex', date: '2026-01-01T00:00:00Z', stats: { eros: 40 } },
+            { ID: 2, relationship_id: 2, name: 'Alex', date: '2026-02-01T00:00:00Z', stats: { eros: 60 } }
+        ]);
+
+        renderDashboard();
+
+        // Two stack headers, so two stacks — the case name-based grouping could not express.
+        expect(await screen.findAllByRole('button', { name: 'Stack actions for Alex' })).toHaveLength(2);
+    });
+
+    it('renames every card in the stack', async () => {
+        axios.patch.mockResolvedValue({ data: { ID: 1, name: 'Alexandra', snapshot_count: 2 } });
+
+        renderDashboard();
+        await openMenu('Alex');
+        await userEvent.click(screen.getByRole('menuitem', { name: /rename relationship/i }));
+
+        const field = screen.getByLabelText('Name');
+        expect(field).toHaveValue('Alex');
+        await userEvent.clear(field);
+        await userEvent.type(field, 'Alexandra');
+        await userEvent.click(screen.getByRole('button', { name: 'Rename' }));
+
+        await waitFor(() => {
+            expect(axios.patch).toHaveBeenCalledWith('/api/relationships/1', { name: 'Alexandra' });
+        });
+        expect(await screen.findByRole('button', { name: 'Stack actions for Alexandra' })).toBeInTheDocument();
+        // Both versions carry the new name, which is the whole point of the entity.
+        await waitFor(() => expect(screen.getAllByText('Alexandra').length).toBeGreaterThan(0));
+        expect(screen.queryByRole('button', { name: 'Stack actions for Alex' })).not.toBeInTheDocument();
+    });
+
+    it('keeps the rename dialog open and explains a name collision', async () => {
+        axios.patch.mockRejectedValue({
+            response: { status: 409, data: { error: 'You already have a relationship with that name. Merge them instead.' } }
+        });
+
+        renderDashboard();
+        await openMenu('Alex');
+        await userEvent.click(screen.getByRole('menuitem', { name: /rename relationship/i }));
+
+        await userEvent.clear(screen.getByLabelText('Name'));
+        await userEvent.type(screen.getByLabelText('Name'), 'Alex M');
+        await userEvent.click(screen.getByRole('button', { name: 'Rename' }));
+
+        expect(await screen.findByRole('alert')).toHaveTextContent(/already have a relationship with that name/i);
+        expect(screen.getByLabelText('Name')).toHaveValue('Alex M');
+    });
+
+    it('offers only the other stacks as merge targets, and states what will happen', async () => {
+        axios.post.mockResolvedValue({ data: { ID: 2, name: 'Alex M', snapshot_count: 3 } });
+
+        renderDashboard();
+        await openMenu('Alex');
+        await userEvent.click(screen.getByRole('menuitem', { name: /merge into/i }));
+
+        // The stack being merged is not offered as a target for itself.
+        expect(screen.getAllByRole('radio')).toHaveLength(1);
+        expect(screen.getByRole('radio', { name: /Alex M/ })).toBeInTheDocument();
+
+        // Nothing is stated, and nothing can be confirmed, until a target is chosen.
+        expect(screen.getByRole('button', { name: 'Merge' })).toBeDisabled();
+        await userEvent.click(screen.getByRole('radio', { name: /Alex M/ }));
+        expect(screen.getByText(/All 2 snapshots of/)).toHaveTextContent(
+            'All 2 snapshots of Alex will move into Alex M. This cannot be split apart automatically.'
+        );
+
+        await userEvent.click(screen.getByRole('button', { name: 'Merge' }));
+
+        await waitFor(() => {
+            expect(axios.post).toHaveBeenCalledWith('/api/relationships/2/merge', { source_id: 1 });
+        });
+        // One stack left, holding all three snapshots.
+        await waitFor(() => {
+            expect(screen.getAllByRole('button', { name: /^Stack actions for/ })).toHaveLength(1);
+        });
+        expect(screen.getByRole('button', { name: 'Stack actions for Alex M' })).toBeInTheDocument();
+    });
+
+    it('sets a check-in rhythm from the stack menu', async () => {
+        axios.patch.mockResolvedValue({ data: { ID: 1, name: 'Alex', cadence_days: 90, snapshot_count: 2 } });
+
+        renderDashboard();
+        await openMenu('Alex');
+        await userEvent.click(screen.getByRole('menuitem', { name: /check-in rhythm/i }));
+
+        // Off is listed first and is what an unset relationship shows.
+        expect(screen.getByRole('radio', { name: /Off/ })).toBeChecked();
+
+        await userEvent.click(screen.getByRole('radio', { name: /Quarterly/ }));
+        await userEvent.click(screen.getByRole('button', { name: 'Save rhythm' }));
+
+        await waitFor(() => {
+            expect(axios.patch).toHaveBeenCalledWith('/api/relationships/1', { cadence_days: 90 });
+        });
+        // The stack header reports the rhythm it now keeps.
+        expect(await screen.findByText(/quarterly/i)).toBeInTheDocument();
+    });
+
+    it('turns a rhythm off by sending an explicit null', async () => {
+        mockFetch([alexV1, alexV2, alexM], [
+            { ID: 1, name: 'Alex', cadence_days: 30 },
+            { ID: 2, name: 'Alex M', cadence_days: null }
+        ]);
+        axios.patch.mockResolvedValue({ data: { ID: 1, name: 'Alex', cadence_days: null, snapshot_count: 2 } });
+
+        renderDashboard();
+        await openMenu('Alex');
+        await userEvent.click(screen.getByRole('menuitem', { name: /check-in rhythm/i }));
+
+        expect(screen.getByRole('radio', { name: /Monthly/ })).toBeChecked();
+        await userEvent.click(screen.getByRole('radio', { name: /Off/ }));
+        await userEvent.click(screen.getByRole('button', { name: 'Save rhythm' }));
+
+        // Absent would mean "leave it alone"; null is what turns reminders off.
+        await waitFor(() => {
+            expect(axios.patch).toHaveBeenCalledWith('/api/relationships/1', { cadence_days: null });
+        });
+    });
+
+    it('spells out how many snapshots a relationship delete will take', async () => {
+        axios.delete.mockResolvedValue({ data: { message: 'Relationship deleted' } });
+
+        renderDashboard();
+        await openMenu('Alex');
+        await userEvent.click(screen.getByRole('menuitem', { name: /delete relationship/i }));
+
+        expect(screen.getByText(/All 2 snapshots of/)).toBeInTheDocument();
+        await userEvent.click(screen.getByRole('button', { name: 'Delete 2 snapshots' }));
+
+        await waitFor(() => expect(axios.delete).toHaveBeenCalledWith('/api/relationships/1'));
+        await waitFor(() => {
+            expect(screen.queryByRole('button', { name: 'Stack actions for Alex' })).not.toBeInTheDocument();
+        });
+        expect(screen.getByRole('button', { name: 'Stack actions for Alex M' })).toBeInTheDocument();
     });
 });
