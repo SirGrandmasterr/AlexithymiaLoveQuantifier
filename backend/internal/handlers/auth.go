@@ -3,6 +3,7 @@ package handlers
 import (
 	"log"
 	"net/http"
+	"strings"
 
 	"alexithymia-backend/internal/auth"
 	"alexithymia-backend/internal/database"
@@ -86,12 +87,15 @@ func GetUserProfile(c *gin.Context) {
 	c.JSON(http.StatusOK, user)
 }
 
+// UpdateProfileInput uses pointers so an absent field ("leave unchanged") is
+// distinguishable from an empty one ("clear this"). Sparse-update-by-zero-value
+// made it impossible to blank a name, reset an age, or remove an avatar.
 type UpdateProfileInput struct {
-	Name           string `json:"name"`
-	Age            int    `json:"age"`
-	MBTIType       string `json:"mbti_type"`
-	ProfilePicture string `json:"profile_picture"`
-	Email          string `json:"email"`
+	Name           *string `json:"name"`
+	Age            *int    `json:"age"`
+	MBTIType       *string `json:"mbti_type"`
+	ProfilePicture *string `json:"profile_picture"`
+	Email          *string `json:"email"`
 }
 
 func UpdateUserProfile(c *gin.Context) {
@@ -113,22 +117,27 @@ func UpdateUserProfile(c *gin.Context) {
 		return
 	}
 
-	// Update fields if provided
-	if input.Name != "" {
-		user.Name = input.Name
+	// Only fields present in the request body are assigned.
+	if input.Name != nil {
+		user.Name = *input.Name
 	}
-	if input.Age > 0 {
-		user.Age = input.Age
+	if input.Age != nil {
+		user.Age = *input.Age
 	}
-	if input.MBTIType != "" {
-		user.MBTIType = input.MBTIType
+	if input.MBTIType != nil {
+		user.MBTIType = *input.MBTIType
 	}
-	if input.ProfilePicture != "" {
-		user.ProfilePicture = input.ProfilePicture
+	if input.ProfilePicture != nil {
+		user.ProfilePicture = *input.ProfilePicture
 	}
-	if input.Email != "" {
-		// Basic check but real apps would send verification email
-		user.Email = input.Email
+	if input.Email != nil {
+		// Email is the login identifier, so it is the one field that cannot be
+		// cleared. Still no format validation or verification email.
+		if strings.TrimSpace(*input.Email) == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "email cannot be empty"})
+			return
+		}
+		user.Email = *input.Email
 	}
 
 	if err := database.DB.Save(&user).Error; err != nil {

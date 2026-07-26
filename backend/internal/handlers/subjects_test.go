@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,6 +20,9 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
+
+// validStats uses real category ids — arbitrary keys are rejected since Phase 1.
+var validStats = map[string]int{"eros": 85, "mania": 60}
 
 // setupMockDB initializes a mocked GORM DB and returns it along with the mock observer.
 func setupMockDB(t *testing.T) (sqlmock.Sqlmock, *gorm.DB) {
@@ -65,25 +69,173 @@ func TestCreateSubject(t *testing.T) {
 		requestBody    interface{}
 		mockBehavior   func(sqlmock.Sqlmock)
 		expectedStatus int
+		expectedError  string
 	}{
 		{
 			name:          "Valid Request",
 			authenticated: true,
 			userID:        1,
 			requestBody: CreateSubjectInput{
-				Name:        "New Subject",
-				Description: "Test Description",
-				Date:        "2023-10-25",
-				Stats:       map[string]int{"love": 5},
+				Name:         "New Subject",
+				Description:  "Test Description",
+				Date:         "2023-10-25",
+				Stats:        validStats,
+				Tags:         []string{"conflict", "trip together"},
+				Uncertain:    []string{"mania"},
+				GuideAnswers: map[string]map[string]int{"eros": {"0": 2, "1": 3}},
 			},
 			mockBehavior: func(mock sqlmock.Sqlmock) {
 				mock.ExpectBegin()
-				mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "analysis_subjects" ("created_at","updated_at","deleted_at","user_id","name","description","date","stats") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "id"`)).
-					WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1, "New Subject", "Test Description", sqlmock.AnyArg(), sqlmock.AnyArg()).
+				mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "analysis_subjects" ("created_at","updated_at","deleted_at","user_id","name","description","date","stats","tags","uncertain","guide_answers") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING "id"`)).
+					WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1, "New Subject", "Test Description", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
 					WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 				mock.ExpectCommit()
 			},
 			expectedStatus: http.StatusCreated,
+		},
+		{
+			name:          "Name Is Trimmed Server-Side",
+			authenticated: true,
+			userID:        1,
+			requestBody:   map[string]interface{}{"name": "  Alex  "},
+			mockBehavior: func(mock sqlmock.Sqlmock) {
+				mock.ExpectBegin()
+				mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "analysis_subjects"`)).
+					WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1, "Alex", "", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+					WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+				mock.ExpectCommit()
+			},
+			expectedStatus: http.StatusCreated,
+		},
+		{
+			name:          "Partial Stats Are Accepted",
+			authenticated: true,
+			userID:        1,
+			requestBody:   map[string]interface{}{"name": "Alex", "stats": map[string]int{"storge": 40}},
+			mockBehavior: func(mock sqlmock.Sqlmock) {
+				mock.ExpectBegin()
+				mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "analysis_subjects"`)).
+					WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+				mock.ExpectCommit()
+			},
+			expectedStatus: http.StatusCreated,
+		},
+		{
+			name:           "Whitespace-Only Name",
+			authenticated:  true,
+			userID:         1,
+			requestBody:    map[string]interface{}{"name": "   "},
+			mockBehavior:   func(sqlmock.Sqlmock) {},
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "name is required",
+		},
+		{
+			name:           "Unknown Stats Key",
+			authenticated:  true,
+			userID:         1,
+			requestBody:    map[string]interface{}{"name": "Alex", "stats": map[string]int{"love": 5}},
+			mockBehavior:   func(sqlmock.Sqlmock) {},
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "unknown stats key: love",
+		},
+		{
+			name:           "Stats Value Above Range",
+			authenticated:  true,
+			userID:         1,
+			requestBody:    map[string]interface{}{"name": "Alex", "stats": map[string]int{"eros": 101}},
+			mockBehavior:   func(sqlmock.Sqlmock) {},
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "stats.eros must be between 0 and 100",
+		},
+		{
+			name:           "Stats Value Below Range",
+			authenticated:  true,
+			userID:         1,
+			requestBody:    map[string]interface{}{"name": "Alex", "stats": map[string]int{"agape": -1}},
+			mockBehavior:   func(sqlmock.Sqlmock) {},
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "stats.agape must be between 0 and 100",
+		},
+		{
+			name:           "Malformed Date",
+			authenticated:  true,
+			userID:         1,
+			requestBody:    map[string]interface{}{"name": "Alex", "date": "2026-13-45"},
+			mockBehavior:   func(sqlmock.Sqlmock) {},
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "invalid date, expected YYYY-MM-DD",
+		},
+		{
+			name:           "Too Many Tags",
+			authenticated:  true,
+			userID:         1,
+			requestBody:    map[string]interface{}{"name": "Alex", "tags": make([]string, 13)},
+			mockBehavior:   func(sqlmock.Sqlmock) {},
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "too many tags, maximum is 12",
+		},
+		{
+			name:           "Blank Tag",
+			authenticated:  true,
+			userID:         1,
+			requestBody:    map[string]interface{}{"name": "Alex", "tags": []string{"conflict", "   "}},
+			mockBehavior:   func(sqlmock.Sqlmock) {},
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "tags must not be empty",
+		},
+		{
+			name:           "Overlong Tag",
+			authenticated:  true,
+			userID:         1,
+			requestBody:    map[string]interface{}{"name": "Alex", "tags": []string{strings.Repeat("x", 41)}},
+			mockBehavior:   func(sqlmock.Sqlmock) {},
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "tag exceeds 40 characters",
+		},
+		{
+			name:           "Unknown Uncertain Category",
+			authenticated:  true,
+			userID:         1,
+			requestBody:    map[string]interface{}{"name": "Alex", "stats": validStats, "uncertain": []string{"nope"}},
+			mockBehavior:   func(sqlmock.Sqlmock) {},
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "unknown category id in uncertain: nope",
+		},
+		{
+			name:           "Uncertain About An Unscored Category",
+			authenticated:  true,
+			userID:         1,
+			requestBody:    map[string]interface{}{"name": "Alex", "stats": map[string]int{"eros": 40}, "uncertain": []string{"ludus"}},
+			mockBehavior:   func(sqlmock.Sqlmock) {},
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "cannot mark ludus uncertain: it has no score",
+		},
+		{
+			name:           "Unknown Guide Answer Category",
+			authenticated:  true,
+			userID:         1,
+			requestBody:    map[string]interface{}{"name": "Alex", "guide_answers": map[string]map[string]int{"nope": {"0": 1}}},
+			mockBehavior:   func(sqlmock.Sqlmock) {},
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "unknown category id in guide_answers: nope",
+		},
+		{
+			name:           "Guide Answer Above Scale",
+			authenticated:  true,
+			userID:         1,
+			requestBody:    map[string]interface{}{"name": "Alex", "guide_answers": map[string]map[string]int{"eros": {"0": 4}}},
+			mockBehavior:   func(sqlmock.Sqlmock) {},
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "guide_answers.eros.0 must be between 0 and 3",
+		},
+		{
+			name:           "Guide Answer With A Non-Index Key",
+			authenticated:  true,
+			userID:         1,
+			requestBody:    map[string]interface{}{"name": "Alex", "guide_answers": map[string]map[string]int{"eros": {"spark": 1}}},
+			mockBehavior:   func(sqlmock.Sqlmock) {},
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "guide_answers.eros has a non-index key: spark",
 		},
 		{
 			name:          "Unauthorized",
@@ -138,13 +290,67 @@ func TestCreateSubject(t *testing.T) {
 			r.ServeHTTP(w, req)
 
 			if w.Code != tt.expectedStatus {
-				t.Errorf("Expected status %d but got %d", tt.expectedStatus, w.Code)
+				t.Errorf("Expected status %d but got %d (body: %s)", tt.expectedStatus, w.Code, w.Body.String())
+			}
+
+			if tt.expectedError != "" && !strings.Contains(w.Body.String(), tt.expectedError) {
+				t.Errorf("Expected error containing %q but got %s", tt.expectedError, w.Body.String())
 			}
 
 			if err := mock.ExpectationsWereMet(); err != nil {
 				t.Errorf("Unmet sqlmock expectations: %s", err)
 			}
 		})
+	}
+}
+
+// TestCreateSubjectPersistsContext asserts the context capsule survives the round trip.
+func TestCreateSubjectPersistsContext(t *testing.T) {
+	mock, gormDB := setupMockDB(t)
+	database.DB = gormDB
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "analysis_subjects"`)).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+	mock.ExpectCommit()
+
+	r := setupGinTestRouter(CreateSubject, 1, true)
+	r.POST("/subjects", CreateSubject)
+
+	body := `{"name":"Alex","description":"rough month","date":"2026-02-20",
+	          "stats":{"mania":70},"tags":["  conflict  ","distance"],
+	          "uncertain":["mania"],"guide_answers":{"mania":{"0":3,"2":1}}}`
+	req, _ := http.NewRequest(http.MethodPost, "/subjects", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("Expected 201 but got %d (body: %s)", w.Code, w.Body.String())
+	}
+
+	var created models.AnalysisSubject
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if created.Description != "rough month" {
+		t.Errorf("Expected description to be stored, got %q", created.Description)
+	}
+	if len(created.Tags) != 2 || created.Tags[0] != "conflict" || created.Tags[1] != "distance" {
+		t.Errorf("Expected trimmed tags [conflict distance], got %v", created.Tags)
+	}
+	if created.Date == nil || created.Date.Format(dateLayout) != "2026-02-20" {
+		t.Errorf("Expected date 2026-02-20, got %v", created.Date)
+	}
+	if len(created.Uncertain) != 1 || created.Uncertain[0] != "mania" {
+		t.Errorf("Expected uncertain [mania], got %v", created.Uncertain)
+	}
+	if created.GuideAnswers["mania"]["0"] != 3 || created.GuideAnswers["mania"]["2"] != 1 {
+		t.Errorf("Expected guide answers to round-trip, got %v", created.GuideAnswers)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unmet sqlmock expectations: %s", err)
 	}
 }
 
@@ -232,7 +438,7 @@ func TestGetSubjects(t *testing.T) {
 
 func TestUpdateSubject(t *testing.T) {
 	dateStr := "2023-11-01"
-	parsedDate, _ := time.Parse("2006-01-02", dateStr)
+	parsedDate, _ := time.Parse(dateLayout, dateStr)
 
 	tests := []struct {
 		name           string
@@ -242,17 +448,21 @@ func TestUpdateSubject(t *testing.T) {
 		requestBody    interface{}
 		mockBehavior   func(sqlmock.Sqlmock)
 		expectedStatus int
+		expectedError  string
 	}{
 		{
 			name:          "Valid Request",
 			subjectID:     "1",
 			authenticated: true,
 			userID:        1,
-			requestBody: CreateSubjectInput{
-				Name:        "Updated Subject",
-				Description: "Updated Desc",
-				Date:        dateStr,
-				Stats:       map[string]int{"love": 10},
+			requestBody: map[string]interface{}{
+				"name":          "Updated Subject",
+				"description":   "Updated Desc",
+				"date":          dateStr,
+				"stats":         map[string]int{"eros": 10},
+				"tags":          []string{"milestone"},
+				"uncertain":     []string{"eros"},
+				"guide_answers": map[string]map[string]int{"eros": {"0": 1}},
 			},
 			mockBehavior: func(mock sqlmock.Sqlmock) {
 				// Mocks for First()
@@ -264,7 +474,7 @@ func TestUpdateSubject(t *testing.T) {
 				// Mocks for Save()
 				mock.ExpectBegin()
 				mock.ExpectExec(regexp.QuoteMeta(`UPDATE "analysis_subjects"`)).
-					WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1, "Updated Subject", "Updated Desc", &parsedDate, sqlmock.AnyArg(), 1).
+					WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1, "Updated Subject", "Updated Desc", &parsedDate, sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1).
 					WillReturnResult(sqlmock.NewResult(1, 1))
 				mock.ExpectCommit()
 			},
@@ -275,9 +485,7 @@ func TestUpdateSubject(t *testing.T) {
 			subjectID:     "999",
 			authenticated: true,
 			userID:        1,
-			requestBody: CreateSubjectInput{
-				Name: "Update Subject",
-			},
+			requestBody:   map[string]interface{}{"name": "Update Subject"},
 			mockBehavior: func(mock sqlmock.Sqlmock) {
 				mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "analysis_subjects"`)).
 					WithArgs("999", 1, 1).
@@ -293,6 +501,84 @@ func TestUpdateSubject(t *testing.T) {
 			requestBody:    "bad-json",
 			mockBehavior:   func(sqlmock.Sqlmock) {},
 			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:          "Unknown Stats Key",
+			subjectID:     "1",
+			authenticated: true,
+			userID:        1,
+			requestBody:   map[string]interface{}{"stats": map[string]int{"love": 5}},
+			mockBehavior: func(mock sqlmock.Sqlmock) {
+				rows := sqlmock.NewRows([]string{"id", "user_id", "name"}).AddRow(1, 1, "Old Name")
+				mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "analysis_subjects"`)).
+					WithArgs("1", 1, 1).
+					WillReturnRows(rows)
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "unknown stats key: love",
+		},
+		{
+			name:          "Malformed Date",
+			subjectID:     "1",
+			authenticated: true,
+			userID:        1,
+			requestBody:   map[string]interface{}{"date": "25-10-2023"},
+			mockBehavior: func(mock sqlmock.Sqlmock) {
+				rows := sqlmock.NewRows([]string{"id", "user_id", "name"}).AddRow(1, 1, "Old Name")
+				mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "analysis_subjects"`)).
+					WithArgs("1", 1, 1).
+					WillReturnRows(rows)
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "invalid date, expected YYYY-MM-DD",
+		},
+		{
+			name:          "Whitespace-Only Name",
+			subjectID:     "1",
+			authenticated: true,
+			userID:        1,
+			requestBody:   map[string]interface{}{"name": "  "},
+			mockBehavior: func(mock sqlmock.Sqlmock) {
+				rows := sqlmock.NewRows([]string{"id", "user_id", "name"}).AddRow(1, 1, "Old Name")
+				mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "analysis_subjects"`)).
+					WithArgs("1", 1, 1).
+					WillReturnRows(rows)
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "name is required",
+		},
+		{
+			name:          "Guide Answer Out Of Range",
+			subjectID:     "1",
+			authenticated: true,
+			userID:        1,
+			requestBody:   map[string]interface{}{"guide_answers": map[string]map[string]int{"storge": {"1": -1}}},
+			mockBehavior: func(mock sqlmock.Sqlmock) {
+				rows := sqlmock.NewRows([]string{"id", "user_id", "name"}).AddRow(1, 1, "Old Name")
+				mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "analysis_subjects"`)).
+					WithArgs("1", 1, 1).
+					WillReturnRows(rows)
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "guide_answers.storge.1 must be between 0 and 3",
+		},
+		{
+			// Uncertain is checked against the row's *resulting* stats, so dropping a
+			// scored category while the row still flags it unsure is reported, not stored.
+			name:          "Stats Update Orphans An Uncertain Flag",
+			subjectID:     "1",
+			authenticated: true,
+			userID:        1,
+			requestBody:   map[string]interface{}{"stats": map[string]int{"eros": 50}},
+			mockBehavior: func(mock sqlmock.Sqlmock) {
+				rows := sqlmock.NewRows([]string{"id", "user_id", "name", "stats", "uncertain"}).
+					AddRow(1, 1, "Alex", `{"eros":50,"mania":70}`, `["mania"]`)
+				mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "analysis_subjects"`)).
+					WithArgs("1", 1, 1).
+					WillReturnRows(rows)
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedError:  "cannot mark mania uncertain: it has no score",
 		},
 	}
 
@@ -314,13 +600,135 @@ func TestUpdateSubject(t *testing.T) {
 			r.ServeHTTP(w, req)
 
 			if w.Code != tt.expectedStatus {
-				t.Errorf("Expected status %d but got %d", tt.expectedStatus, w.Code)
+				t.Errorf("Expected status %d but got %d (body: %s)", tt.expectedStatus, w.Code, w.Body.String())
+			}
+
+			if tt.expectedError != "" && !strings.Contains(w.Body.String(), tt.expectedError) {
+				t.Errorf("Expected error containing %q but got %s", tt.expectedError, w.Body.String())
 			}
 
 			if err := mock.ExpectationsWereMet(); err != nil {
 				t.Errorf("Unmet sqlmock expectations: %s", err)
 			}
 		})
+	}
+}
+
+// TestUpdateSubjectPartialMerge is the regression guard for the description wipe:
+// a body carrying only `stats` must leave name, description, date, and tags alone.
+func TestUpdateSubjectPartialMerge(t *testing.T) {
+	storedDate := time.Date(2026, 2, 20, 0, 0, 0, 0, time.UTC)
+
+	mock, gormDB := setupMockDB(t)
+	database.DB = gormDB
+
+	rows := sqlmock.NewRows([]string{"id", "user_id", "name", "description", "date", "stats", "tags", "uncertain", "guide_answers"}).
+		AddRow(1, 1, "Alex", "rough month", storedDate, `{"eros":85}`, `["conflict","distance"]`, `["eros"]`, `{"eros":{"0":2}}`)
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "analysis_subjects"`)).
+		WithArgs("1", 1, 1).
+		WillReturnRows(rows)
+
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE "analysis_subjects"`)).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1, "Alex", "rough month", &storedDate, sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+
+	r := setupGinTestRouter(UpdateSubject, 1, true)
+	r.PUT("/subjects/:id", UpdateSubject)
+
+	body := `{"stats":{"eros":90}}`
+	req, _ := http.NewRequest(http.MethodPut, "/subjects/1", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200 but got %d (body: %s)", w.Code, w.Body.String())
+	}
+
+	var updated models.AnalysisSubject
+	if err := json.Unmarshal(w.Body.Bytes(), &updated); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if updated.Name != "Alex" {
+		t.Errorf("Expected name to survive, got %q", updated.Name)
+	}
+	if updated.Description != "rough month" {
+		t.Errorf("Expected description to survive, got %q", updated.Description)
+	}
+	if len(updated.Tags) != 2 {
+		t.Errorf("Expected tags to survive, got %v", updated.Tags)
+	}
+	if updated.Date == nil || !updated.Date.Equal(storedDate) {
+		t.Errorf("Expected date to survive, got %v", updated.Date)
+	}
+	if updated.Stats["eros"] != 90 {
+		t.Errorf("Expected stats to be updated, got %v", updated.Stats)
+	}
+	if len(updated.Uncertain) != 1 || updated.Uncertain[0] != "eros" {
+		t.Errorf("Expected uncertain flags to survive, got %v", updated.Uncertain)
+	}
+	if updated.GuideAnswers["eros"]["0"] != 2 {
+		t.Errorf("Expected guide answers to survive, got %v", updated.GuideAnswers)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unmet sqlmock expectations: %s", err)
+	}
+}
+
+// TestUpdateSubjectExplicitClear proves an explicitly empty value still clears:
+// absent means "unchanged", "" means "clear".
+func TestUpdateSubjectExplicitClear(t *testing.T) {
+	storedDate := time.Date(2026, 2, 20, 0, 0, 0, 0, time.UTC)
+
+	mock, gormDB := setupMockDB(t)
+	database.DB = gormDB
+
+	rows := sqlmock.NewRows([]string{"id", "user_id", "name", "description", "date", "tags"}).
+		AddRow(1, 1, "Alex", "rough month", storedDate, `["conflict"]`)
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "analysis_subjects"`)).
+		WithArgs("1", 1, 1).
+		WillReturnRows(rows)
+
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE "analysis_subjects"`)).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1, "Alex", "", nil, sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+
+	r := setupGinTestRouter(UpdateSubject, 1, true)
+	r.PUT("/subjects/:id", UpdateSubject)
+
+	body := `{"description":"","date":"","tags":[]}`
+	req, _ := http.NewRequest(http.MethodPut, "/subjects/1", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200 but got %d (body: %s)", w.Code, w.Body.String())
+	}
+
+	var updated models.AnalysisSubject
+	if err := json.Unmarshal(w.Body.Bytes(), &updated); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if updated.Description != "" {
+		t.Errorf("Expected description cleared, got %q", updated.Description)
+	}
+	if updated.Date != nil {
+		t.Errorf("Expected date cleared, got %v", updated.Date)
+	}
+	if len(updated.Tags) != 0 {
+		t.Errorf("Expected tags cleared, got %v", updated.Tags)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unmet sqlmock expectations: %s", err)
 	}
 }
 
@@ -347,6 +755,20 @@ func TestDeleteSubject(t *testing.T) {
 				mock.ExpectCommit()
 			},
 			expectedStatus: http.StatusOK,
+		},
+		{
+			name:          "Not Found - Nothing Deleted",
+			subjectID:     "999",
+			authenticated: true,
+			userID:        1,
+			mockBehavior: func(mock sqlmock.Sqlmock) {
+				mock.ExpectBegin()
+				mock.ExpectExec(regexp.QuoteMeta(`UPDATE "analysis_subjects"`)).
+					WithArgs(sqlmock.AnyArg(), "999", 1).
+					WillReturnResult(sqlmock.NewResult(0, 0))
+				mock.ExpectCommit()
+			},
+			expectedStatus: http.StatusNotFound,
 		},
 		{
 			name:           "Unauthorized",

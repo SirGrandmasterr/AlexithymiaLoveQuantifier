@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Activity, Heart, ArrowRight } from 'lucide-react';
+import { AboutModal } from './Dashboard';
 
 export default function Landing() {
+    const [isAboutOpen, setIsAboutOpen] = useState(false);
+
     return (
         <div className="min-h-[calc(100vh-64px)] bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
             <div className="max-w-2xl space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -28,7 +31,10 @@ export default function Landing() {
                         <span>Start Analyzing</span>
                         <ArrowRight size={20} />
                     </Link>
-                    <button className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-white text-slate-600 border border-slate-200 rounded-2xl hover:border-slate-300 hover:bg-slate-50 transition-all text-lg font-medium">
+                    <button
+                        onClick={() => setIsAboutOpen(true)}
+                        className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-white text-slate-600 border border-slate-200 rounded-2xl hover:border-slate-300 hover:bg-slate-50 transition-all text-lg font-medium"
+                    >
                         Learn the Theory
                     </button>
                 </div>
@@ -52,6 +58,8 @@ export default function Landing() {
                     </div>
                 </div>
             </div>
+
+            {isAboutOpen && <AboutModal onClose={() => setIsAboutOpen(false)} />}
         </div>
     );
 }

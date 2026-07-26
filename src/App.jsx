@@ -27,6 +27,21 @@ export default function App() {
         }
     }, [token]);
 
+    // An expired token used to surface as an empty dashboard with no explanation.
+    // Clearing it here drops the user back to Landing, which is at least legible.
+    useEffect(() => {
+        const interceptorId = axios.interceptors.response.use(
+            (response) => response,
+            (error) => {
+                if (error?.response?.status === 401) {
+                    setToken(null);
+                }
+                return Promise.reject(error);
+            }
+        );
+        return () => axios.interceptors.response.eject(interceptorId);
+    }, []);
+
     const handleLogin = (newToken) => {
         setToken(newToken);
     };

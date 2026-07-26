@@ -1,6 +1,7 @@
 package database
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -73,6 +74,68 @@ func TestDatabaseIntegration_UserConstraints(t *testing.T) {
 	_ = db.Create(&badUser).Error
 }
 
+// additiveColumns are the columns added after the original schema. Every one must be
+// nullable and AutoMigrate-compatible: no phase before Phase 4 may need a real migration.
+var additiveColumns = []string{"tags", "uncertain", "guide_answers"}
+
+// TestAutoMigrateAddsNewColumns simulates a legacy database: the columns added by later
+// phases are dropped from an existing table with existing rows, and AutoMigrate must add
+// them back additively — the SQLite half of the "no structural migration yet" guarantee.
+func TestAutoMigrateAddsNewColumns(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.db")
+	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("Failed to open SQLite file database: %v", err)
+	}
+	// Windows will not delete the temp file while the handle is open.
+	t.Cleanup(func() {
+		if sqlDB, err := db.DB(); err == nil {
+			sqlDB.Close()
+		}
+	})
+
+	if err := db.AutoMigrate(&models.User{}, &models.AnalysisSubject{}); err != nil {
+		t.Fatalf("Failed initial migration: %v", err)
+	}
+
+	// Roll the schema back to its original shape and seed a legacy row.
+	for _, column := range additiveColumns {
+		if err := db.Migrator().DropColumn(&models.AnalysisSubject{}, column); err != nil {
+			t.Fatalf("Failed to drop %s column: %v", column, err)
+		}
+	}
+	if err := db.Exec(`INSERT INTO analysis_subjects (name, description) VALUES (?, ?)`, "Legacy", "old note").Error; err != nil {
+		t.Fatalf("Failed to seed legacy row: %v", err)
+	}
+
+	if err := db.AutoMigrate(&models.AnalysisSubject{}); err != nil {
+		t.Fatalf("AutoMigrate failed on the legacy schema: %v", err)
+	}
+	for _, column := range additiveColumns {
+		if !db.Migrator().HasColumn(&models.AnalysisSubject{}, column) {
+			t.Errorf("Expected AutoMigrate to add the %s column", column)
+		}
+	}
+
+	// The legacy row survives and reads back with the new fields empty — not an error.
+	var legacy models.AnalysisSubject
+	if err := db.First(&legacy, "name = ?", "Legacy").Error; err != nil {
+		t.Fatalf("Failed to read the legacy row after migration: %v", err)
+	}
+	if legacy.Description != "old note" {
+		t.Errorf("Expected the legacy note to survive migration, got %q", legacy.Description)
+	}
+	if len(legacy.Tags) != 0 {
+		t.Errorf("Expected no tags on a legacy row, got %v", legacy.Tags)
+	}
+	if len(legacy.Uncertain) != 0 {
+		t.Errorf("Expected no uncertain flags on a legacy row, got %v", legacy.Uncertain)
+	}
+	if len(legacy.GuideAnswers) != 0 {
+		t.Errorf("Expected no guide answers on a legacy row, got %v", legacy.GuideAnswers)
+	}
+}
+
 func TestDatabaseIntegration_SubjectRelationships(t *testing.T) {
 	db := setupMemoryDB(t)
 
@@ -84,11 +147,14 @@ func TestDatabaseIntegration_SubjectRelationships(t *testing.T) {
 
 	// 1. Build an Analysis Subject connected to the User
 	subject := models.AnalysisSubject{
-		UserID:      user.ID,
-		Name:        "Relationship Test",
-		Description: "Data serialization target",
-		Date:        &now,
-		Stats:       map[string]int{"love": 50, "hate": 12}, // The custom gorm:serializer:json tag
+		UserID:       user.ID,
+		Name:         "Relationship Test",
+		Description:  "Data serialization target",
+		Date:         &now,
+		Stats:        map[string]int{"love": 50, "hate": 12}, // The custom gorm:serializer:json tag
+		Tags:         []string{"conflict", "trip together"},  // same serializer, slice form
+		Uncertain:    []string{"love"},
+		GuideAnswers: map[string]map[string]int{"love": {"0": 3, "2": 1}}, // nested map form
 	}
 
 	if err := db.Create(&subject).Error; err != nil {
@@ -115,6 +181,19 @@ func TestDatabaseIntegration_SubjectRelationships(t *testing.T) {
 	}
 	if loveVal, ok := retrieved.Stats["love"]; !ok || loveVal != 50 {
 		t.Errorf("Expected Stats['love'] == 50, got %v (ok=%v)", loveVal, ok)
+	}
+
+	// Assert JSON Slice Deserialization (context capsule tags)
+	if len(retrieved.Tags) != 2 || retrieved.Tags[0] != "conflict" || retrieved.Tags[1] != "trip together" {
+		t.Errorf("Expected Tags [conflict, trip together], got %v", retrieved.Tags)
+	}
+
+	// Assert the guided-scoring columns survive, including the nested map
+	if len(retrieved.Uncertain) != 1 || retrieved.Uncertain[0] != "love" {
+		t.Errorf("Expected Uncertain [love], got %v", retrieved.Uncertain)
+	}
+	if retrieved.GuideAnswers["love"]["0"] != 3 || retrieved.GuideAnswers["love"]["2"] != 1 {
+		t.Errorf("Expected GuideAnswers to round-trip, got %v", retrieved.GuideAnswers)
 	}
 
 	// 3. Test Deletions (Soft Delete)
