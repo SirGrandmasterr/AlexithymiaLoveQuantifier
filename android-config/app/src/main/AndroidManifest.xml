@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Capacitor 8's generated manifest, plus the network and privacy configuration this app needs.
+
+  Verbatim from node_modules/@capacitor/cli/assets/android-template.tar.gz except for the
+  four annotated changes below. See android-config/README.md for how to re-sync it after a
+  Capacitor upgrade — this is a whole-file replacement, so a new template's additions would
+  otherwise be silently dropped.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme"
+        android:usesCleartextTraffic="true"
+        android:networkSecurityConfig="@xml/network_security_config">
+        <!--
+          CHANGE 1 — allowBackup="false" (template: true).
+
+          The session token and the offline copy of every relationship live in WebView
+          localStorage, inside the app's private data directory. With backup enabled, Android
+          replicates that directory to Google Drive under the user's account. For an app whose
+          Vault page tells people their data stays on their own server, copying it to a third
+          party by default is a promise broken in the manifest.
+
+          CHANGE 2 and 3 — networkSecurityConfig and usesCleartextTraffic.
+
+          Both point at the same decision, documented in res/xml/network_security_config.xml:
+          this app talks to a server the user runs at an address the user types, which on a LAN
+          has no certificate and cannot get one. The config file is authoritative wherever both
+          apply; the older flag is kept for libraries that read it directly.
+        -->
+
+        <activity
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:name=".MainActivity"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:launchMode="singleTask"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+        </activity>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"></meta-data>
+        </provider>
+    </application>
+
+    <!-- Permissions -->
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!--
+      CHANGE 4 — POST_NOTIFICATIONS, for the check-in cadence reminders.
+
+      Required from API 33; below that the runtime request resolves as already-granted and the
+      code path is identical. It is requested when the user turns reminders on in Profile, not
+      at launch: a permission prompt before the user has seen what it is for is the reliable
+      way to get it denied permanently.
+
+      Deliberately still absent: CAMERA and READ_MEDIA_IMAGES. Avatar upload goes through the
+      system photo picker, which returns one user-chosen file and needs no storage permission
+      on any API level. Adding one would widen access from "the picture they picked" to "every
+      photo on the device" in exchange for nothing.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+</manifest>

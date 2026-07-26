@@ -10,8 +10,16 @@ import Profile from './components/Profile';
 import TimelineRoute, { LegacyTimelineRedirect } from './components/TimelineRoute';
 import Vault from './components/Vault';
 import AppLock from './components/AppLock';
+import MobileBottomNav from './components/MobileBottomNav';
+import ServerSettingsModal from './components/ServerSettingsModal';
 import { SubjectsProvider } from './context/SubjectsContext';
 import { DiscretionProvider, useDiscretion } from './context/DiscretionContext';
+import { isNative } from './mobile/platform';
+// Imported for its side effect as much as its exports: the module sets
+// `axios.defaults.baseURL` at evaluation time, which must happen before any component can
+// issue a request — the same ordering constraint, and the same reason, as `applyToken`.
+import { hasConfiguredServer } from './mobile/serverUrl';
+import useNativeShell from './mobile/useNativeShell';
 
 /**
  * The single writer for the auth header and its localStorage copy.
@@ -91,13 +99,22 @@ export default function App() {
 function Shell({ token, onLogin, onLogout }) {
     const { discreet, toggle } = useDiscretion();
 
+    // Hardware back button, status bar, soft keyboard. No-ops on web.
+    useNativeShell();
+
+    // A packaged app has no origin to infer the API from, so a fresh install opens on this
+    // instead of on a screen whose every request is going to fail. It is not dismissible
+    // until a server is chosen: there is nothing behind it that would work.
+    const [serverModalOpen, setServerModalOpen] = useState(() => isNative() && !hasConfiguredServer());
+
     return (
-        <div className="min-h-screen bg-slate-50">
+        <div className="min-h-screen bg-slate-50 pb-nav">
             <Navbar
                 isAuthenticated={!!token}
                 onLogout={onLogout}
                 discreet={discreet}
                 onToggleDiscretion={toggle}
+                onOpenServerSettings={isNative() ? () => setServerModalOpen(true) : undefined}
             />
             <Routes>
                 <Route
@@ -126,6 +143,20 @@ function Shell({ token, onLogin, onLogout }) {
                     element={token ? <LegacyTimelineRedirect /> : <Navigate to="/login" />}
                 />
             </Routes>
+
+            {/* Signed out there is nowhere to navigate to, so the bar would be three dead
+                targets. It appears with the session, as the desktop header's links do. */}
+            {token && <MobileBottomNav discreet={discreet} onToggleDiscretion={toggle} />}
+
+            <ServerSettingsModal
+                open={serverModalOpen}
+                dismissible={hasConfiguredServer()}
+                onClose={() => setServerModalOpen(false)}
+                // The old token was signed by a different server's `JWT_SECRET`; keeping it
+                // would mean a 401 on the first request and a confusing bounce to Landing.
+                // Ending the session here makes the cause legible.
+                onSaved={() => onLogout()}
+            />
         </div>
     );
 }

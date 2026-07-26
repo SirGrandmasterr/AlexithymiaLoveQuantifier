@@ -1,0 +1,148 @@
+# syntax=docker/dockerfile:1
+#
+# Containerised Android build.
+#
+# The point of this file is that `make build-android` works on a machine with Docker and
+# nothing else — no Android Studio, no JDK, no `ANDROID_HOME`, no matching Gradle version.
+# It builds the web bundle, generates the native project from the Capacitor template, applies
+# the overlay in `android-config/`, and runs Gradle.
+#
+# `android/` is regenerated inside the image rather than copied from the host. That is the
+# whole reproducibility claim: the output depends on `package-lock.json` and this file, not on
+# whatever state a developer's local `android/` drifted into. It is also why `android/` is
+# gitignored and why hand-edits belong in `android-config/`.
+
+# ---------------------------------------------------------------------------
+# Stage 1 — the web bundle
+#
+# Same Node version as the frontend image, so the two builds cannot disagree about what
+# `dist/` contains.
+# ---------------------------------------------------------------------------
+FROM node:22-alpine AS web
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+# `npm ci` rather than `npm install`: the lockfile is the input that makes this reproducible.
+# (The frontend Dockerfile still uses `npm install` — see docs/09-deployment.md §2.)
+RUN npm ci
+
+COPY . .
+
+# Baked into the bundle at build time as the default server address. Overridable per build:
+#   make build-android ANDROID_API_URL=http://192.168.1.10:8080
+# It is only a default — the Server settings screen writes localStorage, which wins.
+ARG VITE_ANDROID_API_URL
+ENV VITE_ANDROID_API_URL=${VITE_ANDROID_API_URL}
+
+RUN npm run build
+
+
+# ---------------------------------------------------------------------------
+# Stage 2 — the Android toolchain
+#
+# Pinned rather than `:latest` everywhere it matters. An Android build that silently changes
+# compile SDK between two runs is not a reproducible build.
+# ---------------------------------------------------------------------------
+FROM eclipse-temurin:21-jdk-jammy AS android
+
+# Pinned to what @capacitor/android 8.4.x actually declares. Verify after any Capacitor bump:
+#
+#   tar -xzf node_modules/@capacitor/cli/assets/android-template.tar.gz -C /tmp/t
+#   cat /tmp/t/variables.gradle                      # compileSdk / targetSdk / minSdk
+#   grep 'gradle:' /tmp/t/build.gradle               # AGP 8.13.0
+#   cat /tmp/t/gradle/wrapper/gradle-wrapper.properties   # Gradle 8.14.3
+#
+# AGP 8.13 needs JDK 17+; Capacitor 8 specifies 21. Gradle itself comes from the wrapper the
+# template ships, so it is not installed here.
+ENV ANDROID_SDK_ROOT=/opt/android-sdk \
+    ANDROID_HOME=/opt/android-sdk \
+    CMDLINE_TOOLS_VERSION=13114758 \
+    BUILD_TOOLS_VERSION=36.0.0 \
+    COMPILE_SDK_VERSION=36 \
+    GRADLE_USER_HOME=/root/.gradle \
+    DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install --no-install-recommends -y \
+        curl unzip xz-utils git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Node from the official tarball, not from apt.
+#
+# Jammy's `nodejs` package is far older than the Capacitor CLI's floor, and the failure is
+# not obvious from the outside: `cap add` exits with "requires NodeJS >=22.0.0" three stages
+# into the build. Pinning the tarball also keeps this stage's Node in step with the `web`
+# stage's node:22-alpine — two different major versions producing one APK is not a
+# reproducible build.
+#
+# The tarball rather than a musl-based COPY from the web stage: that image is Alpine, and its
+# binaries do not run against this image's glibc.
+ENV NODE_VERSION=22.11.0
+RUN curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" -o /tmp/node.tar.xz \
+    && tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1 --no-same-owner \
+    && rm /tmp/node.tar.xz \
+    && node --version && npm --version
+
+# The SDK command-line tools expect to live at cmdline-tools/latest/; the zip unpacks to a
+# bare cmdline-tools/, and sdkmanager fails with an unhelpful path error if you skip the move.
+RUN mkdir -p ${ANDROID_SDK_ROOT}/cmdline-tools \
+    && curl -fsSL -o /tmp/tools.zip \
+        "https://dl.google.com/android/repository/commandlinetools-linux-${CMDLINE_TOOLS_VERSION}_latest.zip" \
+    && unzip -q /tmp/tools.zip -d /tmp/cmdline \
+    && mv /tmp/cmdline/cmdline-tools ${ANDROID_SDK_ROOT}/cmdline-tools/latest \
+    && rm -rf /tmp/tools.zip /tmp/cmdline
+
+ENV PATH=${PATH}:${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${ANDROID_SDK_ROOT}/platform-tools
+
+# `yes |` accepts the SDK licences non-interactively. Without it the first sdkmanager call
+# blocks forever on a prompt no one can answer inside a build.
+RUN yes | sdkmanager --licenses > /dev/null 2>&1 || true \
+    && sdkmanager --install \
+        "platform-tools" \
+        "platforms;android-${COMPILE_SDK_VERSION}" \
+        "build-tools;${BUILD_TOOLS_VERSION}" > /dev/null
+
+WORKDIR /app
+
+# node_modules is needed in this stage too: `cap add android` copies the native project out of
+# node_modules/@capacitor/android, and each plugin contributes its own Gradle module.
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY capacitor.config.json ./
+COPY android-config ./android-config
+COPY --from=web /app/dist ./dist
+
+# Generate the native project, then overlay. Order matters: `cap add` writes the template's
+# AndroidManifest.xml, and the overlay's replaces it.
+RUN npx cap add android \
+    && cp -r android-config/. android/ \
+    && npx cap sync android
+
+# --------------------------------------------------------------------------
+# Build
+#
+# Gradle downloads its dependency graph on first run. The cache mount keeps that out of the
+# image layer and off the second run's clock; without it every build re-fetches ~300MB.
+# --------------------------------------------------------------------------
+ARG GRADLE_TASK=assembleDebug
+
+RUN --mount=type=cache,target=/root/.gradle \
+    cd android && chmod +x gradlew && ./gradlew ${GRADLE_TASK} --no-daemon --stacktrace
+
+# Collect whatever the task produced into one predictable place, so the export stage below
+# does not need to know whether it was an APK or an AAB.
+RUN mkdir -p /out \
+    && find android/app/build/outputs -type f \( -name '*.apk' -o -name '*.aab' \) \
+        -exec cp {} /out/ \; \
+    && ls -la /out
+
+
+# ---------------------------------------------------------------------------
+# Stage 3 — export
+#
+# `docker build --output type=local,dest=./dist-android .` writes the artefacts straight to
+# the host with no container to run or copy out of. `make build-android` does exactly that.
+# ---------------------------------------------------------------------------
+FROM scratch AS artifacts
+COPY --from=android /out/ /

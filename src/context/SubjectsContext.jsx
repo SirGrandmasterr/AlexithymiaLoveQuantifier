@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { latestSnapshotDate } from '../constants/cadence';
+import { readCache, writeCache, clearCache } from '../mobile/offlineCache';
 
 /**
  * One copy of the subject list, shared by every screen that reads it.
@@ -83,6 +84,9 @@ export function SubjectsProvider({ children, enabled = true }) {
     const [relationships, setRelationships] = useState([]);
     const [loading, setLoading] = useState(enabled);
     const [loadError, setLoadError] = useState(null);
+    // Non-null while the screen is showing cached data rather than a live fetch; carries the
+    // timestamp, because "offline" without "as of when" is not enough to act on.
+    const [staleSince, setStaleSince] = useState(null);
 
     const refresh = useCallback(async () => {
         setLoading(true);
@@ -96,12 +100,28 @@ export function SubjectsProvider({ children, enabled = true }) {
             setPeople(subjectsResponse.data);
             setRelationships(relationshipsResponse.data);
             setLoadError(null);
+            setStaleSince(null);
+            // Native only — `writeCache` is a no-op on web. See `src/mobile/offlineCache.js`
+            // for why this is read-through and does not queue writes.
+            writeCache(subjectsResponse.data, relationshipsResponse.data);
         } catch (error) {
             console.error('Failed to fetch subjects', error);
-            setLoadError(
-                error?.response?.data?.error ||
-                'Could not load your analyses. Check that the server is running, then reload.'
-            );
+
+            // A transport failure on a phone is ordinary — a tunnel, a dropped Wi-Fi hop —
+            // and the last good list is a better answer than an empty screen. A response
+            // *with* a status is the server talking, so it is reported as before.
+            const cached = error.response ? null : readCache();
+            if (cached) {
+                setPeople(cached.people);
+                setRelationships(cached.relationships);
+                setLoadError(null);
+                setStaleSince(cached.savedAt);
+            } else {
+                setLoadError(
+                    error?.response?.data?.error ||
+                    'Could not load your analyses. Check that the server is running, then reload.'
+                );
+            }
         } finally {
             setLoading(false);
         }
@@ -116,6 +136,11 @@ export function SubjectsProvider({ children, enabled = true }) {
             setPeople([]);
             setRelationships([]);
             setLoading(false);
+            setStaleSince(null);
+            // Logging out must not leave the previous user's snapshots on disk for the next
+            // one to find. The in-memory reset above would otherwise be undone by the first
+            // failed fetch after a new sign-in.
+            clearCache();
         }
     }, [enabled, refresh]);
 
@@ -208,6 +233,7 @@ export function SubjectsProvider({ children, enabled = true }) {
         stacks,
         loading,
         loadError,
+        staleSince,
         dismissLoadError: () => setLoadError(null),
         refresh,
         createSubject,

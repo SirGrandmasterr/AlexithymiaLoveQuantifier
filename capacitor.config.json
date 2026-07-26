@@ -1,0 +1,24 @@
+{
+  "appId": "com.thinkmusic.alexithymia",
+  "appName": "Love Quantifier",
+  "webDir": "dist",
+  "android": {
+    "androidScheme": "https",
+    "allowMixedContent": true,
+    "captureInput": true
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    },
+    "Keyboard": {
+      "resize": "native",
+      "resizeOnFullScreen": true
+    },
+    "StatusBar": {
+      "style": "LIGHT",
+      "backgroundColor": "#ffffff",
+      "overlaysWebView": false
+    }
+  }
+}

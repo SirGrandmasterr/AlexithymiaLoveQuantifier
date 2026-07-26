@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cleartext HTTP is permitted, deliberately.
+
+  Android 9 (API 28) blocks cleartext by default, and that default is right for an app that
+  talks to one known production host over TLS. This app talks to a server the *user* runs, at
+  an address the user types in — `http://10.0.2.2:8080` from an emulator, `http://192.168.1.x`
+  from a phone on the same Wi-Fi. Neither has a certificate and neither can get one. Blocking
+  cleartext here would not make those deployments secure, it would make them impossible, and
+  the app would ship unable to do the only thing it does.
+
+  What this costs, stated plainly: on a LAN, the JWT and every snapshot travel unencrypted and
+  anyone on that network can read them. The trade is defensible for a self-hosted tool on a
+  home network. It is not defensible over the open internet.
+
+  If you expose your server publicly, put TLS in front of it and tighten this file to:
+
+      <base-config cleartextTrafficPermitted="false" />
+
+  which is a one-line change and costs nothing on a deployment that already has HTTPS.
+  See docs/12-android-app.md for the reasoning and docs/09-deployment.md for the TLS work
+  that is already on the production-readiness checklist.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <!--
+              User-installed CAs are trusted so a self-hosted server behind a private CA — or
+              a mitmproxy session while debugging the API — works without a custom build.
+              Android stopped trusting these by default in API 24.
+            -->
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

@@ -31,6 +31,7 @@ describing things abstractly.
 | 09 | [Deployment & Containers](09-deployment.md) | Dockerfiles, Compose topology, Nginx, CI. |
 | 10 | [Agent Guide](10-agent-guide.md) | Conventions, invariants, and step-by-step recipes for the most common change requests. |
 | 11 | [Known Issues & Documentation Drift](11-known-issues.md) | Verified defects, gaps, and places where the root `README.md` disagrees with the code. |
+| 12 | [The Android App](12-android-app.md) | Why Capacitor rather than a rewrite, how the packaged client reaches a self-hosted backend, the mobile UI changes, and the containerised APK build. |
 
 ---
 
@@ -39,6 +40,7 @@ describing things abstractly.
 ```
 Browser ──► Vite dev server (:5173)  ──proxy /api, /uploads──►  Go + Gin (:8080)  ──►  SQLite or Postgres
    or   ──► Nginx in container (:80) ──proxy /api────────────►  Go + Gin (:8080)
+Android ──► Capacitor WebView (bundled SPA) ──native HTTP───►  Go + Gin (:8080)
 ```
 
 - **Frontend**: React 19 + Vite 7 + Tailwind CSS 3, SPA, JWT held in `localStorage`.
@@ -85,6 +87,9 @@ When these two disagree, the code wins; please correct the docs in the same chan
 | Delta arithmetic for "What Changed" | [`src/components/WhatChanged.jsx`](../src/components/WhatChanged.jsx) |
 | The shared subject list, grouping, and mutations | [`src/context/SubjectsContext.jsx`](../src/context/SubjectsContext.jsx) |
 | Route table (frontend) | [`src/App.jsx`](../src/App.jsx) |
+| The API base URL on Android, and the rule that it must resolve synchronously | [`src/mobile/serverUrl.js`](../src/mobile/serverUrl.js) — mirrors `applyToken` in `App.jsx` for the same ordering reason |
+| Android toolchain versions (JDK, AGP, Gradle, SDK) | [`Dockerfile.android`](../Dockerfile.android) — derived from what `@capacitor/android` declares, not chosen |
+| Native manifest and network policy | [`android-config/`](../android-config/) — `android/` is generated and gitignored |
 | Database schema | [`backend/internal/models/models.go`](../backend/internal/models/models.go) |
 | Route table | [`backend/cmd/server/main.go`](../backend/cmd/server/main.go#L17-L35) |
 | Auth rules (hash cost, token lifetime, claims) | [`backend/internal/auth/auth.go`](../backend/internal/auth/auth.go) |

@@ -1,0 +1,29 @@
+# Keeps the build context small and keeps host state out of the image.
+#
+# Both Dockerfile and Dockerfile.android do `COPY . .`, so without this the context ships
+# node_modules, the Playwright reports, .git, and backend/alexithymia.db — a committed dev
+# database — into a layer. docs/09-deployment.md §2 records this as an open build-hygiene
+# issue for the frontend image; this file closes it for both.
+#
+# The Android build additionally regenerates android/ from the Capacitor template, so any
+# local copy must not be copied in: a stale one would defeat the reproducibility the
+# containerised build exists to provide.
+
+node_modules
+dist
+dist-android
+android
+.gradle
+.git
+.github
+playwright-report
+test-results
+blob-report
+backups
+*.keystore
+*.jks
+local.properties
+
+# The backend has its own build context (./backend), so it is never needed in the
+# frontend or Android image.
+backend
