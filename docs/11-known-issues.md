@@ -28,6 +28,13 @@ self-hosted personal tool. Severity assumes eventual public exposure.
 > defaulting to an empty key (startup now fails), and `internal/auth` having no tests. The
 > app gained in-app reminders, quick pulses, a full export/import vault, and discretion mode.
 >
+> **Closed 2026-07-26** (dead-session handling): a token whose user row no longer exists —
+> a dropped volume, a `down -v`, a deleted account — used to pass `AuthMiddleware` on its
+> signature alone, so `/api/me` answered 404 and the list endpoints answered `[]` for a user
+> that named nobody. The middleware now confirms the account exists and answers 401
+> otherwise, and `Profile.jsx` no longer holds a private `axios.create()` instance, so the
+> global 401 interceptor covers it (this closes Recipe 6's first half).
+>
 > Closed entries are removed rather than annotated; see
 > [`product_vision/`](../product_vision/) for what replaced them.
 
@@ -44,19 +51,6 @@ Every `DB.Create` error collapses to
 ([`auth.go:37-41`](../backend/internal/handlers/auth.go#L37-L41)), so a normal, expected
 conflict is reported as a server fault. Same shape in `UpdateUserProfile` for an email
 collision.
-
-### The 401 interceptor does not cover `Profile.jsx`
-
-**Severity: low (UX).**
-
-`App.jsx` now registers a global axios response interceptor that clears the token on 401,
-so an expired session drops the user back to Landing instead of an unexplained empty grid.
-But `Profile.jsx` calls through its own `axios.create()` instance, and interceptors on the
-global default do not apply to instances — so an expired token on the profile screen still
-fails silently into `message: {type:'error'}` with no logout.
-
-*Fix:* [Recipe 6](10-agent-guide.md#recipe-6-unify-the-axios-setup) — drop the private
-instance and use the global axios everywhere.
 
 ---
 
@@ -168,6 +162,26 @@ hardcodes `sslmode=disable`. Remove the port mapping unless external access is n
 ---
 
 ## Test and CI gaps
+
+### The Go suite runs on SQLite while production runs Postgres
+
+Every backend test opens `glebarez/sqlite` — see
+[`relationships_test.go:30`](../backend/internal/handlers/relationships_test.go#L30) and
+[`database_test.go:18`](../backend/internal/database/database_test.go#L18). SQLite is the
+laxer engine, so a query can be green in `go test` and fail in the container.
+
+This is not hypothetical. `GetRelationships` ordered by the `latest_date` **alias** inside
+an expression (`ORDER BY latest_date IS NULL`). SQLite allows that; Postgres accepts an
+output alias only when it stands alone, so the homepage answered 500 with
+`column "latest_date" does not exist` against a schema that was perfectly up to date. The
+handler now repeats `MAX(analysis_subjects.date)` instead, which both engines accept —
+[`relationships.go:171-184`](../backend/internal/handlers/relationships.go#L171-L184).
+
+`make migrate-check` does **not** cover this class: the schema was never the problem. The
+gap closes only by running the handler tests against Postgres too.
+
+*Watch for:* aliases in `ORDER BY`/`WHERE` expressions, `GROUP BY` that omits a selected
+column, and anything relying on SQLite's dynamic typing.
 
 ### The E2E suite cannot pass
 

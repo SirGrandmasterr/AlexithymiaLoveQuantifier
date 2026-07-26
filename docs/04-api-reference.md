@@ -48,8 +48,15 @@ Rejections, all `401` with a distinct message:
 | Header absent | `{"error":"Authorization header required"}` |
 | Not exactly two space-separated parts, or first part ≠ `Bearer` | `{"error":"Invalid authorization header format"}` |
 | Signature invalid, malformed, or `exp` passed | `{"error":"Invalid or expired token"}` |
+| Signature valid but the `user_id` names no live account | `{"error":"Invalid or expired token"}` |
 
 The scheme check is case-sensitive: `bearer <jwt>` is rejected.
+
+The last row is deliberately indistinguishable from an expired token: a token outlives the
+account it names — a dropped volume, a `docker compose down -v`, a deleted user — and the
+client's only useful response to either is to end the session. A database error during that
+lookup is `500 {"error":"Failed to verify session"}`, not `401`, so an outage does not sign
+everyone out.
 
 On success the middleware sets `userID` (a `uint`) in the Gin context; handlers read it
 with `c.Get("userID")` and assert `userID.(uint)`. **Any new protected handler must read
@@ -115,7 +122,9 @@ Returns the serialised `User`. `password` is omitted by its `json:"-"` tag.
 }
 ```
 
-`404 {"error":"User not found"}` if the token's `user_id` no longer resolves.
+`404 {"error":"User not found"}` if the token's `user_id` no longer resolves — unreachable
+in practice since `AuthMiddleware` answers `401` for that case first; it survives as a guard
+against a deletion racing this request.
 
 ### `PUT /api/me`
 

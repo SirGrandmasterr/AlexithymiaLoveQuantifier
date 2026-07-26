@@ -170,10 +170,15 @@ func GetRelationships(c *gin.Context) {
 
 	// Most recently touched first; a relationship with no dated snapshot sorts last rather
 	// than to the top, matching how the snapshot list orders undated rows.
+	//
+	// The aggregate is repeated here instead of ordering by the `latest_date` alias:
+	// Postgres only accepts an output alias standing alone in ORDER BY, never inside an
+	// expression, so `latest_date IS NULL` fails with "column does not exist" there while
+	// SQLite — what the tests run on — accepts it. Spelling out MAX(...) works on both.
 	summaries := []RelationshipSummary{}
 	err := summaryQuery(userID).
-		Order("latest_date IS NULL").
-		Order("latest_date DESC").
+		Order("MAX(analysis_subjects.date) IS NULL").
+		Order("MAX(analysis_subjects.date) DESC").
 		Order("relationships.name ASC").
 		Scan(&summaries).Error
 	if err != nil {

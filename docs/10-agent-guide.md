@@ -111,8 +111,9 @@ Ranked by how much time they waste.
 10f. **A new column on `AnalysisSubject` that is not nullable needs a `default` tag.**
     Scanning NULL into a Go `string` fails outright, so a missing default breaks *every read*
     of every legacy row, not just the new field.
-11. **`Profile.jsx` is outside the global axios interceptors.** It has its own instance, so
-    the 401 auto-logout in `App.jsx` does not cover the profile screen.
+11. **Every screen calls through the global `axios`.** `Profile.jsx` used to hold its own
+    instance and so sat outside the 401 auto-logout in `App.jsx`; it no longer does. Do not
+    reintroduce a private instance — an interceptor on the global default never reaches one.
 12. **Port 8080 is the backend in dev but the frontend under Docker.** They collide.
 
 ---
@@ -215,20 +216,20 @@ same data:
   (`error.response.data.error`) and falls back to a written sentence that says what to do.
 - **Global 401 handling** is already installed in `App.jsx` (a response interceptor that
   clears the token, registered in a `useEffect` and ejected on cleanup so StrictMode's
-  double-invoke cannot stack duplicates). It covers the global axios only — `Profile.jsx`'s
-  private instance stays uncovered until Recipe 6.
+  double-invoke cannot stack duplicates). It covers the global axios, which every screen now
+  uses — so a 401 anywhere ends the session. A private `axios.create()` would opt out of it.
 - **Do not close a modal on failure.** Keep the close call inside `try`, after the awaits,
   so failed input survives for a retry.
 
 ### Recipe 6: Unify the axios setup
 
-`Profile.jsx` creates its own instance with a request interceptor; everything else uses the
-global default header ([Frontend §6](06-frontend.md#its-own-axios-instance--an-inconsistency-worth-knowing)).
+**Half done.** `Profile.jsx`'s private instance is gone — every screen now calls the global
+`axios` and is covered by the 401 interceptor.
 
-Preferred direction: keep one global axios, and replace the module-scope header assignment
-in `App.jsx` with a single request interceptor that reads `localStorage` per request. That
-removes the load-bearing ordering hazard of invariant 2 entirely. Then delete the local
-`api` instance from `Profile.jsx` and use bare `axios`.
+What remains is the other half: replace the module-scope header assignment in `App.jsx`
+with a single request interceptor that reads `localStorage` per request. That would remove
+the load-bearing ordering hazard of invariant 2 entirely — today the header must be written
+synchronously at import time, and an effect would be too late.
 
 Do this as its own change, not folded into a feature.
 

@@ -134,12 +134,21 @@ authHeader := c.GetHeader("Authorization")        // must exist
 parts := strings.Split(authHeader, " ")           // must be exactly 2 parts
 if len(parts) != 2 || parts[0] != "Bearer" { … }  // scheme is case-sensitive
 claims, err := auth.ValidateToken(parts[1])       // signature + exp
+database.DB.Select("id").First(&user, claims.UserID)  // the account must still exist
 c.Set("userID", claims.UserID)                    // uint, downstream contract
 c.Next()
 ```
 
 Every rejection path calls `c.Abort()` *and* returns — both are required; omitting
 `Abort` would let the handler run after the error response.
+
+**Why the extra SELECT.** A token stays valid for its full 24 hours regardless of what
+happens to the row behind it, so a dropped volume or a deleted account leaves a browser
+holding a signature that verifies perfectly against a user id that names nobody. Without
+this lookup the request proceeded: `/api/me` answered `404` and the list endpoints answered
+`[]`, and no client could tell either from a genuinely empty account. `gorm.ErrRecordNotFound`
+is a `401` — the response the frontend's interceptor already acts on — while any other error
+is a `500`, so a database blip does not sign every user out.
 
 The contract established here — **`userID` in the Gin context, typed `uint`** — is
 relied upon by every protected handler.

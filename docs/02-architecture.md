@@ -190,7 +190,12 @@ Properties of this design:
   valid until its 24-hour expiry.
 - **Expiry is discovered, not predicted.** The client never inspects `exp`; a global axios
   response interceptor in `App.jsx` clears the token on any `401`, which flips `/` back to
-  Landing. `Profile.jsx`'s private axios instance is not covered by it.
+  Landing. Every screen calls through the global `axios`, so the interceptor sees them all.
+- **A signature is not an account.** `AuthMiddleware` also confirms the user row still
+  exists, because a token outlives the account it names — a dropped volume or a `down -v`
+  leaves a browser holding a token that verifies perfectly against a user id that is gone.
+  That case is a `401`, so the client ends the session rather than showing an error it
+  cannot act on.
 - **Ownership is enforced per query, not per resource.** There is no ACL layer; instead
   every subject query carries `AND user_id = ?`, so a mismatched id yields *not found*
   rather than *forbidden*. This is consistent across `GetSubjects`, `UpdateSubject`, and

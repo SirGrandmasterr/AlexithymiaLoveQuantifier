@@ -153,9 +153,10 @@ Two things to know:
 - **The error is re-rejected**, so each caller still sees its own failure — `Auth.jsx`
   keeps showing "Invalid credentials" on a bad login (a 401 that clears an already-absent
   token, harmlessly).
-- **It does not cover `Profile.jsx`**, which uses a private `axios.create()` instance;
-  interceptors registered on the global default do not apply to it. Unifying the two
-  ([Recipe 6](10-agent-guide.md#recipe-6-unify-the-axios-setup)) would close that gap.
+- **It covers every screen.** `Profile.jsx` used to call through a private `axios.create()`
+  instance, which interceptors on the global default do not reach, so a dead session ended
+  there as a permanent error banner instead of a logout. That instance is gone
+  ([Recipe 6](10-agent-guide.md#recipe-6-unify-the-axios-setup), first half).
 
 Auth callbacks are trivial: `handleLogin(newToken)` → `setToken`, `handleLogout()` →
 `setToken(null)`. Logout is purely client-side; the token remains valid server-side until
@@ -890,24 +891,20 @@ else { setIsLogin(true); setError('Account created! Please log in.'); }
 
 ## 6. `Profile.jsx`
 
-### Its own axios instance — an inconsistency worth knowing
+### It used to have its own axios instance
 
-```js
-// src/components/Profile.jsx:6-14
-const api = axios.create();
-api.interceptors.request.use((config) => {
-    const token = localStorage.getItem('token');
-    if (token) config.headers.Authorization = `Bearer ${token}`;
-    return config;
-});
-```
+`Profile` once called through `const api = axios.create()` with a request interceptor that
+re-read `localStorage`, while every other component used the global `axios` and the default
+header set by `App.jsx`. Both carried the token, so the duplication looked harmless.
 
-Every other component uses the global `axios` with the default header set by `App.jsx`.
-`Profile` re-reads `localStorage` per request instead. Both work; the duplication is
-accidental. The interceptor pattern is arguably the better one — a single
-`axios.interceptors.request.use` in `App.jsx` would remove the module-scope
-initialisation described in §2 — but until that refactor happens, **new components should
-follow the majority convention** (global `axios`) so behaviour stays uniform.
+It was not. Interceptors registered on the global default do not apply to an instance, so
+the 401 auto-logout in `App.jsx` never saw this screen's failures: a session whose user row
+no longer existed produced a permanent "Failed to load profile data." banner and a token the
+browser kept sending. `Profile` now uses the global `axios` like everything else.
+
+`axios.interceptors.request.use` in `App.jsx` would still be the better shape — it would
+remove the module-scope initialisation described in §2 — but that is a separate change.
+**New components use the global `axios`.** A private instance opts out of the 401 handling.
 
 ### Fields and flow
 

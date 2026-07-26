@@ -2,16 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { User, Mail, Shield, Save, Upload, Loader2, Info } from 'lucide-react';
 import axios from 'axios';
 
-// Create an axios instance for API calls, assuming token is stored in localStorage
-const api = axios.create();
-
-api.interceptors.request.use((config) => {
-    const token = localStorage.getItem('token');
-    if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-});
+// This screen used to call through its own `axios.create()` instance, which carried the
+// token but not App.jsx's response interceptor — interceptors on the global default do not
+// apply to instances. A dead session therefore ended here as a permanent "Failed to load
+// profile data." banner instead of a logout, because nothing was watching for the 401.
+// The global default already carries the Authorization header (App.jsx sets it
+// synchronously at import time and on every token transition), so using it directly loses
+// nothing and gains the 401 handling. See docs/10-agent-guide.md Recipe 6.
 
 export default function Profile() {
     const [loading, setLoading] = useState(true);
@@ -34,7 +31,7 @@ export default function Profile() {
 
     const fetchProfile = async () => {
         try {
-            const res = await api.get('/api/me');
+            const res = await axios.get('/api/me');
             setFormData({
                 name: res.data.name || '',
                 age: res.data.age || '',
@@ -59,7 +56,7 @@ export default function Profile() {
         setSaving(true);
         setMessage({ type: '', text: '' });
         try {
-            await api.put('/api/me', formData);
+            await axios.put('/api/me', formData);
             setMessage({ type: 'success', text: 'Profile updated successfully!' });
         } catch (error) {
             console.error('Failed to update profile', error);
@@ -78,7 +75,7 @@ export default function Profile() {
         uploadData.append('image', file);
 
         try {
-            const res = await api.post('/api/upload', uploadData, {
+            const res = await axios.post('/api/upload', uploadData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             // Update the profile picture URL in form data

@@ -145,7 +145,8 @@ Notes:
 
 ## 6. Makefile targets
 
-[`Makefile`](../Makefile) — thin npm wrappers plus the three test suites.
+[`Makefile`](../Makefile) — thin npm wrappers, the three test suites, and the Docker stack
+plus its schema and database chores. `make help` prints the list.
 
 | Target | Runs |
 | :----- | :--- |
@@ -160,13 +161,41 @@ Notes:
 | `make test-backend` | `cd backend && go test ./...` |
 | `make test-e2e` | `npx playwright test --project=chromium` |
 | `make test` | all three in sequence |
+| `make up` | `docker compose up -d --build`, then waits for Postgres and runs `migrate-check` |
+| `make down` | `docker compose down` (keeps the volume) |
+| `make logs` | follows the backend container's log |
+| `make migrate` | applies `AutoMigrate` + the relationship backfill to the compose Postgres |
+| `make migrate-check` | reports missing tables/columns and exits 1; **writes nothing** |
+| `make migrate-local` / `make migrate-check-local` | the same two against the SQLite fallback, via a local Go toolchain |
+| `make db-wait` | blocks until Postgres accepts connections (up to 60s) |
+| `make db-shell` | `psql` inside the database container |
+| `make db-schema` | `\d+` for all three tables |
+| `make db-backup` | `pg_dump` → `backups/alexithymia-<timestamp>.sql` (gitignored) |
+| `make db-restore FILE=…` | replays a dump taken by `db-backup` |
+| `make db-reset CONFIRM=yes` | **drops every table**, backs up first, then re-migrates |
 
-The Makefile uses Unix `rm`, so `make clean` needs Git Bash or WSL on Windows. Everything
-else works from PowerShell if `make` is on `PATH`.
+The Makefile uses Unix `rm`, `seq`, and `date`, so it needs Git Bash or WSL on Windows.
 
 `make test-e2e` requires the dev server **and** the backend already running — the note in
 the Makefile says so, and [`playwright.config.ts`](../playwright.config.ts) has its
 `webServer` block commented out.
+
+### Migrations
+
+The server still migrates itself on boot — [`database.Connect()`](../backend/internal/database/database.go)
+calls `Open()` then `Migrate()`, and the Makefile targets call the same `Migrate()` through
+[`backend/cmd/migrate`](../backend/cmd/migrate/main.go). There is no second code path and
+no migration files: the models are the schema, as before.
+
+What is new is that the step is *addressable*. `make migrate-check` answers "does this
+database match the models?" without writing, naming the missing table or column outright —
+`make up` runs it after every start, so drift is reported at boot rather than surfacing
+later as a 500 from whichever endpoint happened to read the missing column first.
+
+The check is deliberately one-directional: it reports what the models have and the database
+lacks. A leftover column from a deleted field is not flagged, because `AutoMigrate` never
+drops one either. Type and nullability changes are also out of scope — GORM handles those
+differently per engine, so a check claiming to cover them would be lying.
 
 ---
 
