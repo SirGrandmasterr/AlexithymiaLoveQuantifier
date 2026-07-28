@@ -23,7 +23,15 @@ dist-ssr
 *.sln
 *.sw?
 
-# Database dumps written by `make db-backup` / `make db-reset`
+# Secrets. docker-compose.yml interpolates DB password and JWT_SECRET from .env, so this
+# file is the one place real credentials live — .env.example is the committed template that
+# says what belongs in it. The negation has to come after the wildcard to survive it.
+.env
+.env.*
+!.env.example
+
+# Database dumps written by `make db-backup` / `make db-reset`. They contain the users
+# table, i.e. everyone's bcrypt hashes.
 /backups/
 
 # Playwright

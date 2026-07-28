@@ -24,12 +24,12 @@ const PRESETS = [
     {
         label: 'Android emulator',
         url: 'http://10.0.2.2:8080',
-        hint: '10.0.2.2 is the emulator’s alias for your computer. Use :8081 if the backend is under Docker Compose.'
+        hint: '10.0.2.2 is the emulator’s alias for your computer. Use :8082 if the backend is under Docker Compose — the direct backend port is not reachable from the emulator.'
     },
     {
         label: 'Phone on the same Wi-Fi',
-        url: 'http://192.168.1.10:8080',
-        hint: 'Replace with your computer’s LAN address — ipconfig on Windows, ip addr on Linux.'
+        url: 'http://192.168.1.10:8082',
+        hint: 'Replace with your computer’s LAN address — ipconfig on Windows, ip addr on Linux. Port 8082 under Docker Compose, 8080 for a bare `go run`.'
     }
 ];
 

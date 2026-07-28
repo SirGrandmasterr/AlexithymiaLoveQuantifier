@@ -24,6 +24,12 @@ backups
 *.jks
 local.properties
 
+# Secrets. Compose reads .env on the host and passes only the named variables into the
+# containers that need them; it never has to be inside an image, and an image layer is a
+# thing that gets pushed to a registry.
+.env
+.env.*
+
 # The backend has its own build context (./backend), so it is never needed in the
 # frontend or Android image.
 backend

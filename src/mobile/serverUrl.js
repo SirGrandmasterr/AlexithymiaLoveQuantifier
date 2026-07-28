@@ -34,11 +34,12 @@ const STORAGE_KEY = 'alq:server-url';
  * `10.0.2.2` is the emulator's alias for the *host's* loopback — inside the emulator,
  * `localhost` is the emulated device itself, so it is never what you want.
  *
- * Port 8080 is the bare `go run ./cmd/server` from the docs' fastest path. Under Docker
- * Compose the backend is published on **8081**; 8080 there is Nginx, which serves the SPA
- * (which this app already has bundled) and — per the known issue in
- * [docs/09-deployment.md](../../docs/09-deployment.md) — does *not* proxy `/uploads`, so
- * avatars would silently 404. A native client has no reason to go through Nginx at all.
+ * Port 8080 is the bare `go run ./cmd/server` from the docs' fastest path. **Under Docker
+ * Compose the address to use is Nginx on 8082**, not the backend's own port: 8081 is now
+ * bound to 127.0.0.1 on the server and is unreachable from a device, and Nginx proxies
+ * `/uploads` as well as `/api`, so avatars resolve — that gap was the original reason to
+ * point a native client at the backend directly. Going through Nginx also picks up the
+ * request-size cap and the login rate limit, which the backend has no equivalent of.
  */
 const DEFAULT_NATIVE_URL = import.meta.env.VITE_ANDROID_API_URL || 'http://10.0.2.2:8080';
 

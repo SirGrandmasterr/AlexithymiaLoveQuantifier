@@ -103,16 +103,18 @@ Everything about this path — port mapping, the Postgres readiness gap, the mis
 
 ## 4. Ports, at a glance
 
-| Port | Process | Environment |
-| :--- | :------ | :---------- |
-| **5173** | Vite dev server (default; not configured anywhere) | local dev |
-| **8080** | Go/Gin — hardcoded in [`main.go:38`](../backend/cmd/server/main.go#L38) | local dev |
-| **8080** | Nginx (host) → container `:80` | Docker |
-| **8081** | Go/Gin direct (host) → container `:8080` | Docker |
-| **5432** | Postgres | Docker |
+| Port | Process | Environment | Reachable from |
+| :--- | :------ | :---------- | :------------- |
+| **5173** | Vite dev server (default; not configured anywhere) | local dev | anywhere |
+| **8080** | Go/Gin — hardcoded in [`main.go:38`](../backend/cmd/server/main.go#L38) | local dev | anywhere |
+| **8082** | Nginx (host) → container `:80`; `FRONTEND_PORT` in `.env` | Docker | anywhere |
+| **8081** | Go/Gin direct (host) → container `:8080` | Docker | **this machine only** — bound to `127.0.0.1` |
+| **5432** | Postgres | Docker | **containers on the `data` network only** — not published |
 
-Port 8080 means the backend in local dev and the frontend under Docker. Running both at
-once collides — stop one first.
+The frontend port moved from 8080 to 8082, so it no longer collides with a local `go run
+./cmd/server`. The two Docker entries that used to be reachable from the network are not
+any more: `8081` is loopback-bound, and Postgres has no host mapping at all — reach it with
+`make db-shell` (which goes in through `docker compose exec`, not through a port).
 
 ---
 

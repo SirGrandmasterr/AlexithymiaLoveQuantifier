@@ -49,13 +49,15 @@ endif
 NPM := npm
 PACKAGE_MANAGER := npm
 
-# Docker / database. DB_USER and DB_NAME must match docker-compose.yml — the psql targets
-# talk to the container directly, not through the backend.
+# Docker / database. DB_USER and DB_NAME must match POSTGRES_USER and POSTGRES_DB in .env —
+# the psql targets talk to the container directly, not through the backend. Overridable
+# (`make db-shell DB_USER=...`) rather than hardcoded, because .env is now where those names
+# are chosen; the defaults are the values .env.example ships with.
 DC := docker compose
 DB_SERVICE := postgres
 BACKEND_SERVICE := backend
-DB_USER := postgres
-DB_NAME := alexithymia
+DB_USER ?= postgres
+DB_NAME ?= alexithymia
 BACKUP_DIR := backups
 PSQL := $(DC) exec -T $(DB_SERVICE) psql -v ON_ERROR_STOP=1 -U $(DB_USER) -d $(DB_NAME)
 
@@ -70,13 +72,13 @@ MIGRATE := $(DC) run --rm $(BACKEND_SERVICE) ./migrate
 # — inside the emulator, localhost is the emulated device. Port 8080 is a bare
 # `go run ./cmd/server`; under `make up` the backend is published on 8081 instead, and 8080
 # there is Nginx, which does not proxy /uploads.
-ANDROID_API_URL ?= http://10.0.2.2:8080
+ANDROID_API_URL ?= http://212.132.80.55:8082/login
 ANDROID_OUT := dist-android
 ANDROID_IMAGE := alq-android-build
 GRADLE_TASK ?= assembleDebug
 
 .PHONY: all install dev build clean setup test test-frontend test-backend test-e2e \
-        up down logs db-wait db-shell db-schema db-backup db-restore db-reset \
+        up down logs db-wait db-shell db-schema db-backup db-restore db-reset db-password \
         migrate migrate-check migrate-local migrate-check-local help \
         android-init build-android bundle-android dev-android run-android \
         android-install android-logs clean-android
@@ -198,6 +200,25 @@ migrate-check-local:
 
 db-shell:
 	$(DC) exec $(DB_SERVICE) psql -U $(DB_USER) -d $(DB_NAME)
+
+# Apply POSTGRES_PASSWORD from .env to a database that already exists.
+#
+# The POSTGRES_* variables are read by initdb, which runs exactly once — when the data
+# directory is empty. So rotating the password in .env changes what the backend *presents*
+# and not what Postgres *expects*, and the symptom is a backend that will not connect to a
+# database that is running perfectly well. This closes that gap.
+#
+# It needs no old password: the connection goes over the container's unix socket, which the
+# image initialises as trust, and reaching that socket already requires exec on the
+# container. Restart the backend afterwards so it picks the new value out of .env.
+db-password: db-wait
+	@test -f .env || { echo "No .env — copy .env.example and fill it in."; exit 1; }
+	@pw=$$(sed -n 's/^POSTGRES_PASSWORD=//p' .env | head -n 1); \
+	test -n "$$pw" || { echo "POSTGRES_PASSWORD is unset or empty in .env"; exit 1; }; \
+	$(DC) exec -T $(DB_SERVICE) psql -v ON_ERROR_STOP=1 -U $(DB_USER) -d $(DB_NAME) \
+		-c "ALTER USER \"$(DB_USER)\" WITH PASSWORD '$$pw';" >/dev/null
+	@echo "Role $(DB_USER) now uses the password in .env."
+	@echo "Restart the backend to pick it up: $(DC) up -d backend"
 
 # What the database actually looks like right now — the first thing to read when a query
 # fails with "column does not exist".
@@ -350,6 +371,7 @@ help:
 	@echo "Stack:      up, down, logs"
 	@echo "Migrations: migrate, migrate-check, migrate-local, migrate-check-local"
 	@echo "Database:   db-shell, db-schema, db-backup, db-restore FILE=..., db-reset CONFIRM=yes, db-wait"
+	@echo "            db-password (apply POSTGRES_PASSWORD from .env to a live database)"
 	@echo "Frontend:   install, dev, build, preview, clean"
 	@echo "Tests:      test, test-frontend, test-backend, test-e2e"
 	@echo "Android:    android-init, build-android, run-android, dev-android, clean-android"

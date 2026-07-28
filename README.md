@@ -12,13 +12,19 @@ This application helps users track, analyze, and reflect on their connections wi
     ```bash
     git clone <repository-url>
     cd AlexithymiaLoveQuantifier
-    docker-compose up --build
+    cp .env.example .env        # then fill in the two secrets it asks for
+    docker compose up --build
     ```
     *Note: A `Makefile` is also provided (`make setup`, `make dev`, `make build`) for easy local development without Docker.*
 
+    `.env` holds the database password and the JWT signing key, and is git-ignored.
+    Compose refuses to start without them rather than falling back to a default — the file
+    itself says how to generate each one.
+
 2.  **Access:**
-    *   **Frontend:** `http://localhost:8080` (Nginx). *Not `:3000` — see [docs/07-development.md](docs/07-development.md).*
-    *   **Backend API:** `http://localhost:8081/api` (direct), or `http://localhost:8080/api` via Nginx.
+    *   **Frontend:** `http://localhost:8082` (Nginx; `FRONTEND_PORT` in `.env`). *Not `:3000` — see [docs/07-development.md](docs/07-development.md).*
+    *   **Backend API:** `http://localhost:8082/api` via Nginx. Also `http://localhost:8081/api` direct, but bound to `127.0.0.1` — from this machine only.
+    *   **Postgres:** not published. It listens on an internal Docker network that only the backend is attached to; use `make db-shell`.
 
 3.  **Android (optional):**
     ```bash
@@ -164,7 +170,8 @@ Environment variables are currently managed via `docker-compose.yml` for simplic
 
 ## 📝 TODOs / Technical Debt
 
--   [ ] **Security:** Move `JWT_SECRET` and DB creds to a `.env` file (not committed to git).
+-   [x] **Security:** Move `JWT_SECRET` and DB creds to a `.env` file (not committed to git). *Done — see [docs/09-deployment.md §6](docs/09-deployment.md#6-configuration-and-secrets).*
+-   [ ] **Security:** Terminate TLS in front of Nginx. Everything is cleartext HTTP today, which is the remaining blocker for exposure to the internet.
 -   [ ] **Tests:** Add unit tests for backend handlers and frontend components.
 -   [ ] **Validation:** Improve input validation on the backend (e.g., email format).
 -   [ ] **Profile:** Allow users to update their password/email.

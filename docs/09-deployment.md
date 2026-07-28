@@ -4,40 +4,82 @@
 
 ## 1. Compose topology
 
-[`docker-compose.yml`](../docker-compose.yml) — three services, one named volume, one
-implicit default network.
+[`docker-compose.yml`](../docker-compose.yml) — three services, two named volumes, two
+networks.
 
 ```mermaid
 graph LR
     HOST["Host"]
-    HOST -->|":8080 → :80"| FE["love-metrics-frontend<br/>nginx:alpine<br/>serves /dist + proxies /api/"]
-    HOST -->|":8081 → :8080"| BE["love-metrics-backend<br/>alpine + Go binary"]
-    HOST -->|":5432 → :5432"| DB[("love-metrics-db<br/>postgres:15-alpine")]
+    HOST -->|":8082 → :80"| FE["love-metrics-frontend<br/>nginx:alpine<br/>serves /dist + proxies /api/ and /uploads/"]
+    HOST -.->|"127.0.0.1:8081 → :8080<br/>(loopback only)"| BE["love-metrics-backend<br/>alpine + Go binary, non-root"]
+    subgraph web
     FE -->|"http://backend:8080"| BE
-    BE -->|"pgx, sslmode=disable"| DB
+    end
+    subgraph data ["data (internal)"]
+    BE -->|"pgx, sslmode=disable"| DB[("love-metrics-db<br/>postgres:15-alpine")]
+    end
     DB --- VOL["volume: postgres_data"]
+    BE --- UPL["volume: uploads_data"]
 ```
 
-| Service | Container | Host → container | Image / build |
-| :------ | :-------- | :--------------- | :------------ |
-| `frontend` | `love-metrics-frontend` | **8080 → 80** | build `.` / [`Dockerfile`](../Dockerfile) |
-| `backend` | `love-metrics-backend` | **8081 → 8080** | build `./backend` / [`backend/Dockerfile`](../backend/Dockerfile) |
-| `postgres` | `love-metrics-db` | 5432 → 5432 | `postgres:15-alpine` |
+| Service | Container | Host → container | Networks | Image / build |
+| :------ | :-------- | :--------------- | :------- | :------------ |
+| `frontend` | `love-metrics-frontend` | **8082 → 80** | `web` | build `.` / [`Dockerfile`](../Dockerfile) |
+| `backend` | `love-metrics-backend` | 127.0.0.1:8081 → 8080 | `web`, `data` | build `./backend` / [`backend/Dockerfile`](../backend/Dockerfile) |
+| `postgres` | `love-metrics-db` | *none* — `expose: 5432` | `data` | `postgres:15-alpine` |
 
 ```bash
-docker-compose up --build     # start; open http://localhost:8080
-docker-compose logs -f backend
-docker-compose down           # keeps the volume
-docker-compose down -v        # drops the database
+cp .env.example .env          # then fill in the two secrets; Compose refuses to start without them
+docker compose up --build     # start; open http://localhost:8082
+docker compose logs -f backend
+docker compose down           # keeps the volumes
+docker compose down -v        # drops the database
 ```
 
-**The application URL is `http://localhost:8080`**, not `:3000` as the root README says.
-`:8081` is a direct line to the API, useful for `curl` but not usable from the SPA (no CORS).
+**The application URL is `http://localhost:8082`** (`FRONTEND_PORT` in `.env`), not `:3000`
+as the root README says. It is also the *only* port published to the network: `:8081` is
+still a direct line to the API for `curl`, but it is bound to `127.0.0.1`, so it is
+reachable from the host and from nowhere else. Postgres is not published at all.
+
+**The two networks are the trust boundary.** `frontend` is on `web`, `postgres` is on
+`data`, and `backend` is the only member of both — so Nginx has no route to the database
+and cannot acquire one. `data` is `internal: true`, which strips its gateway: the database
+has no path off this host in either direction.
 
 Service discovery is by Compose service name: Nginx proxies to `http://backend:8080` and
-the backend connects to `DB_HOST=postgres` — both resolve on the default network, so
-renaming a service in `docker-compose.yml` requires updating `nginx.conf` and the
-`DB_HOST` value too.
+the backend connects to `DB_HOST=postgres`. Renaming a service in `docker-compose.yml`
+requires updating `nginx.conf` and the `DB_HOST` value too — and keeping the renamed
+service on the right network.
+
+### Per-container hardening
+
+Segmentation decides who can *reach* what; this decides what a compromise *is* once it
+happens.
+
+| | `frontend` | `backend` | `postgres` |
+| :- | :- | :- | :- |
+| `no-new-privileges` | yes | yes | yes |
+| `cap_drop: ALL` | yes | yes | yes |
+| capabilities added back | `CHOWN`, `SETGID`, `SETUID`, `NET_BIND_SERVICE`, `DAC_OVERRIDE` | **none** | `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `FSETID`, `SETGID`, `SETUID` |
+| runs as | root master, `nginx` workers | `app` (non-root) | root entrypoint, `postgres` server |
+| `read_only` root fs | no | yes | no |
+
+The backend is the interesting column: a static Go binary on an unprivileged port, running
+as a non-root user, with **no capabilities at all** and a read-only root filesystem — its
+only writable paths are the uploads volume and a 64 MB `tmpfs` at `/tmp`. It is also the
+service most exposed to user input, since it is the one parsing uploads and JSON.
+
+The other two keep the capabilities their entrypoints genuinely use: Nginx's master binds
+:80 and forks workers under another uid, and the Postgres entrypoint starts as root to fix
+up the data directory before `su-exec`ing to `postgres`. Both are left writable because
+their entrypoints write outside the volume — Nginx's `docker-entrypoint.d` scripts edit
+`/etc/nginx/conf.d`, which a read-only root filesystem would break. `read_only: true` plus
+`tmpfs` mounts for `/var/cache/nginx` and `/var/run` is a reasonable next step, but it is
+one to make with a container to test it against.
+
+`no-new-privileges` is the cheap one worth understanding: it makes `execve` unable to grant
+privileges, so a setuid binary inside any of these images cannot be used to climb back up
+after the capability drop.
 
 ---
 
@@ -88,44 +130,53 @@ Two build-hygiene issues:
 [`nginx.conf`](../nginx.conf):
 
 ```nginx
+limit_req_zone $binary_remote_addr zone=auth:10m rate=20r/m;   # http context
+
+server_tokens off;
+client_max_body_size 8m;
+
+resolver 127.0.0.11 ipv6=off valid=10s;
+set $upstream http://backend:8080;
+
 location / {
     root   /usr/share/nginx/html;
     try_files $uri $uri/ /index.html;   # SPA fallback: /profile deep-links work
 }
 
-location /api/ {
-    proxy_pass http://backend:8080;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
+location ~ ^/api/(login|signup)$ {      # regex wins over the /api/ prefix below
+    limit_req zone=auth burst=10 nodelay;
+    proxy_pass $upstream$request_uri;
 }
+
+location /api/     { proxy_pass $upstream$request_uri; }
+location /uploads/ { proxy_pass $upstream$request_uri; }   # + a sandbox CSP
 ```
 
 `try_files … /index.html` is what makes a refresh on `/profile` work instead of 404ing —
 the README's troubleshooting entry points here.
 
-Absent: gzip/brotli, cache headers for hashed assets, HTTP/2, TLS, security headers
-(`X-Frame-Options`, CSP, `X-Content-Type-Options`), and any request size limit. Fine for a
-self-hosted personal tool; all worth adding before public exposure.
+Three things in there are less obvious than they look:
 
-### `/uploads` is not proxied in the container setup
+**The upstream goes through a variable.** `proxy_pass http://backend:8080` resolves the
+name once, when the config loads, and caches that address for the process's lifetime — so
+recreating the backend container, which gives it a new IP, leaves Nginx proxying into the
+void and every `/api` call 502s until Nginx is restarted too. A variable forces per-request
+resolution against Docker's DNS at `127.0.0.11`. `$request_uri` then supplies the path and
+query string that the literal form passed implicitly.
 
-⚠️ There is **no `location /uploads/` block**. The Vite dev proxy has one
-([`vite.config.js:16`](../vite.config.js#L16)), Nginx does not — so under Docker every
-avatar request hits `location /` instead, falls through `try_files` to `/index.html`, and the
-`<img>` renders broken while returning HTTP 200 with HTML.
+**`/uploads/` is proxied but sandboxed.** It has to be proxied — without the block, avatar
+requests fell through to `try_files` and returned HTTP 200 of `index.html`, so the `<img>`
+broke with no error status to diagnose. But those files are user-supplied and validated
+only against the client's own `Content-Type` header, so the location also sends
+`Content-Security-Policy: default-src 'none'; … sandbox`. An HTML file smuggled in as an
+image is then inert if anyone navigates to it, while real images still render — CSP on a
+subresource response does not restrict the image itself.
 
-Fix — add alongside the `/api/` block:
+**The rate limit is on the two endpoints that gate accounts.** bcrypt at cost 14 makes each
+guess expensive for the *server* too (about a second of CPU), so the limit is as much about
+denial of service as it is about brute force.
 
-```nginx
-location /uploads/ {
-    proxy_pass http://backend:8080;
-    proxy_set_header Host $host;
-}
-```
-
-Tracked in [Known Issues](11-known-issues.md#uploads-is-not-proxied-in-the-container-setup).
+Still absent: gzip/brotli, cache headers for hashed assets, HTTP/2, and TLS.
 
 ---
 
@@ -143,8 +194,11 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/server
 
 FROM alpine:latest
-WORKDIR /root/
-COPY --from=builder /app/main .
+RUN addgroup -S app && adduser -S -D -H -G app app
+WORKDIR /app
+COPY --from=builder --chown=app:app /app/main /app/migrate ./
+RUN install -d -o app -g app /app/uploads
+USER app
 EXPOSE 8080
 CMD ["./main"]
 ```
@@ -154,22 +208,34 @@ CMD ["./main"]
   is `glebarez/sqlite` (pure Go, via `modernc.org/sqlite`). Swapping to
   `gorm.io/driver/sqlite` (which wraps `mattn/go-sqlite3`) would require CGO and break this
   build.
-- Runs as **root** with `WORKDIR /root/`, so `./uploads` resolves to `/root/uploads`.
+- Runs as **non-root** in `/app`, so `./uploads` resolves to `/app/uploads`. It was
+  `WORKDIR /root/` and uid 0 until the container hardening pass; the process binds an
+  unprivileged port and writes one directory, so root bought nothing.
+- `uploads/` is created **in the image**, not by the server at runtime, so the named volume
+  Compose mounts there inherits `app`'s ownership — Docker seeds a fresh volume from the
+  image directory's contents *and* its owner and mode. Against a path that does not exist,
+  the volume would be created root-owned and the first upload would fail with `EACCES`.
 - `alpine:latest` (not pinned) provides a shell for debugging; `scratch` or `distroless`
-  would be smaller and safer since the binary is static.
+  would be smaller and safer since the binary is static. The mutable tag is still a
+  reproducibility hole — it errs toward *patched*, which is why it has not been changed.
 
-### Uploaded files are lost on every container recreation
+### Uploaded files survive container recreation
 
-`/root/uploads` is written inside the container's writable layer and **no volume is
-mounted**. `docker-compose down && up`, a rebuild, or any recreation discards every avatar,
-while `users.profile_picture` keeps pointing at the vanished file. Fix:
+`/app/uploads` is a named volume (`uploads_data`). It used to be the container's writable
+layer, so `down`/`up`, a rebuild, or any recreation discarded every avatar while
+`users.profile_picture` kept pointing at the vanished file.
 
-```yaml
-backend:
-  volumes:
-    - backend_uploads:/root/uploads
-volumes:
-  backend_uploads:
+It is also what makes `read_only: true` possible on this service: with the root filesystem
+mounted read-only, the volume and a 64 MB `tmpfs` at `/tmp` (for Gin's multipart spill) are
+the only writable paths in the container.
+
+⚠️ **If you are upgrading an existing deployment, the avatars currently in the container
+are not in a volume yet.** Copy them out before the first `up` that recreates the backend:
+
+```bash
+docker cp love-metrics-backend:/root/uploads ./uploads-backup
+# after the stack is up again:
+docker cp ./uploads-backup/. love-metrics-backend:/app/uploads
 ```
 
 ---
@@ -180,10 +246,11 @@ volumes:
 postgres:
   image: postgres:15-alpine
   environment:
-    - POSTGRES_USER=postgres
-    - POSTGRES_PASSWORD=password
-    - POSTGRES_DB=alexithymia
-  ports: ["5432:5432"]
+    - POSTGRES_USER=${POSTGRES_USER:?...}
+    - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?...}
+    - POSTGRES_DB=${POSTGRES_DB:?...}
+  expose: ["5432"]
+  networks: [data]
   volumes: [postgres_data:/var/lib/postgresql/data]
 ```
 
@@ -192,21 +259,35 @@ backend's `AutoMigrate` on boot — there are no init scripts. Since Phase 4 the
 runs an idempotent data backfill; [§5](#5-the-phase-4-relationship-migration) covers what to
 back up first and what the log should say.
 
-**Port 5432 is published to the host** with the password `password`. On any non-isolated
-network that is an open database. Drop the `ports` block unless you need external access;
-the backend reaches Postgres over the Compose network regardless.
+**Nothing on the host can reach Postgres.** `expose` publishes to the Compose network and
+not to the host, and the `data` network is `internal`, so the only process that can open a
+socket to 5432 is a container attached to that network — which is `backend`, alone. The
+`psql` targets in the Makefile work by `docker compose exec`, i.e. from inside the
+container, so none of them needed the old `5432:5432` mapping either.
 
-### No readiness gate for Postgres
+Credentials come from a git-ignored `.env` ([§6](#6-configuration-and-secrets)).
 
-`depends_on: [postgres]` only orders *container start*, not readiness — and there is no
-`healthcheck` or `condition: service_healthy` anywhere. Meanwhile
+**Rotating the password is two steps, not one.** `POSTGRES_*` is read by `initdb`, which
+runs exactly once, against an empty data directory. Editing `.env` therefore changes what
+the backend *presents* and not what Postgres *expects*, and the symptom is a backend that
+cannot connect to a database that is running fine. `make db-password` applies the value in
+`.env` to the live database (over the container's unix socket, so it needs no old
+password); restart the backend afterwards.
+
+### Postgres readiness gate
+
+`depends_on: [postgres]` on its own only orders *container start*, not readiness, while
 `database.Connect()` calls `log.Fatalf` on failure with no retry
-([`database.go:36-38`](../backend/internal/database/database.go#L36-L38)).
+([`database.go:36-38`](../backend/internal/database/database.go#L36-L38)) — so a cold start
+used to race, and the backend frequently exited before Postgres accepted connections. That
+was the README's *"Connection Refused to Database → restart the backend container"*
+symptom.
 
-So on a cold `docker-compose up --build`, the backend frequently starts before Postgres
-accepts connections and **exits immediately**. This is precisely the README's
-*"Connection Refused to Database → restart the backend container"* symptom. Note the README
-claims "the backend waits for Postgres" — it does not.
+Closed: `postgres` now declares a `pg_isready` healthcheck and `backend` waits on
+`condition: service_healthy`. The README's claim that "the backend waits for Postgres" is
+finally true, though by Compose's doing rather than the backend's — a connect-retry loop in
+`Open()` would still be worth having, since a database that restarts *later* is not covered
+by a start-time gate.
 
 Two proper fixes, either sufficient:
 
@@ -294,40 +375,52 @@ backfill reproduces the browser's old grouping rule — one relationship per
 
 ## 6. Configuration and secrets
 
-Everything is inline in
-[`docker-compose.yml:22-28`](../docker-compose.yml#L22-L28):
-
-```yaml
-- DB_PASSWORD=password
-- JWT_SECRET=supersecretkey   # In production, this should be a real secret.
-```
-
-Both are committed to git. There is no `.env` file, no `env_file:` directive, and no
-`godotenv` in the backend — so the only way to change them today is to edit the tracked
-file. Minimum viable improvement:
+`DB_PASSWORD=password` and `JWT_SECRET=supersecretkey` used to be inline in
+`docker-compose.yml` and therefore committed. They now come from a git-ignored `.env`:
 
 ```yaml
 backend:
   environment:
-    - DB_PASSWORD=${DB_PASSWORD:?set DB_PASSWORD}
-    - JWT_SECRET=${JWT_SECRET:?set JWT_SECRET}
+    - DB_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    - "JWT_SECRET=${JWT_SECRET:?set JWT_SECRET in .env, generate with: openssl rand -hex 32}"
 ```
 
-Compose interpolates from a local `.env` (git-ignored) or the shell, and `:?` fails fast
-instead of silently defaulting.
+`:?` is the part that matters: an unset or empty variable stops Compose *before a container
+is created* and names the variable it wanted, instead of starting the stack with a
+placeholder. [`.env.example`](../.env.example) is the committed template and lists how to
+generate each value; [`.gitignore`](../.gitignore) ignores `.env` and `.env.*` while
+un-ignoring the example.
+
+This is **interpolation, not `env_file:`** — deliberately. `env_file:` injects every
+variable in the file into the service, which would hand `JWT_SECRET` to Postgres and the
+database password to anything else that grew an `env_file:` line later. Naming each
+variable under each service keeps a secret visible only to the containers that need it: the
+database password to `backend` and `postgres`, the JWT key to `backend` alone.
+
+Note that `docker compose config` prints the resolved values in clear — it is a debugging
+command, not something to paste into an issue.
 
 **Since Phase 5 an absent `JWT_SECRET` is fatal at startup**: `main()` calls
 `auth.LoadSecret()` before anything else and exits with an explanatory message. That closes
 the old failure mode where an unset variable produced an empty signing key and the
-application ran normally while every token was forgeable. Compose already sets the variable,
-so containers are unaffected; a bare `go run ./cmd/server` now needs it
-([Development §2](07-development.md#2-fastest-path--no-containers-no-database)).
+application ran normally while every token was forgeable. With `${JWT_SECRET:?}` the same
+mistake is now caught one layer earlier still. A bare `go run ./cmd/server` needs the
+variable in the shell ([Development §2](07-development.md#2-fastest-path--no-containers-no-database)).
 
-The `${VAR:?}` form above is still worth adopting — failing at the Compose level names the
-missing variable before a container is even created.
+**Rotating `JWT_SECRET` logs everyone out** — every issued token fails verification against
+the new key. Rotating `POSTGRES_PASSWORD` needs `make db-password` as well as the `.env`
+edit ([§4](#4-database-service)).
 
-Also worth knowing: `docker-compose.yml` declares `version: '3.8'`, which current Compose
-versions warn is obsolete. Harmless; deleting the line silences it.
+### What is still missing: TLS
+
+Nginx speaks cleartext HTTP on `${FRONTEND_PORT}`. Passwords, JWTs and every answer in the
+vault cross the network in the open, and nothing above changes that — a strong database
+password does not help if the token authorising the request was readable in transit. On a
+LAN that is a judgement call; on a public address it is the largest remaining hole.
+
+Terminate TLS in front of this stack (Caddy or Traefik with an ACME certificate is the
+least work — point it at `frontend` and stop publishing `${FRONTEND_PORT}` to the world),
+and set `sslmode=require` on the Postgres DSN if the database ever moves off this host.
 
 ---
 
@@ -348,23 +441,28 @@ app to the internet.
 
 **Blocking**
 - [x] ~~Fail startup if `JWT_SECRET` is unset~~ — done in Phase 5.
-- [ ] Move `JWT_SECRET` and `DB_PASSWORD` out of the repository (they are still committed in `docker-compose.yml`).
-- [ ] Mount a volume for `/root/uploads`, or move storage to object storage.
-- [ ] Add the `/uploads/` proxy block to `nginx.conf`.
-- [ ] Add a Postgres readiness gate (healthcheck and/or connect retry).
-- [ ] Terminate TLS in front of Nginx; enable `sslmode=require` to Postgres.
-- [ ] Remove the published `5432:5432` mapping.
+- [x] ~~Move `JWT_SECRET` and `DB_PASSWORD` out of the repository~~ — `.env` + `${VAR:?}` interpolation ([§6](#6-configuration-and-secrets)).
+- [x] ~~Mount a volume for `/root/uploads`~~ — `uploads_data:/app/uploads`. Object storage is still the answer if this ever runs on more than one host.
+- [x] ~~Add the `/uploads/` proxy block to `nginx.conf`~~ — with a `sandbox` CSP over it, since the stored files are user-supplied and validated only by client-declared MIME.
+- [x] ~~Add a Postgres readiness gate~~ — `pg_isready` healthcheck + `condition: service_healthy`. A connect retry in `Open()` is still worth having for mid-life restarts.
+- [ ] Terminate TLS in front of Nginx; enable `sslmode=require` to Postgres. **The largest remaining hole** — see [§6](#what-is-still-missing-tls).
+- [x] ~~Remove the published `5432:5432` mapping~~ — `expose` only, on an `internal` network ([§4](#4-database-service)).
 - [ ] Remove `backend/alexithymia.db` from git history if it ever held real credentials.
 
 **Strongly recommended**
-- [ ] Validate uploads by content, not by client-declared MIME; cap file size.
-- [ ] Rate-limit `/api/login` and `/api/signup`.
+- [ ] Validate uploads by content, not by client-declared MIME. *(Size is now capped at 8 MB by `client_max_body_size`, but the type check is still `file.Header.Get("Content-Type")`; the `sandbox` CSP on `/uploads/` contains the consequence rather than fixing the cause.)*
+- [x] ~~Rate-limit `/api/login` and `/api/signup`~~ — `limit_req` zone `auth`, 20 r/m with a burst of 10, returning 429.
 - [ ] Pin the JWT signing method (`jwt.WithValidMethods`).
-- [ ] Run the backend as a non-root user; pin the runtime base image.
-- [ ] `npm ci` in the frontend build; add a `.dockerignore`.
-- [ ] Add a `/healthz` endpoint for orchestrators and Playwright's `webServer.url`.
-- [ ] Security headers and gzip in Nginx.
+- [x] ~~Run the backend as a non-root user~~ — plus `cap_drop: ALL`, `read_only`, and `no-new-privileges` on all three services. The runtime base image is still the mutable `alpine:latest`.
+- [ ] `npm ci` in the frontend build.
+- [x] ~~Add a `.dockerignore`~~ — and it now excludes `.env`, so a secret cannot reach an image layer.
+- [ ] Add a `/healthz` endpoint for orchestrators and Playwright's `webServer.url`. *(Would also let `frontend` wait on `condition: service_healthy` instead of `service_started`.)*
+- [x] ~~Security headers in Nginx~~ — CSP, `nosniff`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, `server_tokens off`. gzip is still off.
 - [ ] Real migration files, since `AutoMigrate` cannot express destructive changes.
 - [ ] Structured logging and an error tracker; today errors are `console.error` on the
       client and Gin's default logger on the server.
-- [ ] Backups for `postgres_data` and the uploads volume.
+- [ ] Backups for `postgres_data` and the uploads volume. *(`make db-backup` covers the
+      database; `uploads_data` has nothing.)*
+- [ ] Give the backend a non-superuser Postgres role. It connects as the `postgres`
+      superuser today; `AutoMigrate` needs DDL rights, but not `SUPERUSER`. Needs an initdb
+      script, so it only takes effect on a fresh volume.
