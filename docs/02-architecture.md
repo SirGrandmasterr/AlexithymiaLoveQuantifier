@@ -248,8 +248,14 @@ bookmarkable, and correct under the back button. It renders from the shared
 | | Frontend origin | How `/api` reaches Go | How `/uploads` reaches Go |
 | :- | :-------------- | :-------------------- | :------------------------ |
 | **Local dev** (`npm run dev` + `go run`) | `http://localhost:5173` | Vite dev-server proxy → `http://localhost:8080` ([`vite.config.js:13-18`](../vite.config.js#L13-L18)) | Vite proxy, explicitly configured |
-| **Docker Compose** | `http://localhost:8080` (host → Nginx :80) | Nginx `location /api/` → `http://backend:8080` ([`nginx.conf:11-17`](../nginx.conf#L11-L17)) | **Not proxied** — avatars 404. See [Known Issues](11-known-issues.md#uploads-is-not-proxied-in-the-container-setup) |
-| **Direct backend** | — | `http://localhost:8081` (Compose maps 8081→8080) | same |
+| **Docker Compose** | `http://localhost:8082` (host → Nginx :80) | Nginx `location /api/` → `backend:8080` ([`nginx.conf`](../nginx.conf)) | Nginx `location /uploads/` → `backend:8080`, under a `sandbox` CSP |
+| **Direct backend** | — | `http://127.0.0.1:8081` (loopback-bound; this machine only) | same |
+
+Under Compose the proxy is now the only route in: `8081` is bound to loopback and Postgres
+is not published at all, so the body-size cap, the login rate limit and the security
+headers in `nginx.conf` are the limits everything on the network actually hits. The
+upstream is resolved per request through Docker's DNS rather than once at startup, so
+recreating the backend container no longer strands Nginx on a dead IP.
 
 Because both environments make the SPA and the API **same-origin**, the Go service ships
 **no CORS middleware at all**. Any future deployment that serves the SPA from a different

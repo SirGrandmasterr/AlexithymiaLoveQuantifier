@@ -1,3 +1,100 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ---------------------------------------------------------------------------
+   Mobile shell
+   ---------------------------------------------------------------------------
+   Everything below is inert in a desktop browser: the safe-area insets resolve to 0px
+   without `viewport-fit=cover` plus a notched device, and every rule is either scoped to
+   `max-width: 767px` or keyed off a class only the native shell sets.
+   --------------------------------------------------------------------------- */
+
+@layer base {
+    :root {
+        /* Written by the Keyboard listener in `src/mobile/useNativeShell.js`. */
+        --alq-keyboard: 0px;
+        /* Kept in step with the h-14 bar in `MobileBottomNav`. */
+        --alq-nav-height: 56px;
+    }
+
+    /* The WebView happily bounces the whole document on overscroll, which under a fixed
+       header reads as the app coming unglued. `contain` keeps scroll chaining inside the
+       page without disabling the pull-to-refresh gesture we implement ourselves. */
+    html {
+        overscroll-behavior-y: contain;
+    }
+
+    body {
+        /* A long-press on a card should open its note, not raise the system text-selection
+           handles. Inputs opt back in below — without that exception you cannot place a
+           cursor in a text field. */
+        -webkit-tap-highlight-color: transparent;
+        -webkit-touch-callout: none;
+    }
+
+    input,
+    textarea,
+    [contenteditable] {
+        -webkit-user-select: text;
+        user-select: text;
+    }
+
+    /* Android's WebView zooms the page when a focused field is under 16px. The app's form
+       fields are `text-sm` (14px), so without this every tap into a field jerks the layout. */
+    @media (max-width: 767px) {
+
+        input,
+        select,
+        textarea {
+            font-size: 16px;
+        }
+    }
+}
+
+@layer utilities {
+
+    /* Safe areas. `max(...)` keeps the existing padding on devices that report 0. */
+    .pt-safe {
+        padding-top: env(safe-area-inset-top, 0px);
+    }
+
+    .pb-safe {
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    /* Clearance for the fixed bottom bar, so the last card is never trapped under it.
+       Above `md` the bar is not rendered and this collapses to nothing. */
+    @media (max-width: 767px) {
+        .pb-nav {
+            padding-bottom: calc(var(--alq-nav-height) + env(safe-area-inset-bottom, 0px));
+        }
+    }
+
+    .alq-hide-on-keyboard {
+        transition: transform 150ms ease-out;
+    }
+
+    /* Set on <html> while the soft keyboard is up. */
+    .alq-keyboard-open .alq-hide-on-keyboard {
+        transform: translateY(100%);
+        pointer-events: none;
+    }
+
+    .alq-keyboard-open .pb-nav {
+        padding-bottom: 0;
+    }
+
+    /* Opt-in 48dp touch target for controls whose visual size is smaller than their
+       hit area needs to be — icon buttons in dense rows, mostly. */
+    .touch-target {
+        min-width: 48px;
+        min-height: 48px;
+    }
+
+    /* The card stack owns vertical drag; telling the browser up front stops it waiting
+       ~300ms to decide whether the gesture was a scroll. */
+    .touch-pan-none {
+        touch-action: none;
+    }
+}

@@ -11,6 +11,8 @@ import { timelinePath } from './TimelineRoute';
 import { useSubjects } from '../context/SubjectsContext';
 import { useDiscretion } from '../context/DiscretionContext';
 import { CATEGORIES, GUIDE_SCALE, anchorFor, guideBand, isScored, summarizeStack } from '../constants/categories';
+import usePullToRefresh from '../mobile/usePullToRefresh';
+import { syncReminders } from '../mobile/cadenceReminders';
 
 // The taxonomy and its helpers now live in src/constants/categories.js. They are
 // re-exported here because the dashboard is where callers have always looked for them.
@@ -130,11 +132,91 @@ const CardStack = ({ versions, maskName = (name) => name, blurClass = '', onEdit
         // listener must be re-registered when it changes.
     }, [sortedVersions.length, activeIndex]);
 
+    // The touch equivalent of the wheel handler above.
+    //
+    // Scrubbing versions was wheel-only, which on a phone means the stack is a static picture
+    // of its newest snapshot with the rest unreachable. A vertical drag maps to the same
+    // index change, and follows exactly the same rule about when to swallow the gesture: only
+    // when there is a version to scrub to, so a stack of one still scrolls the page.
+    useEffect(() => {
+        const container = containerRef.current;
+        if (!container) return;
+
+        const SWIPE_PX = 45;
+        let startY = null;
+        let startX = null;
+        let claimed = false;
+
+        const onStart = (event) => {
+            if (event.touches.length !== 1) return;
+            startY = event.touches[0].clientY;
+            startX = event.touches[0].clientX;
+            claimed = false;
+        };
+
+        const onMove = (event) => {
+            if (startY === null) return;
+
+            const deltaY = event.touches[0].clientY - startY;
+            const deltaX = event.touches[0].clientX - startX;
+
+            // Horizontal intent is not ours. Bail before claiming anything, so a diagonal
+            // drag resolves to a page scroll rather than a half-committed scrub.
+            if (!claimed && Math.abs(deltaX) > Math.abs(deltaY)) {
+                startY = null;
+                return;
+            }
+            if (Math.abs(deltaY) < SWIPE_PX) return;
+
+            const last = sortedVersions.length - 1;
+            // Dragging up reveals the card beneath — the same direction as a downward wheel.
+            const goingDown = deltaY < 0;
+            const canScrub = goingDown ? activeIndex < last : activeIndex > 0;
+            if (!canScrub) {
+                startY = null;
+                return;
+            }
+
+            // `{ passive: false }` below is what makes this preventDefault work, exactly as
+            // it does for the wheel listener.
+            event.preventDefault();
+            claimed = true;
+            startY = event.touches[0].clientY;
+            setActiveIndex(prev => (goingDown ? Math.min(prev + 1, last) : Math.max(prev - 1, 0)));
+        };
+
+        const onEnd = () => { startY = null; claimed = false; };
+
+        container.addEventListener('touchstart', onStart, { passive: true });
+        container.addEventListener('touchmove', onMove, { passive: false });
+        container.addEventListener('touchend', onEnd, { passive: true });
+        container.addEventListener('touchcancel', onEnd, { passive: true });
+
+        return () => {
+            container.removeEventListener('touchstart', onStart);
+            container.removeEventListener('touchmove', onMove);
+            container.removeEventListener('touchend', onEnd);
+            container.removeEventListener('touchcancel', onEnd);
+        };
+    }, [sortedVersions.length, activeIndex]);
+
     return (
         <div
             ref={containerRef}
-            className="relative h-[500px]"
+            // 500px is taller than the content area of a 360×640 phone once the header and
+            // the bottom bar are removed, which left the newest card clipped. Below `sm` the
+            // stack takes the viewport height it can actually have.
+            className="relative h-[min(70vh,500px)] sm:h-[500px]"
         >
+            {/* Version count and position: on a desktop the depth of a stack is legible from
+                the fanned cards behind it. Mid-drag on a phone the cards are moving, so the
+                position is stated outright. */}
+            {sortedVersions.length > 1 && (
+                <div className="sm:hidden absolute -top-1 right-0 z-30 text-[11px] font-light text-slate-400 tabular-nums">
+                    {activeIndex + 1} / {sortedVersions.length}
+                </div>
+            )}
+
             {sortedVersions.map((person, index) => {
                 const offset = index - activeIndex;
                 const isActive = offset === 0;
@@ -769,6 +851,8 @@ export default function Dashboard() {
         people,
         stacks,
         loadError,
+        staleSince,
+        refresh,
         dismissLoadError,
         createSubject,
         updateSubject,
@@ -803,6 +887,19 @@ export default function Dashboard() {
         setNotice(null);
         dismissLoadError();
     };
+
+    // The list is fetched once on mount and mutated locally after that, which is invisible on
+    // a desktop where a reload is free. A phone is resumed, not reloaded — this is how the
+    // list gets refetched without one. No-op on web; see `src/mobile/usePullToRefresh.js`.
+    const { pull, refreshing, armed } = usePullToRefresh(refresh);
+
+    // Reminders are recomputed from `stacks` whenever it changes, so adding a snapshot or
+    // changing a rhythm cancels the notification it just satisfied. No-op unless the user has
+    // turned reminders on; see `src/mobile/cadenceReminders.js` for the constraints it works
+    // under, which come from the product rule at the top of `constants/cadence.js`.
+    useEffect(() => {
+        syncReminders(stacks);
+    }, [stacks]);
 
     const handleSavePerson = async (personData) => {
         setNotice(null);
@@ -912,26 +1009,61 @@ export default function Dashboard() {
 
     return (
         <div className="min-h-screen bg-slate-50 font-sans text-slate-800 selection:bg-slate-200">
-            <div className="max-w-6xl mx-auto px-6 py-12">
-                <header className="flex flex-col md:flex-row md:items-end justify-between mb-12 space-y-4 md:space-y-0">
+            {/* Pull-to-refresh indicator. `pull` is 0 on web, so this never renders there. */}
+            {pull > 0 && (
+                <div
+                    className="fixed top-0 inset-x-0 z-30 flex justify-center pointer-events-none"
+                    style={{ transform: `translateY(${pull}px)` }}
+                >
+                    <div className="mt-2 p-2 bg-white rounded-full shadow-md border border-slate-100">
+                        <Activity
+                            size={18}
+                            className={`transition-colors ${refreshing ? 'animate-spin text-rose-500'
+                                : armed ? 'text-rose-500' : 'text-slate-300'
+                                }`}
+                        />
+                    </div>
+                </div>
+            )}
+
+            <div
+                className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12"
+                style={pull > 0 ? { transform: `translateY(${pull}px)` } : undefined}
+            >
+                <header className="flex flex-col md:flex-row md:items-end justify-between mb-8 md:mb-12 space-y-4 md:space-y-0">
                     <div>
-                        <h1 className="text-4xl font-light tracking-tight text-slate-900 mb-2">
+                        <h1 className="text-3xl sm:text-4xl font-light tracking-tight text-slate-900 mb-2">
                             My <span className="font-semibold">Analysis</span>
                         </h1>
                         <p className="text-slate-500 font-light max-w-md">
                             Overview of your emotional metrics.
                         </p>
                     </div>
+                    {/* On a handset "New Analysis" is the one thing this screen is for, so it
+                        takes the full width rather than sharing a row with an info icon. */}
                     <div className="flex items-center gap-3">
-                        <button onClick={() => setIsAboutOpen(true)} className="flex items-center justify-center p-3 bg-white border border-slate-200 text-slate-500 rounded-xl hover:border-slate-400 hover:text-slate-700 transition-all shadow-sm">
+                        <button onClick={() => setIsAboutOpen(true)} aria-label="About" className="flex items-center justify-center p-3 min-h-[48px] min-w-[48px] bg-white border border-slate-200 text-slate-500 rounded-xl hover:border-slate-400 hover:text-slate-700 transition-all shadow-sm">
                             <Info size={18} />
                         </button>
-                        <button onClick={() => setIsFormOpen(true)} className="flex items-center gap-2 px-5 py-3 bg-white border border-slate-200 text-slate-700 rounded-xl hover:border-slate-400 hover:shadow-md transition-all group">
+                        <button onClick={() => setIsFormOpen(true)} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-3 min-h-[48px] bg-white border border-slate-200 text-slate-700 rounded-xl hover:border-slate-400 hover:shadow-md transition-all group">
                             <Plus size={18} className="text-slate-400 group-hover:text-slate-600 transition-colors" />
                             <span className="font-medium">New Analysis</span>
                         </button>
                     </div>
                 </header>
+
+                {/* Cached data is not an error, so it does not use the banner slot — that one
+                    is dismissible and this condition is not something the user can dismiss
+                    their way out of. It states the age, because "offline" alone is not
+                    actionable: whether a twenty-minute-old list is fine depends on the list. */}
+                {staleSince && (
+                    <div role="status" className="mb-6 p-3 rounded-lg bg-slate-100 border border-slate-200 flex items-center gap-3">
+                        <Activity size={16} className="flex-shrink-0 text-slate-400" />
+                        <span className="flex-1 text-sm font-light text-slate-600">
+                            Showing your last synced copy, from {new Date(staleSince).toLocaleString()}. Pull down to try again.
+                        </span>
+                    </div>
+                )}
 
                 {banner && (
                     <div

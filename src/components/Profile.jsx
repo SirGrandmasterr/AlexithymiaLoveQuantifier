@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Mail, Shield, Save, Upload, Loader2, Info } from 'lucide-react';
+import { User, Mail, Shield, Save, Upload, Loader2, Info, Bell } from 'lucide-react';
 import axios from 'axios';
+import { resolveAssetUrl } from '../mobile/serverUrl';
+import { remindersAvailable, remindersEnabled, setRemindersEnabled } from '../mobile/cadenceReminders';
 
 // This screen used to call through its own `axios.create()` instance, which carried the
 // token but not App.jsx's response interceptor — interceptors on the global default do not
@@ -25,9 +27,30 @@ export default function Profile() {
         email: ''
     });
 
+    const [reminders, setReminders] = useState(remindersEnabled);
+    const [reminderError, setReminderError] = useState(null);
+
     useEffect(() => {
         fetchProfile();
     }, []);
+
+    /**
+     * The OS is the authority on whether reminders are on, not this component: the user can
+     * revoke POST_NOTIFICATIONS in Settings at any time. `setRemindersEnabled` returns the
+     * state that actually holds afterwards, and that is what is rendered — so a denied prompt
+     * leaves the control off rather than showing a toggle that lies.
+     */
+    const toggleReminders = async () => {
+        setReminderError(null);
+        const next = await setRemindersEnabled(!reminders);
+        setReminders(next);
+
+        if (!reminders && !next) {
+            setReminderError(
+                'Android did not grant notification permission. You can enable it for this app in Settings › Notifications.'
+            );
+        }
+    };
 
     const fetchProfile = async () => {
         try {
@@ -115,7 +138,12 @@ export default function Profile() {
                         <div className="relative group">
                             <div className="w-24 h-24 rounded-full overflow-hidden bg-slate-100 border-4 border-white shadow-md flex items-center justify-center">
                                 {formData.profile_picture ? (
-                                    <img src={formData.profile_picture} alt="Profile" className="w-full h-full object-cover" />
+                                    // Stored server-relative (`/uploads/profile_<nanos>.jpg`).
+                                    // In a browser that resolves against the page origin and is
+                                    // correct; in the WebView it would resolve against
+                                    // `https://localhost` and 404, so it is rebased onto the
+                                    // configured server. Returns the path untouched on web.
+                                    <img src={resolveAssetUrl(formData.profile_picture)} alt="Profile" className="w-full h-full object-cover" />
                                 ) : (
                                     <User size={40} className="text-slate-400" />
                                 )}
@@ -235,6 +263,42 @@ export default function Profile() {
                             </select>
                         </div>
                     </div>
+
+                    {/* Native only: there is no equivalent on the web, where the in-app
+                        nudge already appears whenever the dashboard is open. */}
+                    {remindersAvailable() && (
+                        <div className="pt-8 border-t border-slate-50">
+                            <div className="flex items-center gap-2 text-slate-800 font-medium mb-4">
+                                <Bell size={18} />
+                                <h3>Check-in reminders</h3>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={toggleReminders}
+                                aria-pressed={reminders}
+                                className={`w-full sm:w-auto flex items-center justify-between gap-4 px-5 py-3 min-h-[48px] border rounded-xl font-medium transition-all text-sm ${reminders
+                                    ? 'bg-slate-800 text-white border-slate-800'
+                                    : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                                    }`}
+                            >
+                                <span>{reminders ? 'Reminders are on' : 'Turn on reminders'}</span>
+                                <span className={`text-xs ${reminders ? 'text-slate-300' : 'text-slate-400'}`}>
+                                    {reminders ? '10:00' : 'off'}
+                                </span>
+                            </button>
+                            <p className="mt-3 text-xs text-slate-400 font-light leading-relaxed max-w-md">
+                                One notification at 10:00 for each relationship whose rhythm has come
+                                round, carrying the same sentence the app shows — no counts, no
+                                streaks, nothing to clear. Scheduled on this device from snapshots
+                                you already have; nothing is sent to the server.
+                            </p>
+                            {reminderError && (
+                                <p role="alert" className="mt-3 text-xs text-amber-600 font-light max-w-md">
+                                    {reminderError}
+                                </p>
+                            )}
+                        </div>
+                    )}
 
                     <div className="pt-8 border-t border-slate-50">
                         <div className="flex items-center gap-2 text-slate-800 font-medium mb-4">

@@ -1,45 +1,157 @@
+# Three tiers, three trust levels.
+#
+#   internet ──▶ frontend (Nginx) ──▶ backend (Go) ──▶ postgres
+#                    web network         data network (internal)
+#
+# The two networks are the point. Everything used to sit on the default bridge, where any
+# container could open a socket to any other and Postgres was additionally published on the
+# host's 5432 — so "who can talk to the database" was answered by "anyone who can route to
+# this machine". Now it is answered by the topology: `postgres` is on `data` only, `frontend`
+# is on `web` only, and `backend` is the single member of both. Nginx cannot reach Postgres
+# even if it is compromised, because there is no route, not because nothing asked it to.
+#
+# `data` is marked internal, which removes its gateway: the database has no path off this
+# host in either direction. Nothing about the application needs one.
+#
+# Secrets come from a git-ignored .env via ${VAR:?} interpolation — unset means Compose
+# refuses to create the stack and names the variable, rather than silently starting with a
+# default. See .env.example.
+#
+# Still missing, and worth knowing about: there is no TLS here. Nginx speaks cleartext HTTP,
+# so passwords and JWTs cross the network in the open. That is fine on a LAN and not fine on
+# a public address — put a TLS-terminating proxy in front of ${FRONTEND_PORT} before exposing
+# this to the internet. See docs/09-deployment.md §6.
+
 services:
   frontend:
     container_name: love-metrics-frontend
     build:
       context: .
       dockerfile: Dockerfile
+    # The only published port that faces the network. Everything the SPA needs — /api and
+    # /uploads — is proxied from here, so this is the whole attack surface.
     ports:
-      - "8080:80"
+      - "${FRONTEND_PORT:-8082}:80"
     depends_on:
-      - backend
-    
+      backend:
+        condition: service_started
+    networks:
+      - web
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    # The master process binds :80 and drops to the nginx user for workers; those four
+    # capabilities are what that needs and nothing else is.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - NET_BIND_SERVICE
+      - DAC_OVERRIDE
 
   backend:
     container_name: love-metrics-backend
     build:
       context: ./backend
       dockerfile: Dockerfile
+    # Loopback-bound, deliberately. This used to be "8081:8080", which publishes on every
+    # interface: the API was reachable from the network *around* Nginx, so the proxy's
+    # headers, body-size cap and login rate limit were all optional from an attacker's point
+    # of view. Bound to 127.0.0.1 it stays available for `curl` on the host and is
+    # unreachable from anywhere else. Delete the mapping entirely if you do not want it.
     ports:
-      - "8081:8080" # Expose backend on 8081 for direct access if needed, though Nginx proxies via 8080 internally.
+      - "127.0.0.1:${BACKEND_DEBUG_PORT:-8081}:8080"
     environment:
+      # DB_HOST is the service name on the data network; there is no host-port hop.
       - DB_HOST=postgres
-      - DB_USER=postgres
-      - DB_PASSWORD=password
-      - DB_NAME=alexithymia
       - DB_PORT=5432
-      - JWT_SECRET=supersecretkey # In production, this should be a real secret.
+      - DB_USER=${POSTGRES_USER:?set POSTGRES_USER in .env}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      - DB_NAME=${POSTGRES_DB:?set POSTGRES_DB in .env}
+      # Quoted: an unquoted `: ` inside the message makes YAML read the whole entry as a map.
+      - "JWT_SECRET=${JWT_SECRET:?set JWT_SECRET in .env, generate with: openssl rand -hex 32}"
+      # Gin's debug mode logs every registered route and warns on stdout; release mode is
+      # the production setting and stops leaking the route table into the logs.
+      - GIN_MODE=release
     depends_on:
-      - postgres
-    
+      postgres:
+        condition: service_healthy
+    networks:
+      - web
+      - data
+    # Uploaded avatars are the only state outside Postgres. Without this they live in the
+    # container's writable layer and vanish on the next `make up` — and a writable layer is
+    # exactly what read_only removes.
+    volumes:
+      - uploads_data:/app/uploads
+    read_only: true
+    tmpfs:
+      # Gin spills large multipart bodies to os.TempDir().
+      - /tmp:size=64m,mode=1777
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    # A static Go binary listening on an unprivileged port, running as a non-root user
+    # (see backend/Dockerfile). It needs no capabilities at all.
+    cap_drop:
+      - ALL
 
   postgres:
     image: postgres:15-alpine
     container_name: love-metrics-db
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=alexithymia
-    ports:
-      - "5432:5432"
+      - POSTGRES_USER=${POSTGRES_USER:?set POSTGRES_USER in .env}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      - POSTGRES_DB=${POSTGRES_DB:?set POSTGRES_DB in .env}
+      # Applies to a *fresh* volume only (initdb runs once). scram-sha-256 is already the
+      # default on 15; stating it means a future base-image change cannot quietly weaken it.
+      # --auth-local is deliberately left at trust: `make db-shell`, `db-backup` and
+      # `db-restore` reach Postgres through the container's unix socket, and requiring a
+      # password there would only be a password typed by someone who already has exec on
+      # the container.
+      - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256
+    # `expose` rather than `ports`: reachable as postgres:5432 from the data network, and
+    # from nowhere on the host. This is the answer to "only containers on this machine".
+    expose:
+      - "5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    
+    networks:
+      - data
+    # `docker compose up -d` returns when the container starts, which is well before the
+    # database accepts connections. Without this the backend's first connect can land in
+    # that window; with it, dependents wait.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    # The entrypoint starts as root to fix up the data directory, then su-exec's to the
+    # postgres user. That is what these six are for.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - FSETID
+      - SETGID
+      - SETUID
+
+networks:
+  web:
+    driver: bridge
+  data:
+    driver: bridge
+    # No gateway, no route to or from anything off this host.
+    internal: true
 
 volumes:
   postgres_data:
+  uploads_data:

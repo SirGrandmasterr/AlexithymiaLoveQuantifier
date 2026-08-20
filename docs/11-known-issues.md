@@ -35,6 +35,16 @@ self-hosted personal tool. Severity assumes eventual public exposure.
 > otherwise, and `Profile.jsx` no longer holds a private `axios.create()` instance, so the
 > global 401 interceptor covers it (this closes Recipe 6's first half).
 >
+> **Closed by the container hardening pass, 2026-07-28**: committed secrets (now `.env` +
+> `${VAR:?}` interpolation), Postgres published on `5432` with the password `password` (now
+> `expose` only, on an `internal` network, with a generated password), `/uploads` not being
+> proxied by Nginx, uploaded files being lost on container recreation (`uploads_data`
+> volume), the backend starting before Postgres was ready (healthcheck +
+> `condition: service_healthy`), and no rate limiting on `/api/login` and `/api/signup`.
+> The backend also stopped running as root. See
+> [Deployment §1](09-deployment.md#1-compose-topology) and
+> [§6](09-deployment.md#6-configuration-and-secrets).
+>
 > Closed entries are removed rather than annotated; see
 > [`product_vision/`](../product_vision/) for what replaced them.
 
@@ -56,42 +66,18 @@ collision.
 
 ## Broken in the container deployment
 
-### `/uploads` is not proxied in the container setup
+### Postgres restarting mid-life still kills the backend
 
-**Severity: high in Docker — avatars never load.**
+**Severity: low — the cold-start race is closed, this remainder is not.**
 
-[`vite.config.js`](../vite.config.js#L16) proxies both `/api` and `/uploads`;
-[`nginx.conf`](../nginx.conf) proxies **only `/api/`**. Under Docker an avatar request
-therefore falls through to `location /`, gets `try_files … /index.html`, and returns HTTP
-200 containing HTML — so the `<img>` breaks with no error status to diagnose it. It works
-perfectly in local dev, which is why it has gone unnoticed.
+The healthcheck and `condition: service_healthy` gate only the *first* connect. `Open()`
+still has no retry loop and `Connect()` still calls `log.Fatalf`
+([`database.go:36-38`](../backend/internal/database/database.go#L36-L38)), so a database
+that goes away and comes back after boot takes the backend down with it. `restart:
+unless-stopped` then brings the backend back, which makes this self-healing rather than
+fatal — but through the crash, not around it.
 
-*Fix:* add a `location /uploads/ { proxy_pass http://backend:8080; … }` block
-([Deployment §2](09-deployment.md#uploads-is-not-proxied-in-the-container-setup)).
-
-### Uploaded files are lost on container recreation
-
-**Severity: high in Docker — data loss.**
-
-The backend writes `/root/uploads` inside the container's writable layer and
-[`docker-compose.yml`](../docker-compose.yml) mounts **no volume** for it. Any
-`down`/`up`/rebuild discards every avatar while `users.profile_picture` keeps pointing at
-the missing file. Postgres, by contrast, does have `postgres_data`.
-
-*Fix:* mount a named volume at `/root/uploads`.
-
-### Backend can exit before Postgres is ready
-
-**Severity: medium — first-run failure.**
-
-`depends_on` orders start, not readiness; there is no healthcheck, no `restart:` policy, and
-`Connect()` calls `log.Fatalf` with no retry. A cold `docker-compose up --build` frequently
-kills the backend immediately. This is the exact symptom the root README's troubleshooting
-section describes — and the README's claim that *"the backend waits for Postgres"* is
-incorrect.
-
-*Fix:* healthcheck + `condition: service_healthy`, and/or a connect-retry loop
-([Deployment §4](09-deployment.md#no-readiness-gate-for-postgres)).
+*Fix:* a bounded connect-retry loop in `Open()`.
 
 ---
 
@@ -99,11 +85,26 @@ incorrect.
 
 Reasonable for a personal, locally-hosted tool; all are blockers before public exposure.
 
-### Secrets are committed
+### No TLS anywhere
 
-`JWT_SECRET=supersecretkey` and `DB_PASSWORD=password` are in
-[`docker-compose.yml:22-28`](../docker-compose.yml#L22-L28). No `.env` support exists
-anywhere in the stack. Tracked as a TODO in the root README and still open.
+**Severity: high on a public address.**
+
+Nginx serves cleartext HTTP and there is no TLS termination in the stack. Credentials and
+bearer tokens are readable by anything on the path, which is the one weakness that makes
+the others cheaper to exploit — a generated 238-bit database password does not matter if
+the token authorising the request was sniffed. Acceptable on a trusted LAN; not acceptable
+on the internet.
+
+*Fix:* a TLS-terminating proxy in front of `frontend`
+([Deployment §6](09-deployment.md#what-is-still-missing-tls)).
+
+### The backend connects to Postgres as a superuser
+
+The role in `.env` is `postgres`, the cluster superuser. `AutoMigrate` genuinely needs DDL
+rights, so this cannot drop to read/write only — but it does not need `SUPERUSER`, which
+carries `COPY … FROM PROGRAM` and the ability to disable row-level security. Changing it
+requires an initdb script and therefore a fresh volume, which is why it is a register entry
+and not a fix.
 
 ### The development SQLite database is committed to git
 
@@ -123,9 +124,13 @@ backend/alexithymia.db`, and purge history if it ever held real credentials.
 
 `file.Header.Get("Content-Type")` is compared against a three-entry allowlist
 ([`upload.go:29-33`](../backend/internal/handlers/upload.go#L29-L33)) — no magic-byte
-sniffing, no decode, no size limit beyond Gin's default multipart cap, and the extension
-comes from the user-supplied filename. Any file declaring `image/png` is stored and then
-served publicly.
+sniffing, no decode, and the extension comes from the user-supplied filename. Any file
+declaring `image/png` is stored and then served publicly.
+
+Two mitigations landed with the container pass, neither of which fixes the cause: Nginx
+caps request bodies at 8 MB (`client_max_body_size`), and `/uploads/` is served under
+`Content-Security-Policy: default-src 'none'; … sandbox`, so an HTML file smuggled in as an
+image cannot execute against this origin. Real validation is still owed.
 
 Note the E2E suite depends on this weakness (it uploads the bytes `fake image data`), so
 tightening validation requires a real image fixture.
@@ -133,9 +138,9 @@ tightening validation requires a real image fixture.
 ### Uploaded files are publicly readable
 
 `r.Static("/uploads", "./uploads")` is registered **outside** the protected group
-([`main.go:22`](../backend/cmd/server/main.go#L22)). Anyone who knows a filename can fetch
-any avatar. Filenames are nanosecond timestamps — not guessable, but not access-controlled
-either, and not namespaced per user.
+([`main.go:22`](../backend/cmd/server/main.go#L22)), and Nginx now proxies `/uploads/`
+through to it. Anyone who knows a filename can fetch any avatar. Filenames are nanosecond
+timestamps — not guessable, but not access-controlled either, and not namespaced per user.
 
 ### JWT signing method is not pinned
 
@@ -143,21 +148,26 @@ either, and not namespaced per user.
 `jwt.WithValidMethods([]string{"HS256"})`. `golang-jwt/v5` rejects `alg: none` on its own,
 but pinning is the standard defence and is a one-line change.
 
-### No rate limiting anywhere
+### Rate limiting stops at the proxy
 
-Including `/api/login` and `/api/signup`. bcrypt cost 14 makes brute-forcing slow but also
-makes the login endpoint a cheap denial-of-service target: each attempt costs the server
-roughly a second of CPU.
+`/api/login` and `/api/signup` are limited to 20 requests per minute per IP by Nginx
+([`nginx.conf`](../nginx.conf)), which is where the traffic arrives — but the limit lives in
+the proxy, so it does not exist for anything that reaches the backend another way, and it
+counts `$binary_remote_addr`, which is a single address behind a NAT or a CDN. The
+application itself still has no account lockout and no attempt counter.
 
 ### No email validation, no password policy
 
 `binding:"required"` only. `{"email":"x","password":"y"}` creates a valid account. Email
 changes via `PUT /api/me` have no verification flow — the code comment acknowledges this.
 
-### Postgres exposed with a weak password
+### The backend↔Postgres link is unencrypted
 
-`5432:5432` is published to the host with `POSTGRES_PASSWORD=password`, and the backend DSN
-hardcodes `sslmode=disable`. Remove the port mapping unless external access is needed.
+The DSN hardcodes `sslmode=disable`
+([`database.go:39`](../backend/internal/database/database.go#L39)). It is a private,
+`internal` Docker network with no gateway, so the traffic never leaves the host and this is
+a reasonable trade — but it is a hardcoded value, not a configured one, so moving Postgres
+to another host would silently keep sending credentials in clear.
 
 ---
 

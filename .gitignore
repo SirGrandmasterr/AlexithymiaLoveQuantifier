@@ -23,7 +23,15 @@ dist-ssr
 *.sln
 *.sw?
 
-# Database dumps written by `make db-backup` / `make db-reset`
+# Secrets. docker-compose.yml interpolates DB password and JWT_SECRET from .env, so this
+# file is the one place real credentials live — .env.example is the committed template that
+# says what belongs in it. The negation has to come after the wildcard to survive it.
+.env
+.env.*
+!.env.example
+
+# Database dumps written by `make db-backup` / `make db-reset`. They contain the users
+# table, i.e. everyone's bcrypt hashes.
 /backups/
 
 # Playwright
@@ -32,3 +40,17 @@ dist-ssr
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
+
+# Android.
+#
+# android/ is generated — `npx cap add android` writes it from the Capacitor template and
+# Dockerfile.android regenerates it on every build. Committing it would mean reviewing a
+# few thousand lines of template on every Capacitor bump and would make the container build
+# depend on a developer's local state. Native changes that must persist belong in
+# android-config/, which is committed and overlaid after generation.
+/android/
+/dist-android/
+/.gradle/
+*.keystore
+*.jks
+local.properties

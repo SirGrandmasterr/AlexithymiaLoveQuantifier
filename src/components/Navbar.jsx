@@ -1,8 +1,21 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Heart, User, LogOut, LogIn, Archive, Eye, EyeOff } from 'lucide-react';
+import { Heart, User, LogOut, LogIn, Archive, Eye, EyeOff, Server } from 'lucide-react';
 
-export default function Navbar({ isAuthenticated, onLogout, discreet = false, onToggleDiscretion }) {
+/**
+ * The desktop header, and — below `md` — a title bar that has given its navigation away.
+ *
+ * Vault, Profile and discretion move to `MobileBottomNav`; only Logout and the server setting
+ * stay, because neither is a destination. The bar itself remains so the app has a title and a
+ * home affordance, and because `pt-safe` is what keeps it out from under the status bar.
+ */
+export default function Navbar({
+    isAuthenticated,
+    onLogout,
+    discreet = false,
+    onToggleDiscretion,
+    onOpenServerSettings
+}) {
     const navigate = useNavigate();
 
     const handleLogout = () => {
@@ -11,27 +24,44 @@ export default function Navbar({ isAuthenticated, onLogout, discreet = false, on
     };
 
     return (
-        <nav className="bg-white border-b border-slate-100 sticky top-0 z-40">
-            <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-                <Link to="/" className="flex items-center gap-2 group">
-                    <div className="p-1.5 bg-rose-50 rounded-full group-hover:bg-rose-100 transition-colors">
+        <nav className="bg-white border-b border-slate-100 sticky top-0 z-40 pt-safe">
+            <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between">
+                <Link to="/" className="flex items-center gap-2 group min-w-0">
+                    <div className="p-1.5 bg-rose-50 rounded-full group-hover:bg-rose-100 transition-colors flex-shrink-0">
                         <Heart className="text-rose-500" size={20} />
                     </div>
-                    <span className="text-xl font-light text-slate-800">
-                        Alexithymia<span className="font-semibold">LoveQuantifier</span>
+                    {/* The full wordmark is 27 characters and overruns a 360dp screen next to
+                        the action buttons, so the handset gets the short form. */}
+                    <span className="text-lg sm:text-xl font-light text-slate-800 truncate">
+                        <span className="sm:hidden font-semibold">Quantifier</span>
+                        <span className="hidden sm:inline">
+                            Alexithymia<span className="font-semibold">LoveQuantifier</span>
+                        </span>
                     </span>
                 </Link>
 
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-1 sm:gap-4">
                     {isAuthenticated ? (
                         <>
-                            {/* Ctrl+. does the same thing without reaching for the mouse. */}
+                            {/* Native only: on the web the API is same-origin by construction. */}
+                            {onOpenServerSettings && (
+                                <button
+                                    onClick={onOpenServerSettings}
+                                    aria-label="Server settings"
+                                    className="p-3 sm:p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-all"
+                                >
+                                    <Server size={18} />
+                                </button>
+                            )}
+                            {/* Ctrl+. does the same thing without reaching for the mouse.
+                                Duplicated into the bottom bar on handsets, where the top-right
+                                corner is the least reachable point on the screen. */}
                             <button
                                 onClick={onToggleDiscretion}
                                 aria-pressed={discreet}
                                 aria-label={discreet ? 'Turn off discretion mode' : 'Turn on discretion mode'}
                                 title={discreet ? 'Show names and notes (Ctrl+.)' : 'Hide names and notes (Ctrl+.)'}
-                                className={`p-2 rounded-lg transition-all ${discreet
+                                className={`hidden md:block p-2 rounded-lg transition-all ${discreet
                                     ? 'text-slate-800 bg-slate-100'
                                     : 'text-slate-400 hover:text-slate-700 hover:bg-slate-50'
                                     }`}
@@ -40,24 +70,25 @@ export default function Navbar({ isAuthenticated, onLogout, discreet = false, on
                             </button>
                             <Link
                                 to="/vault"
-                                className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900 px-3 py-2 rounded-lg hover:bg-slate-50 transition-all"
+                                className="hidden md:flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900 px-3 py-2 rounded-lg hover:bg-slate-50 transition-all"
                             >
                                 <Archive size={18} />
                                 <span>Vault</span>
                             </Link>
                             <Link
                                 to="/profile"
-                                className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900 px-3 py-2 rounded-lg hover:bg-slate-50 transition-all"
+                                className="hidden md:flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900 px-3 py-2 rounded-lg hover:bg-slate-50 transition-all"
                             >
                                 <User size={18} />
                                 <span>Profile</span>
                             </Link>
                             <button
                                 onClick={handleLogout}
-                                className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-rose-600 px-3 py-2 rounded-lg hover:bg-rose-50 transition-all"
+                                aria-label="Log out"
+                                className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-rose-600 p-3 md:px-3 md:py-2 rounded-lg hover:bg-rose-50 transition-all"
                             >
                                 <LogOut size={18} />
-                                <span>Logout</span>
+                                <span className="hidden md:inline">Logout</span>
                             </button>
                         </>
                     ) : (

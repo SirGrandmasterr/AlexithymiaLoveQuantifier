@@ -3,8 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>temp_app</title>
+    <!--
+      viewport-fit=cover lets the page paint under the status bar and the gesture pill, which
+      is what makes env(safe-area-inset-*) report anything but zero. The pt-safe/pb-safe
+      utilities in index.css then hand that space back to the chrome that needs it.
+
+      maximum-scale is deliberately NOT set: pinch-zoom is an accessibility affordance, and
+      locking it is the most common accidental a11y regression in a WebView app.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#f8fafc" />
+    <title>Alexithymia Love Quantifier</title>
   </head>
   <body>
     <div id="root"></div>
