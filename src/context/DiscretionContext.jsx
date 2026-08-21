@@ -38,13 +38,23 @@ export const initials = (name) => {
 /** The blur applied to notes and tags. Literal strings — Tailwind cannot see composed ones. */
 export const BLUR_CLASS = 'blur-[3px] hover:blur-none focus-within:blur-none transition-[filter] duration-150';
 
-const readStored = () => {
+/**
+ * Whether discretion mode is on, read straight from storage.
+ *
+ * Exported because not every consumer is a component: the vault dial's click track
+ * (`src/mobile/knobFeedback.js`) has to know, and it is called from a pointer handler rather
+ * than rendered. Reading the same key the provider writes keeps one source of truth — a
+ * second copy of the string is how a mode ends up half-applied.
+ */
+export const isDiscreetOnThisDevice = () => {
     try {
         return window.localStorage.getItem(STORAGE_KEY) === 'true';
     } catch {
         return false;
     }
 };
+
+const readStored = isDiscreetOnThisDevice;
 
 export function DiscretionProvider({ children }) {
     const [discreet, setDiscreet] = useState(readStored);

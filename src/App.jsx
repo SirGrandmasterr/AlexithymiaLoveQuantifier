@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
 import Navbar from './components/Navbar';
@@ -12,6 +11,7 @@ import Vault from './components/Vault';
 import AppLock from './components/AppLock';
 import MobileBottomNav from './components/MobileBottomNav';
 import ServerSettingsModal from './components/ServerSettingsModal';
+import SessionExpiredDialog from './components/SessionExpiredDialog';
 import { SubjectsProvider } from './context/SubjectsContext';
 import { DiscretionProvider, useDiscretion } from './context/DiscretionContext';
 import { isNative } from './mobile/platform';
@@ -20,60 +20,68 @@ import { isNative } from './mobile/platform';
 // issue a request — the same ordering constraint, and the same reason, as `applyToken`.
 import { hasConfiguredServer } from './mobile/serverUrl';
 import useNativeShell from './mobile/useNativeShell';
-
-/**
- * The single writer for the auth header and its localStorage copy.
- *
- * This must run **synchronously**, never from an effect. Child effects commit before their
- * parent's, so the subjects fetch fires before an effect in this component could set the
- * header — the first request after logging in would go out anonymous, the server would 401,
- * and the interceptor below would sign the user straight back out.
- */
-const applyToken = (token) => {
-    if (token) {
-        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        localStorage.setItem('token', token);
-    } else {
-        delete axios.defaults.headers.common['Authorization'];
-        localStorage.removeItem('token');
-    }
-};
+// The session's storage, renewal and 401 handling. Imported for its side effect as well:
+// reading the stored token applies the auth header at module scope, before any component
+// can issue a request — see `applyToken` there for why that cannot wait for an effect.
+import {
+    readAccessToken,
+    applyToken,
+    saveSession,
+    clearSession,
+    endSession,
+    installSessionInterceptor
+} from './auth/session';
+import useSessionRenewal from './auth/useSessionRenewal';
 
 // Applied at import time so a reload with a stored token is authenticated from the first
 // render, before any component mounts.
-const initialToken = localStorage.getItem('token');
+const initialToken = readAccessToken();
 applyToken(initialToken);
 
 export default function App() {
     const [token, setTokenState] = useState(initialToken);
+    // True while the session cannot be renewed and only the user can fix it. Deliberately
+    // *not* the same thing as having no token: the screen behind the prompt stays mounted,
+    // so signing back in returns the user to the exact place they were, with their form
+    // input intact. Clearing the token instead is what used to evict them to Landing.
+    const [sessionLost, setSessionLost] = useState(false);
+    // Bumped when a session is restored, so the subject list refetches the data the failed
+    // requests never got. A counter rather than an event: it is state, and state is what
+    // the provider is already reacting to.
+    const [sessionEpoch, setSessionEpoch] = useState(0);
 
-    // Header, storage and state move together, in that order, on every transition.
-    const setToken = useCallback((next) => {
-        applyToken(next);
-        setTokenState(next);
-    }, []);
+    // A 401 no longer means the session is over. The interceptor renews and replays the
+    // request; this callback runs only when that is impossible, and what it does is ask
+    // rather than evict. See `src/auth/session.js` for the whole sequence.
+    useEffect(() => installSessionInterceptor(() => setSessionLost(true)), []);
 
-    // An expired token used to surface as an empty dashboard with no explanation.
-    // Clearing it here drops the user back to Landing, which is at least legible.
-    useEffect(() => {
-        const interceptorId = axios.interceptors.response.use(
-            (response) => response,
-            (error) => {
-                if (error?.response?.status === 401) {
-                    setToken(null);
-                }
-                return Promise.reject(error);
-            }
-        );
-        return () => axios.interceptors.response.eject(interceptorId);
-    }, [setToken]);
+    // Renew on resume, ahead of expiry — the path that means the prompt above is rare.
+    useSessionRenewal(Boolean(token) && !sessionLost);
 
-    const handleLogin = (newToken) => {
-        setToken(newToken);
+    const handleLogin = (session) => {
+        setTokenState(saveSession(session));
     };
 
     const handleLogout = () => {
-        setToken(null);
+        setSessionLost(false);
+        setTokenState(null);
+        // Revokes the refresh token server-side, then forgets it here. Fire and forget:
+        // pressing "log out" on a train has still logged the user out.
+        endSession();
+    };
+
+    // Re-authenticated in place: keep the screen, drop the prompt, refetch what was missed.
+    const handleSessionRestored = (newToken) => {
+        setTokenState(newToken);
+        setSessionLost(false);
+        setSessionEpoch(epoch => epoch + 1);
+    };
+
+    // "Sign in as someone else" — the one path out of the prompt that does end the session.
+    const handleSessionAbandoned = () => {
+        clearSession();
+        setSessionLost(false);
+        setTokenState(null);
     };
 
     return (
@@ -83,8 +91,14 @@ export default function App() {
                 <DiscretionProvider>
                     {/* One subject list for every screen: the dashboard and the timeline route
                         read the same state, so an edit in one is never stale in the other. */}
-                    <SubjectsProvider enabled={!!token}>
+                    <SubjectsProvider enabled={!!token} reloadKey={sessionEpoch}>
                         <Shell token={token} onLogout={handleLogout} onLogin={handleLogin} />
+                        {sessionLost && (
+                            <SessionExpiredDialog
+                                onSignedIn={handleSessionRestored}
+                                onSignOut={handleSessionAbandoned}
+                            />
+                        )}
                     </SubjectsProvider>
                 </DiscretionProvider>
             </AppLock>

@@ -45,10 +45,44 @@ self-hosted personal tool. Severity assumes eventual public exposure.
 > [Deployment §1](09-deployment.md#1-compose-topology) and
 > [§6](09-deployment.md#6-configuration-and-secrets).
 >
+> **Closed by the session and touch pass, 2026-08-21**: an access token expiring was a
+> user-visible event. There was no renewal path at all, so every client met "Invalid or
+> expired token" on a 24-hour schedule — the web app dropped to Landing mid-task, and the
+> Android app, which is resumed rather than reloaded for weeks, met it almost every session.
+> Login now issues a rotating refresh token, a 401 renews and replays the request, and a
+> genuinely dead session asks for the passphrase *over* the current screen instead of
+> evicting the user to Landing. See [API §3.1](04-api-reference.md#31-session-renewal) and
+> [Frontend §2a](06-frontend.md#2a-authsessionjs--why-an-expired-token-is-no-longer-an-event).
+>
+> Closed in the same pass, on touch: the scoring slider claimed every touch that landed on
+> it, so scrolling the page from a point above a track moved a score silently; the card stack
+> scrubbed on the *vertical* axis, competing with the page's own scroll gesture; and a
+> thumb placed on a slider covered the anchor phrase that explains the number it is setting.
+> Each axis now has one owner (`touch-action`), the stack scrubs horizontally with a visible
+> pager, and scoring by thumb happens on a dial that sits clear of everything it affects —
+> [Android §3.3](12-android-app.md#33-inputs-and-touch).
+>
+> Also closed: a new version opened on the previous snapshot's scores, so an untouched row
+> recorded a fresh dated score the user never made. New versions start at zero, with last
+> time's value marked on the track and one tap away
+> ([Frontend §3.6](06-frontend.md#36-personform--exported-for-tests)).
+>
 > Closed entries are removed rather than annotated; see
 > [`product_vision/`](../product_vision/) for what replaced them.
 
 ---
+
+
+## Session lifetime: what is still true after renewal
+
+Renewal changed how often a user is interrupted, not what a token can do.
+
+| Property | Status | Why it is acceptable here |
+| :------- | :----- | :------------------------ |
+| An access token cannot be revoked before its `exp` | Unchanged | It is stateless by design. Logging out revokes the *refresh* token, so the window is at most 24 hours and only for a token already in an attacker's hands. |
+| Refresh tokens live in `localStorage`, readable by any XSS | Unchanged trade-off | The alternative is an `HttpOnly` cookie, which the Android client cannot use cross-origin without CSRF machinery this app has no other need for. The CSP in `nginx.conf` is the primary XSS control. |
+| A user cannot see or end their other sessions | Not built | The table has everything a session list would need (`user_id`, timestamps, `revoked_at`); what is missing is a device label and a screen. Worth building the day this stops being single-user-per-server software. |
+| The keyfunc still does not pin the signing algorithm | Unchanged | See the entry in the register below; unaffected by this change. |
 
 ## Functional defects
 

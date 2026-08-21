@@ -79,7 +79,14 @@ export const buildStacks = (people, relationships) => {
     });
 };
 
-export function SubjectsProvider({ children, enabled = true }) {
+/**
+ * @param {boolean} enabled false while signed out — nothing to fetch, nothing to keep.
+ * @param {number} reloadKey bumped by App when a lost session is re-authenticated in place.
+ *   The requests that failed while the session was dead are not retried individually; the
+ *   list is simply fetched again, which is both simpler and more correct than replaying an
+ *   unknown set of them.
+ */
+export function SubjectsProvider({ children, enabled = true, reloadKey = 0 }) {
     const [people, setPeople] = useState([]);
     const [relationships, setRelationships] = useState([]);
     const [loading, setLoading] = useState(enabled);
@@ -142,7 +149,10 @@ export function SubjectsProvider({ children, enabled = true }) {
             // failed fetch after a new sign-in.
             clearCache();
         }
-    }, [enabled, refresh]);
+        // `reloadKey` is in the dependency list precisely so that a restored session
+        // refetches: nothing else about `enabled` has changed, so without it the screen
+        // would keep showing whatever it managed to load before the session lapsed.
+    }, [enabled, refresh, reloadKey]);
 
     // Mutations reject on failure: the caller owns the message, since only it knows
     // whether a form should stay open. All of them splice the echoed row into state.

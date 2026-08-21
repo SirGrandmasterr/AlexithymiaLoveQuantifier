@@ -39,7 +39,9 @@ Breaking any of these produces a silent or confusing failure rather than a clean
 | # | Invariant | Why |
 | :- | :-------- | :-- |
 | 1 | **The primary key is `person.ID`, uppercase.** | `gorm.Model` has no JSON tags. `person.id` is `undefined`; the request goes to `/api/subjects/undefined`. [Details](03-data-model.md#2-gormmodel-and-the-id-casing-trap) |
-| 2 | **Never write the axios auth header from an effect.** `applyToken` is called synchronously at import and from `setToken`. | Child effects run before parent effects, so the first fetch after login would go out unauthenticated, 401, and log the user straight back out — looking exactly like "login is broken". [Details](06-frontend.md#applytoken--the-header-is-never-written-from-an-effect) |
+| 2 | **Never write the axios auth header from an effect.** `applyToken` in [`auth/session.js`](../src/auth/session.js) is called synchronously at import and from `saveSession`. | Child effects run before parent effects, so the first fetch after login would go out unauthenticated and 401 — looking exactly like "login is broken". [Details](06-frontend.md#applytoken--the-header-is-never-written-from-an-effect) |
+| 2f | **Never refresh a session twice at once.** Every caller goes through `refreshSession()`, which shares one in-flight promise. | Refresh tokens rotate, so a second spend of the same token is read by the server as a replay: it revokes the whole family and signs the user out. The dashboard fetches two endpoints in parallel, so this is the normal case, not an edge one. [Details](06-frontend.md#2a-authsessionjs--why-an-expired-token-is-no-longer-an-event) |
+| 2g | **One owner per touch axis, declared with `touch-action`.** Vertical is the page's; a control may claim horizontal, or claim everything only if it is small enough to land on deliberately (the vault dial). | Two gestures competing for one axis cannot be fixed with a better threshold — the result is an app that does something different depending on where a finger happened to land. [Details](12-android-app.md#33-inputs-and-touch) |
 | 2a | **Group stacks by `relationship_id`, never by `name`.** | Two relationships may legitimately share a display name now. Name-grouping would silently merge two different people — the exact bug the entity exists to fix. |
 | 2b | **The write path and the backfill must resolve names the same way.** Both go through `database.FindOrCreateRelationship`. | Two different rules for "which relationship is this name?" split a stack in half, and the halves cannot be told apart afterwards. |
 | 2c | **The cadence nudge never guilt-trips.** No streaks, no badges, no counts of missed check-ins, no red, no urgency vocabulary. | It is a product rule, not a style preference — a missed month must not read as a failure. `nudgeSentence` is tested against a forbidden-word list; keep it that way. |
@@ -214,10 +216,13 @@ same data:
   dismissible `role="alert"` banner — emerald for success, red for error. `Dashboard`'s
   `errorText(error, fallback)` helper prefers the server's own message
   (`error.response.data.error`) and falls back to a written sentence that says what to do.
-- **Global 401 handling** is already installed in `App.jsx` (a response interceptor that
-  clears the token, registered in a `useEffect` and ejected on cleanup so StrictMode's
-  double-invoke cannot stack duplicates). It covers the global axios, which every screen now
-  uses — so a 401 anywhere ends the session. A private `axios.create()` would opt out of it.
+- **Global 401 handling** is already installed by `installSessionInterceptor`
+  ([`auth/session.js`](../src/auth/session.js)), registered from a `useEffect` in `App.jsx`
+  and ejected on cleanup so StrictMode's double-invoke cannot stack duplicates. A 401 renews
+  the session and replays the request; only a dead refresh token surfaces anything. It covers
+  the global axios, which every screen uses — a private `axios.create()` would opt out of it.
+  If a request must *not* be retried this way (a sign-in, where a 401 is a wrong passphrase),
+  mark its config `__isSessionCall: true`.
 - **Do not close a modal on failure.** Keep the close call inside `try`, after the awaits,
   so failed input survives for a retry.
 

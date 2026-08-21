@@ -11,6 +11,9 @@ describe('Auth Component', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        // The form now prefills the address from the last successful sign-in, so a test
+        // that types into it has to start from a device nobody has signed in on.
+        localStorage.clear();
     });
 
     it('renders login view by default', () => {
@@ -72,16 +75,22 @@ describe('Auth Component', () => {
             expect(submitButton).toHaveTextContent('Please wait...');
         });
 
-        expect(axios.post).toHaveBeenCalledWith('/api/login', {
-            email: 'test@example.com',
-            password: 'password123'
-        });
+        // The third argument marks this as a session call, which keeps the 401-renews-and-
+        // retries interceptor out of a wrong-password response. See src/auth/session.js.
+        expect(axios.post).toHaveBeenCalledWith(
+            '/api/login',
+            { email: 'test@example.com', password: 'password123' },
+            { __isSessionCall: true }
+        );
 
         // Resolve the promise and wait for login callback
-        resolveMock({ data: { token: mockToken } });
+        const session = { token: mockToken, refresh_token: 'refresh-abc', expires_in: 86400 };
+        resolveMock({ data: session });
 
+        // The whole payload is handed up, not just the access token: the refresh half is
+        // what stops this screen from reappearing tomorrow.
         await waitFor(() => {
-            expect(mockOnLogin).toHaveBeenCalledWith(mockToken);
+            expect(mockOnLogin).toHaveBeenCalledWith(session);
         });
     });
 
@@ -101,10 +110,11 @@ describe('Auth Component', () => {
         await userEvent.type(passwordInput, 'newpassword123');
         await userEvent.click(submitButton);
 
-        expect(axios.post).toHaveBeenCalledWith('/api/signup', {
-            email: 'newuser@example.com',
-            password: 'newpassword123'
-        });
+        expect(axios.post).toHaveBeenCalledWith(
+            '/api/signup',
+            { email: 'newuser@example.com', password: 'newpassword123' },
+            { __isSessionCall: true }
+        );
 
         await waitFor(() => {
             expect(screen.getByText('Account created! Please log in.')).toBeInTheDocument();
@@ -112,6 +122,17 @@ describe('Auth Component', () => {
 
         // Check it switches back to login view automatically
         expect(screen.getByText('Welcome back')).toBeInTheDocument();
+    });
+
+    it('prefills the address the last sign-in used, and nothing else', async () => {
+        localStorage.setItem('alq:last-email', 'returning@example.com');
+
+        render(<Auth onLogin={mockOnLogin} />);
+
+        expect(screen.getByPlaceholderText('name@example.com')).toHaveValue('returning@example.com');
+        // The passphrase is never stored — the refresh token exists precisely so it does
+        // not have to be.
+        expect(screen.getByPlaceholderText('••••••••')).toHaveValue('');
     });
 
     it('displays API error message correctly', async () => {

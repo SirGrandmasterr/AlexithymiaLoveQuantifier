@@ -62,13 +62,16 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	token, err := auth.GenerateToken(user.ID)
+	// A session, not a bare token: the refresh half is what lets the client renew silently
+	// for the next two months instead of meeting a sign-in screen every day. See
+	// session.go for the rotation rules.
+	payload, err := issueSession(database.DB, user.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"token": token})
+	c.JSON(http.StatusOK, payload)
 }
 
 func GetUserProfile(c *gin.Context) {

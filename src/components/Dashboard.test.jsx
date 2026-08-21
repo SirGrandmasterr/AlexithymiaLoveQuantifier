@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, within, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route, useParams } from 'react-router-dom';
 import axios from 'axios';
@@ -279,7 +279,10 @@ describe('PersonForm — guided scoring, skipping and uncertainty', () => {
         expect(payload.guide_answers).toEqual({ eros: { 0: 3 } });
     });
 
-    it('carries scores but not uncertainty into a new version', async () => {
+    // A new version used to open on last time's numbers. That made an untouched row record
+    // a fresh, dated score nobody had actually made — silence saved as agreement. Every
+    // number in a snapshot should be one someone decided, so it starts at zero.
+    it('starts a new version from zero, carrying neither scores nor uncertainty', async () => {
         const snapshot = {
             ID: 5,
             name: 'Alex',
@@ -292,14 +295,145 @@ describe('PersonForm — guided scoring, skipping and uncertainty', () => {
 
         expect(screen.getByRole('button', { name: 'Mark Mania unsure' })).toHaveAttribute('aria-pressed', 'false');
         expect(screen.getByRole('button', { name: 'Skip Ludus' })).toHaveAttribute('aria-pressed', 'false');
+        expect(screen.getByLabelText('Eros')).toHaveValue('0');
 
         await userEvent.click(screen.getByRole('button', { name: /analyze & save/i }));
 
         const payload = onSave.mock.calls[0][0];
-        expect(payload.stats.eros).toBe(40);   // last reading is the starting point
-        expect(payload.stats.ludus).toBe(0);   // absent last time, scorable this time
+        expect(payload.stats.eros).toBe(0);
+        expect(payload.stats.ludus).toBe(0);
         expect(payload.uncertain).toEqual([]);
         expect(payload.guide_answers).toEqual({});
+    });
+
+    // Zeroed does not mean discarded: last time's reading is on the track and one tap away,
+    // so "about the same as before" is still cheap to say — it just has to be said.
+    it('offers last time\'s number back on a new version', async () => {
+        const snapshot = { ID: 5, name: 'Alex', stats: { eros: 40 } };
+
+        render(<PersonForm onSave={onSave} onClose={onClose} initialData={snapshot} isNewVersion />);
+
+        await userEvent.click(screen.getByRole('button', { name: "Set Eros to last time's 40" }));
+        expect(screen.getByLabelText('Eros')).toHaveValue('40');
+
+        // Once taken, the offer stops being an offer.
+        expect(screen.queryByRole('button', { name: "Set Eros to last time's 40" })).not.toBeInTheDocument();
+
+        await userEvent.click(screen.getByRole('button', { name: /analyze & save/i }));
+        expect(onSave.mock.calls[0][0].stats.eros).toBe(40);
+    });
+
+    // The exception, and the reason it is not an inconsistency: carrying the previous
+    // answers is the definition of a pulse, and its rows say "unchanged" on their face.
+    it('still carries the last snapshot forward in a pulse', async () => {
+        const snapshot = { ID: 5, name: 'Alex', stats: { eros: 40, mania: 60 } };
+
+        render(<PersonForm onSave={onSave} onClose={onClose} initialData={snapshot} isPulse />);
+
+        await userEvent.click(screen.getByRole('button', { name: /save pulse/i }));
+
+        const payload = onSave.mock.calls[0][0];
+        expect(payload.stats.eros).toBe(40);
+        expect(payload.stats.mania).toBe(60);
+    });
+});
+
+describe('CardStack — which gesture belongs to whom', () => {
+    // Three snapshots of one relationship, so there is a stack to riffle through.
+    const versions = [1, 2, 3].map(n => ({
+        ID: n,
+        relationship_id: 1,
+        name: 'Alex',
+        date: `2026-0${n}-01T00:00:00Z`,
+        stats: { ...emptyStats, eros: n * 10 }
+    }));
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockFetch(versions);
+    });
+
+    /** Any element inside the stack: touch events bubble to the container's listeners. */
+    const insideStack = async () => (await screen.findAllByRole('heading', { name: 'Alex' }))[0];
+
+    // Dispatched directly rather than through fireEvent: the stack listens with
+    // `{ passive: false }` on the container, and what these tests are really about is
+    // whether that listener claims the gesture. `act` is needed because the listener is a
+    // plain DOM one, outside React's own event system.
+    const touch = (element, type, x, y) => {
+        const event = new Event(type, { bubbles: true, cancelable: true });
+        event.touches = [{ clientX: x, clientY: y }];
+        act(() => { element.dispatchEvent(event); });
+        return event;
+    };
+
+    const position = () => screen.getByText(/^\d+ \/ \d+$/).textContent;
+
+    it('scrubs the stack on a horizontal swipe', async () => {
+        renderDashboard();
+        const card = await insideStack();
+
+        expect(position()).toBe('1 / 3');
+
+        // Left pushes the top card away, revealing the older snapshot under it.
+        touch(card, 'touchstart', 200, 300);
+        const moved = touch(card, 'touchmove', 120, 302);
+        touch(card, 'touchend', 120, 302);
+
+        expect(position()).toBe('2 / 3');
+        // The stack claimed this one, which is what stops the page moving with it.
+        expect(moved.defaultPrevented).toBe(true);
+    });
+
+    // The bug this replaces: a vertical drag was the scrub gesture *and* the page's scroll
+    // gesture, so which one you got depended on where your finger landed.
+    it('leaves a vertical drag to the page', async () => {
+        renderDashboard();
+        const card = await insideStack();
+
+        touch(card, 'touchstart', 200, 300);
+        const moved = touch(card, 'touchmove', 204, 180);
+        touch(card, 'touchend', 204, 180);
+
+        expect(position()).toBe('1 / 3');
+        expect(moved.defaultPrevented).toBe(false);
+    });
+
+    // A gesture that begins as a scroll stays one, however far the thumb then arcs sideways.
+    it('does not turn a scroll into a scrub halfway through', async () => {
+        renderDashboard();
+        const card = await insideStack();
+
+        touch(card, 'touchstart', 200, 300);
+        touch(card, 'touchmove', 202, 260);
+        const moved = touch(card, 'touchmove', 60, 250);
+        touch(card, 'touchend', 60, 250);
+
+        expect(position()).toBe('1 / 3');
+        expect(moved.defaultPrevented).toBe(false);
+    });
+
+    // The swipe needs a visible counterpart: there is no hover on a phone, so the hint
+    // inside the card never appears there.
+    it('walks the stack with the pager, and stops at both ends', async () => {
+        renderDashboard();
+        await insideStack();
+
+        const older = screen.getByRole('button', { name: 'Older version' });
+        const newer = screen.getByRole('button', { name: 'Newer version' });
+
+        expect(newer).toBeDisabled();
+
+        await userEvent.click(older);
+        expect(position()).toBe('2 / 3');
+        expect(newer).toBeEnabled();
+
+        await userEvent.click(older);
+        expect(position()).toBe('3 / 3');
+        expect(older).toBeDisabled();
+
+        await userEvent.click(newer);
+        expect(position()).toBe('2 / 3');
     });
 });
 

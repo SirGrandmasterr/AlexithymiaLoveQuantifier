@@ -43,8 +43,10 @@ Browser ──► Vite dev server (:5173)  ──proxy /api, /uploads──►  
 Android ──► Capacitor WebView (bundled SPA) ──native HTTP───►  Go + Gin (:8080)
 ```
 
-- **Frontend**: React 19 + Vite 7 + Tailwind CSS 3, SPA, JWT held in `localStorage`.
-- **Backend**: Go 1.24 + Gin + GORM, stateless JWT auth, bcrypt password hashing.
+- **Frontend**: React 19 + Vite 7 + Tailwind CSS 3, SPA. Access and refresh tokens in
+  `localStorage`; an expired access token is renewed silently rather than surfaced.
+- **Backend**: Go 1.24 + Gin + GORM, stateless JWT access tokens with rotating server-side
+  refresh tokens, bcrypt password hashing.
   **`JWT_SECRET` is required** — the server refuses to start without it.
 - **Database**: PostgreSQL 15 when `DB_HOST` is set; otherwise an automatic fallback to a
   local SQLite file. Schema is auto-migrated on every boot.
@@ -87,9 +89,12 @@ When these two disagree, the code wins; please correct the docs in the same chan
 | Delta arithmetic for "What Changed" | [`src/components/WhatChanged.jsx`](../src/components/WhatChanged.jsx) |
 | The shared subject list, grouping, and mutations | [`src/context/SubjectsContext.jsx`](../src/context/SubjectsContext.jsx) |
 | Route table (frontend) | [`src/App.jsx`](../src/App.jsx) |
+| Session storage, renewal, and the 401-renew-retry rule | [`src/auth/session.js`](../src/auth/session.js) — and its one hard rule: never two refreshes at once |
+| The vault dial's gesture, detents, and the touch-axis contract | [`src/components/VaultKnob.jsx`](../src/components/VaultKnob.jsx) + [`src/mobile/knobFeedback.js`](../src/mobile/knobFeedback.js) |
 | The API base URL on Android, and the rule that it must resolve synchronously | [`src/mobile/serverUrl.js`](../src/mobile/serverUrl.js) — mirrors `applyToken` in `App.jsx` for the same ordering reason |
 | Android toolchain versions (JDK, AGP, Gradle, SDK) | [`Dockerfile.android`](../Dockerfile.android) — derived from what `@capacitor/android` declares, not chosen |
 | Native manifest and network policy | [`android-config/`](../android-config/) — `android/` is generated and gitignored |
 | Database schema | [`backend/internal/models/models.go`](../backend/internal/models/models.go) |
 | Route table | [`backend/cmd/server/main.go`](../backend/cmd/server/main.go#L17-L35) |
 | Auth rules (hash cost, token lifetime, claims) | [`backend/internal/auth/auth.go`](../backend/internal/auth/auth.go) |
+| Session issuing, rotation, and reuse detection | [`backend/internal/handlers/session.go`](../backend/internal/handlers/session.go) |

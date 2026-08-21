@@ -83,7 +83,8 @@ Points that matter when editing:
 
 ## 3. `internal/auth` — credentials and tokens
 
-[`auth.go`](../backend/internal/auth/auth.go), 57 lines, four functions, no HTTP.
+[`auth.go`](../backend/internal/auth/auth.go), no HTTP: password hashing, access tokens,
+and the two helpers that mint and hash a refresh token.
 
 ```go
 var jwtKey = []byte(os.Getenv("JWT_SECRET"))
@@ -102,8 +103,16 @@ type Claims struct {
 | :------- | :-------- |
 | `HashPassword(string) (string, error)` | `bcrypt.GenerateFromPassword(…, 14)`. **Cost 14** — deliberately high; ~1s per hash on typical hardware, which shapes signup/login latency and slows test suites that hash for real. |
 | `CheckPasswordHash(password, hash) bool` | `CompareHashAndPassword` — errors collapse to `false`, so a malformed stored hash is indistinguishable from a wrong password. |
-| `GenerateToken(userID uint) (string, error)` | HS256, `exp = now + 24h`. No `iat`, `nbf`, `sub`, `iss`, or `jti`. |
+| `GenerateToken(userID uint) (string, error)` | HS256, `exp = now + AccessTokenTTL` (24h). No `iat`, `nbf`, `sub`, `iss`, or `jti`. |
 | `ValidateToken(string) (*Claims, error)` | `jwt.ParseWithClaims` + explicit `token.Valid` check. |
+| `NewRefreshToken() (string, error)` | 32 bytes from `crypto/rand`, base64url. Opaque, **not** a JWT: a signed refresh token still needs server state to be revocable, and it would carry claims a client could read. |
+| `HashRefreshToken(string) string` | SHA-256, hex. Unsalted and unstretched **on purpose** — the input is 32 uniformly random bytes, so there is no dictionary to run, and this keeps the lookup a single indexed equality. |
+
+`AccessTokenTTL` (24h) and `RefreshTokenTTL` (60 days) are the two numbers that decide how
+often a user is asked for a passphrase. The access token stays short because it is stateless
+and therefore unrevocable; the refresh token can be long because it is neither. Renewal
+itself lives in [`handlers/session.go`](../backend/internal/handlers/session.go) — this
+package deliberately holds no database access.
 
 Two properties to be aware of before touching this file:
 
@@ -197,9 +206,11 @@ the handler rather than by Gin's automatic error path.
 - **`Signup`** — bind → `HashPassword` → `DB.Create`. Any create error becomes
   `500 "Failed to create user. Email might already exist."`; the real error is logged.
   The unique-index violation is *not* distinguished from other failures, hence no `409`.
-- **`Login`** — `First` by email → `CheckPasswordHash` → `GenerateToken`. Both the
+- **`Login`** — `First` by email → `CheckPasswordHash` → `issueSession`. Both the
   unknown-email and wrong-password paths return the same `401 "Invalid credentials"`,
-  which is correct practice for avoiding account enumeration.
+  which is correct practice for avoiding account enumeration. It answers with a
+  `sessionPayload` (access token, refresh token, `expires_in`) rather than a bare token; the
+  `token` field is unchanged, so a client that ignores the rest behaves exactly as before.
 - **`GetUserProfile`** — `DB.First(&user, userID)` and serialise the whole struct;
   `Password` is hidden by its `json:"-"` tag rather than by a DTO.
 - **`UpdateUserProfile`** — load, then apply each field **only if the pointer is non-nil**,
@@ -212,6 +223,37 @@ the handler rather than by Gin's automatic error path.
 Note that `Signup` and `Login` share one binding struct, `AuthInput`, while
 `UpdateUserProfile` has its own `UpdateProfileInput`. Input structs live in the same file
 as their handler, immediately above it — follow that placement.
+
+### 4.3a `session.go` — issuing, rotating, and revoking
+
+Three functions and two public handlers, all of them about one question: how does a client
+get a new access token without the password?
+
+| Symbol | Behaviour |
+| :----- | :-------- |
+| `issueSession(db, userID)` | Mints the pair, stores the refresh half as a hash, sweeps that user's expired rows, and returns the payload. The **only** writer of `models.RefreshToken` rows. |
+| `revokeAllForUser(db, userID)` | The answer to a replay: every live token for that user is revoked at once. |
+| `Refresh` | Look up by hash → reject if revoked (and revoke the family), expired, or naming a deleted account → atomically claim the row → issue the replacement. |
+| `Logout` | Revoke one token. Always `204`. |
+
+Three details that are easy to get wrong if this is ever rewritten:
+
+1. **Claim the token before spending it**, with one conditional
+   `UPDATE … WHERE id = ? AND revoked_at IS NULL`, and treat `RowsAffected == 0` as a replay.
+   The read that precedes it is not enough on its own: two requests carrying the same token
+   can both pass it and both issue a session, which is exactly the reuse this design exists
+   to catch. The `WHERE` clause is what makes exactly one caller able to rotate a token.
+2. **A database error is `500`, never `401`.** Saying 401 here would sign every client out
+   over an outage — the same distinction `AuthMiddleware` draws for the same reason.
+3. **The account check is repeated here.** A session outlives the account behind it when a
+   volume is dropped or a user deleted; renewing without checking would hand out an access
+   token naming nobody, which is precisely the dead-session case the middleware exists to
+   refuse.
+
+Both routes are public, because the access token they concern is — in the ordinary case —
+already expired. Nginx rate-limits `/api/refresh` in the same zone as login and signup:
+it takes a credential from an unauthenticated caller and answers with a live session, so
+leaving it in the generic `/api/` block would make it the one unmetered way to guess at one.
 
 ### 4.4 `subjects.go` handlers
 
@@ -399,8 +441,10 @@ Detailed in [Data Model §5](03-data-model.md#5-driver-selection-and-migration).
   hardcoded. TLS to the database is therefore off and not configurable without a code
   change.
 - Failures call `log.Fatalf` — no retry, no backoff, no readiness wait.
-- `AutoMigrate(&models.User{}, &models.Relationship{}, &models.AnalysisSubject{})` runs on
-  every boot. New models must be added to this call or their tables will never be created.
+- `AutoMigrate(Models()...)` runs on every boot, over
+  `{User, Relationship, AnalysisSubject, RefreshToken}`. New models must be added to
+  `Models()` or their tables will never be created — and note that the handler tests migrate
+  from the same list, so a table cannot be present in the server and missing from the tests.
 - `BackfillRelationships(DB)` runs immediately after, on every boot, and logs one summary
   line. It is idempotent — it only touches rows with `relationship_id IS NULL` — so the
   second and every later boot report `0, 0`. See

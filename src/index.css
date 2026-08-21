@@ -92,9 +92,54 @@
         min-height: 48px;
     }
 
-    /* The card stack owns vertical drag; telling the browser up front stops it waiting
-       ~300ms to decide whether the gesture was a scroll. */
+    /* The vault dial owns every gesture that starts on it — see `VaultKnob`. Stating it up
+       front also stops the browser waiting ~300ms to decide whether the drag was a scroll.
+       The card stack no longer uses this: it takes the horizontal axis and leaves vertical
+       to the page, which is `touch-action: pan-y` and not `none`. */
     .touch-pan-none {
         touch-action: none;
+    }
+}
+
+/* ---------------------------------------------------------------------------
+   Scoring sliders under a thumb
+   ---------------------------------------------------------------------------
+   Scoped to coarse pointers, so the desktop control is untouched.
+
+   The native thumb is about 14px, which is half the 24dp minimum for a touch target and
+   most of why placing a score by tapping the track was a game of chance. Enlarging it costs
+   nothing on a phone — the row has the room — and it makes the direct path (tap or drag the
+   track) usable enough to be a real alternative to the dial rather than a fallback nobody
+   can hit.
+
+   The taller input is a hit area, not a taller track: the visible track is a separate,
+   absolutely centred element (see `CategorySliderRow`), so it stays 4px however tall this
+   grows. `appearance: none` on the thumb means the colour has to be restated here — it is
+   slate-600, matching the `accent-slate-600` the fine-pointer control keeps.
+   --------------------------------------------------------------------------- */
+@media (pointer: coarse) {
+
+    input[type="range"] {
+        height: 28px;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 22px;
+        height: 22px;
+        border-radius: 9999px;
+        background: #475569;
+        border: 2px solid #ffffff;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.3);
+    }
+
+    input[type="range"]::-moz-range-thumb {
+        width: 22px;
+        height: 22px;
+        border-radius: 9999px;
+        background: #475569;
+        border: 2px solid #ffffff;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.3);
     }
 }

@@ -11,6 +11,8 @@ Route table: [`backend/cmd/server/main.go:17-35`](../backend/cmd/server/main.go#
 | :----- | :--- | :--- | :------ |
 | POST | `/api/signup` | — | [`Signup`](../backend/internal/handlers/auth.go#L19-L44) |
 | POST | `/api/login` | — | [`Login`](../backend/internal/handlers/auth.go#L46-L71) |
+| POST | `/api/refresh` | refresh token in body | [`Refresh`](../backend/internal/handlers/session.go) |
+| POST | `/api/logout` | refresh token in body | [`Logout`](../backend/internal/handlers/session.go) |
 | GET | `/api/me` | Bearer | [`GetUserProfile`](../backend/internal/handlers/auth.go) |
 | PUT | `/api/me` | Bearer | [`UpdateUserProfile`](../backend/internal/handlers/auth.go) |
 | POST | `/api/upload` | Bearer | [`UploadProfilePicture`](../backend/internal/handlers/upload.go#L13-L59) |
@@ -62,9 +64,14 @@ On success the middleware sets `userID` (a `uint`) in the Gin context; handlers 
 with `c.Get("userID")` and assert `userID.(uint)`. **Any new protected handler must read
 the user id from the context — never from the request body or a query parameter.**
 
-Token: HS256, claim `user_id`, `exp = now + 24h`, signed with `$JWT_SECRET`
-([`auth.go`](../backend/internal/auth/auth.go)). There is no refresh endpoint and no
-revocation; logout is client-side only.
+Access token: HS256, claim `user_id`, `exp = now + 24h` (`auth.AccessTokenTTL`), signed
+with `$JWT_SECRET` ([`auth.go`](../backend/internal/auth/auth.go)). It is stateless and
+therefore **not revocable** — the clock is its only bound, which is why it is short.
+
+Renewal is a separate credential. `POST /api/login` returns a **refresh token** alongside
+it, and `POST /api/refresh` exchanges that for a new pair; `POST /api/logout` revokes it.
+See [§3.1](#31-session-renewal) for the rules, and
+[`session.go`](../backend/internal/handlers/session.go) for the implementation.
 
 **`JWT_SECRET` must be set or the server refuses to start.** `main()` calls
 `auth.LoadSecret()` before anything else and exits on failure. An empty key is the dangerous
@@ -105,10 +112,69 @@ Request: same shape as signup.
 
 | Status | Body | When |
 | :----- | :--- | :--- |
-| `200` | `{"token":"eyJhbGciOi…"}` | Success. |
+| `200` | `{"token":"eyJhbGciOi…","refresh_token":"nR7…","expires_in":86400}` | Success. |
 | `400` | `{"error":"<validation message>"}` | Missing field. |
 | `401` | `{"error":"Invalid credentials"}` | Unknown email **or** wrong password — deliberately indistinguishable. |
-| `500` | `{"error":"Failed to generate token"}` | Signing failure. |
+| `500` | `{"error":"Failed to generate token"}` | Signing or refresh-token persistence failure. |
+
+`expires_in` is the access token's life **in seconds**. A client that stores it can renew
+*before* a request fails, which is the difference between a session that never visibly
+expires and one that recovers loudly.
+
+> **Compatibility.** `token` is unchanged and still sufficient on its own. A client that
+> ignores the two new fields behaves exactly as it did before this change: signed in for
+> 24 hours, then 401.
+
+### 3.1 Session renewal
+
+#### `POST /api/refresh`
+
+Request:
+
+```json
+{ "refresh_token": "nR7…" }
+```
+
+| Status | Body | When |
+| :----- | :--- | :--- |
+| `200` | Same shape as login | Renewed. **The submitted token is now dead** — see rotation below. |
+| `400` | `{"error":"<validation message>"}` | `refresh_token` absent. |
+| `401` | `{"error":"Session expired. Please sign in again."}` | Unknown, expired, already-used, revoked, or naming a deleted account. |
+| `500` | `{"error":"Failed to verify session"}` | Database unreachable — deliberately **not** 401, so an outage does not sign everyone out. |
+
+Public by necessity: the access token it exists to replace is, in the ordinary case,
+already expired. Every rejection carries the same sentence, so a caller guessing at tokens
+learns nothing about which guess was closer.
+
+**Rotation and reuse detection.** Each refresh revokes the token it consumed and issues a
+new one, so a stolen copy is good only until the real client next renews. Presenting an
+already-revoked token is either a replay or a theft, and the two cannot be told apart —
+so **every refresh token the user holds is revoked** and the next request has to sign in.
+
+The consequence worth knowing when writing a client: **refreshes must not be concurrent.**
+Two parallel refreshes with the same token trip reuse detection and end the session. The
+web client shares one in-flight refresh between all callers for exactly this reason
+([`src/auth/session.js`](../src/auth/session.js)).
+
+Storage: `models.RefreshToken` holds a SHA-256 of the token, never the token itself, with
+a 60-day expiry (`auth.RefreshTokenTTL`). Expired rows for a user are swept whenever that
+user is issued a new session.
+
+#### `POST /api/logout`
+
+Request: same shape as refresh.
+
+| Status | Body | When |
+| :----- | :--- | :--- |
+| `204` | *(empty)* | Always — including for an unknown, malformed, or absent token. |
+
+Deliberately quiet. There is nothing a caller could do with the difference between "revoked"
+and "was not there", and the client's next step — clear local state — is the same either
+way, including when it is offline and this request never arrives.
+
+Note that this revokes the *refresh* token only. Any access token already issued stays valid
+until its `exp`, at most 24 hours later; that is inherent to stateless tokens, not an
+oversight, and it is the trade named at the top of §2.
 
 ### `GET /api/me`
 

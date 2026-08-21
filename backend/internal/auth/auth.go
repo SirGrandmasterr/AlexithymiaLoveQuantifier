@@ -1,7 +1,12 @@
 package auth
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"time"
 
@@ -48,8 +53,45 @@ func CheckPasswordHash(password, hash string) bool {
 	return err == nil
 }
 
+// AccessTokenTTL is how long a signed access token is good for. It stays short precisely
+// because it cannot be revoked: nothing is stored server-side, so the only bound on a
+// stolen one is the clock. Renewal is the refresh token's job — see RefreshTokenTTL and
+// models.RefreshToken — which is what lets this number stay small without the user ever
+// meeting a sign-in screen because of it.
+const AccessTokenTTL = 24 * time.Hour
+
+// RefreshTokenTTL bounds a session that is never used. Two months is the point past which
+// re-entering a password is not an interruption but a reassurance; a client opened once a
+// week rotates long before it, and one that is not has stopped being a live session.
+const RefreshTokenTTL = 60 * 24 * time.Hour
+
+// NewRefreshToken mints an opaque refresh credential: 32 bytes from the system CSPRNG,
+// base64url so it survives a JSON body and a URL unchanged.
+//
+// Deliberately not a JWT. A signed refresh token cannot be revoked without keeping state
+// anyway, and it would carry claims a client could read; this one is a random string whose
+// only meaning is the row it matches.
+func NewRefreshToken() (string, error) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", fmt.Errorf("read random bytes for refresh token: %w", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(raw), nil
+}
+
+// HashRefreshToken is the one-way mapping from a token to the value stored in the database.
+//
+// Plain SHA-256, no salt and no stretching, and that is correct here rather than a
+// shortcut: the input is 32 uniformly random bytes, so there is no dictionary to run and no
+// weak input to protect. It is also what keeps the lookup a single indexed equality — a
+// bcrypt-style hash would force a scan comparing every row on every refresh.
+func HashRefreshToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
 func GenerateToken(userID uint) (string, error) {
-	expirationTime := time.Now().Add(24 * time.Hour)
+	expirationTime := time.Now().Add(AccessTokenTTL)
 	claims := &Claims{
 		UserID: userID,
 		RegisteredClaims: jwt.RegisteredClaims{
