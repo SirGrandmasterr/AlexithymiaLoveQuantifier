@@ -11,6 +11,7 @@ Canonical source: [`backend/internal/models/models.go`](../backend/internal/mode
 erDiagram
     USER ||--o{ RELATIONSHIP : "owns (unenforced)"
     USER ||--o{ ANALYSIS_SUBJECT : "owns (unenforced)"
+    USER ||--o{ REFRESH_TOKEN : "has sessions (unenforced)"
     RELATIONSHIP ||--o{ ANALYSIS_SUBJECT : "has versions (FK on new tables)"
 
     RELATIONSHIP {
@@ -34,6 +35,17 @@ erDiagram
         int age
         string mbti_type
         string profile_picture "URL path e.g. /uploads/profile_123.jpg"
+    }
+
+    REFRESH_TOKEN {
+        uint id PK
+        datetime created_at
+        datetime updated_at
+        datetime deleted_at "soft delete, indexed"
+        uint user_id "indexed, not null; no FK constraint"
+        string token_hash UK "SHA-256 hex of the token; the token itself is never stored"
+        datetime expires_at "indexed, not null; issued + 60 days"
+        datetime revoked_at "nullable; set on rotation, logout, reuse detection"
     }
 
     ANALYSIS_SUBJECT {
@@ -73,6 +85,38 @@ type User struct {
 - `MBTIType` is free-form on the server; the 16 valid values are enforced only by the
   frontend `<select>` ([`Profile.jsx:215-238`](../src/components/Profile.jsx#L215-L238)).
 - `ProfilePicture` stores a **relative URL path**, not a filesystem path.
+
+### `RefreshToken`
+
+```go
+type RefreshToken struct {
+	gorm.Model
+	UserID    uint       `gorm:"index;not null" json:"user_id"`
+	TokenHash string     `gorm:"uniqueIndex;not null" json:"-"`
+	ExpiresAt time.Time  `gorm:"index;not null" json:"expires_at"`
+	RevokedAt *time.Time `json:"revoked_at"`
+}
+```
+
+The long-lived half of a session, and the reason an expired access token is no longer
+something the user has to see. Written only by
+[`issueSession`](../backend/internal/handlers/session.go); read only by `Refresh` and
+`Logout`. Never serialised to a client — the `json` tags are for symmetry with the other
+models, not for a response.
+
+Three properties are load-bearing:
+
+- **`TokenHash`, not the token.** A refresh token is a bearer credential with a two-month
+  life, so a leaked table would otherwise be every account named in it. There is nothing to
+  reverse — the input is 32 uniformly random bytes rather than a password — which is why a
+  plain unsalted SHA-256 is the right cost here and bcrypt would be the wrong one: it would
+  also turn an indexed equality lookup into a scan comparing every row on every refresh.
+- **`RevokedAt` rather than a delete.** A revoked row is what makes a *replay* detectable at
+  all. Presenting an already-revoked token revokes every token the user holds; see
+  [API §3.1](04-api-reference.md#31-session-renewal).
+- **Rows are swept, not scheduled.** The table only grows through `issueSession`, so that is
+  where expired rows for the user are deleted. There is no cron, no cleanup command, and
+  nothing to forget to run.
 
 ### `Relationship`
 
@@ -319,7 +363,8 @@ wait for Postgres; see [Deployment](09-deployment.md#no-readiness-gate-for-postg
 **3. Auto-migrates on every boot:**
 
 ```go
-err = DB.AutoMigrate(&models.User{}, &models.Relationship{}, &models.AnalysisSubject{})
+// database.Models() — {User, Relationship, AnalysisSubject, RefreshToken}
+err = DB.AutoMigrate(Models()...)
 ```
 
 There are **no migration files and no version table.** `AutoMigrate` creates tables,

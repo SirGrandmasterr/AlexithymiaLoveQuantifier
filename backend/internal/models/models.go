@@ -63,3 +63,30 @@ type AnalysisSubject struct {
 	// category id -> metric index (stringified, JSON keys are strings) -> scale index 0..3.
 	GuideAnswers map[string]map[string]int `gorm:"serializer:json" json:"guide_answers"`
 }
+
+// RefreshToken is the long-lived half of a session, and the reason an expired access token
+// is no longer something the user has to see.
+//
+// The access token stays short and stateless — the server can keep verifying it with
+// nothing but the signing key. What was missing was any way to get a new one without the
+// password, so a 24-hour token expiring meant "Invalid or expired token" and a trip back to
+// the sign-in screen, on a phone that had been signed in for weeks.
+//
+// Only the SHA-256 of the token is stored. The value is a bearer credential with a
+// two-month life, so a leaked table would otherwise be every account it names; there is
+// nothing to reverse, because the token is 32 random bytes rather than a password, which is
+// also why a plain unsalted digest is the right cost here.
+//
+// Rotation is what keeps the long life honest: every refresh revokes the row it consumed
+// and issues a new one. Presenting an already-revoked token is then either a replay or a
+// theft, and both are answered the same way — every token the user holds is revoked and the
+// next request has to sign in.
+type RefreshToken struct {
+	gorm.Model
+	UserID    uint      `gorm:"index;not null" json:"user_id"`
+	TokenHash string    `gorm:"uniqueIndex;not null" json:"-"`
+	ExpiresAt time.Time `gorm:"index;not null" json:"expires_at"`
+	// RevokedAt is set on rotation, on sign-out, and on reuse detection. A revoked row is
+	// kept rather than deleted: it is the only thing that makes a replay detectable.
+	RevokedAt *time.Time `json:"revoked_at"`
+}

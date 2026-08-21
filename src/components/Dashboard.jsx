@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, X, Trash2, Edit2, Info, Activity, Calendar, ChevronLeft, TrendingUp, StickyNote, HelpCircle, MinusCircle, Radar as RadarIcon, BarChart3, Zap, Check } from 'lucide-react';
+import { Plus, X, Trash2, Edit2, Info, Activity, Calendar, ChevronLeft, ChevronRight, TrendingUp, StickyNote, HelpCircle, MinusCircle, Radar as RadarIcon, BarChart3, Zap, Check, Volume2, VolumeX } from 'lucide-react';
 import WhatChanged, { findPreviousVersion } from './WhatChanged';
+import VaultKnob from './VaultKnob';
 import ContextCapsuleFields from './ContextCapsule';
 import LoveShape from './LoveShape';
 import StackActions from './StackActions';
@@ -13,6 +14,7 @@ import { useDiscretion } from '../context/DiscretionContext';
 import { CATEGORIES, GUIDE_SCALE, anchorFor, guideBand, isScored, summarizeStack } from '../constants/categories';
 import usePullToRefresh from '../mobile/usePullToRefresh';
 import { syncReminders } from '../mobile/cadenceReminders';
+import { dialSoundEnabled, setDialSoundEnabled } from '../mobile/knobFeedback';
 
 // The taxonomy and its helpers now live in src/constants/categories.js. They are
 // re-exported here because the dashboard is where callers have always looked for them.
@@ -132,60 +134,74 @@ const CardStack = ({ versions, maskName = (name) => name, blurClass = '', onEdit
         // listener must be re-registered when it changes.
     }, [sortedVersions.length, activeIndex]);
 
-    // The touch equivalent of the wheel handler above.
+    // Scrubbing the stack by touch — and the axis it is allowed to use.
     //
-    // Scrubbing versions was wheel-only, which on a phone means the stack is a static picture
-    // of its newest snapshot with the rest unreachable. A vertical drag maps to the same
-    // index change, and follows exactly the same rule about when to swallow the gesture: only
-    // when there is a version to scrub to, so a stack of one still scrolls the page.
+    // This was a *vertical* drag, mirroring the wheel handler, and that was the bug. Vertical
+    // is what the page scrolls with, so every attempt to scroll from a card was a coin toss:
+    // sometimes the page moved, sometimes the stack riffled, and which one you got depended
+    // on where your finger happened to land. Two gestures competing for one axis cannot be
+    // fixed with a better threshold, only by moving one of them.
+    //
+    // So the stack now takes the horizontal axis, which nothing else on this screen wants,
+    // and vertical belongs to the page unconditionally — reinforced by `touch-action: pan-y`
+    // on the container, which tells the compositor the same thing without waiting for us.
+    // The direction follows the visual metaphor rather than the old wheel: swiping left
+    // pushes the top card off to reveal the older one beneath.
+    //
+    // Anyone who does not care to discover a swipe has the pager underneath the stack, which
+    // is the discoverable half of the same control.
     useEffect(() => {
         const container = containerRef.current;
         if (!container) return;
 
         const SWIPE_PX = 45;
-        let startY = null;
+        /** Beyond this much vertical travel the gesture is a scroll, whatever it does next. */
+        const YIELD_PX = 12;
+
         let startX = null;
-        let claimed = false;
+        let startY = null;
+        let decided = false;
 
         const onStart = (event) => {
             if (event.touches.length !== 1) return;
-            startY = event.touches[0].clientY;
             startX = event.touches[0].clientX;
-            claimed = false;
+            startY = event.touches[0].clientY;
+            decided = false;
         };
 
         const onMove = (event) => {
-            if (startY === null) return;
+            if (startX === null) return;
 
-            const deltaY = event.touches[0].clientY - startY;
             const deltaX = event.touches[0].clientX - startX;
+            const deltaY = event.touches[0].clientY - startY;
 
-            // Horizontal intent is not ours. Bail before claiming anything, so a diagonal
-            // drag resolves to a page scroll rather than a half-committed scrub.
-            if (!claimed && Math.abs(deltaX) > Math.abs(deltaY)) {
-                startY = null;
+            // Vertical intent is the page's, and it is settled early and permanently: a
+            // gesture that starts as a scroll must not turn into a scrub halfway through
+            // because the finger drifted sideways.
+            if (!decided && Math.abs(deltaY) > YIELD_PX && Math.abs(deltaY) > Math.abs(deltaX)) {
+                startX = null;
                 return;
             }
-            if (Math.abs(deltaY) < SWIPE_PX) return;
+            if (Math.abs(deltaX) < SWIPE_PX) return;
 
             const last = sortedVersions.length - 1;
-            // Dragging up reveals the card beneath — the same direction as a downward wheel.
-            const goingDown = deltaY < 0;
-            const canScrub = goingDown ? activeIndex < last : activeIndex > 0;
+            // Left pushes the top card away, revealing the older snapshot under it.
+            const goingOlder = deltaX < 0;
+            const canScrub = goingOlder ? activeIndex < last : activeIndex > 0;
             if (!canScrub) {
-                startY = null;
+                startX = null;
                 return;
             }
 
             // `{ passive: false }` below is what makes this preventDefault work, exactly as
             // it does for the wheel listener.
             event.preventDefault();
-            claimed = true;
-            startY = event.touches[0].clientY;
-            setActiveIndex(prev => (goingDown ? Math.min(prev + 1, last) : Math.max(prev - 1, 0)));
+            decided = true;
+            startX = event.touches[0].clientX;
+            setActiveIndex(prev => (goingOlder ? Math.min(prev + 1, last) : Math.max(prev - 1, 0)));
         };
 
-        const onEnd = () => { startY = null; claimed = false; };
+        const onEnd = () => { startX = null; decided = false; };
 
         container.addEventListener('touchstart', onStart, { passive: true });
         container.addEventListener('touchmove', onMove, { passive: false });
@@ -200,171 +216,203 @@ const CardStack = ({ versions, maskName = (name) => name, blurClass = '', onEdit
         };
     }, [sortedVersions.length, activeIndex]);
 
+    const last = sortedVersions.length - 1;
+
     return (
-        <div
-            ref={containerRef}
-            // 500px is taller than the content area of a 360×640 phone once the header and
-            // the bottom bar are removed, which left the newest card clipped. Below `sm` the
-            // stack takes the viewport height it can actually have.
-            className="relative h-[min(70vh,500px)] sm:h-[500px]"
-        >
-            {/* Version count and position: on a desktop the depth of a stack is legible from
-                the fanned cards behind it. Mid-drag on a phone the cards are moving, so the
-                position is stated outright. */}
-            {sortedVersions.length > 1 && (
-                <div className="sm:hidden absolute -top-1 right-0 z-30 text-[11px] font-light text-slate-400 tabular-nums">
-                    {activeIndex + 1} / {sortedVersions.length}
-                </div>
-            )}
+        <>
+            <div
+                ref={containerRef}
+                // `touch-action: pan-y` states the axis split the touch handler implements: the
+                // browser may scroll this vertically without consulting us, and horizontal is
+                // ours. It also removes the ~300ms the WebView otherwise spends deciding.
+                style={{ touchAction: 'pan-y' }}
+                // 500px is taller than the content area of a 360×640 phone once the header and
+                // the bottom bar are removed, which left the newest card clipped. Below `sm` the
+                // stack takes the viewport height it can actually have.
+                className="relative h-[min(70vh,500px)] sm:h-[500px]"
+            >
+                {sortedVersions.map((person, index) => {
+                    const offset = index - activeIndex;
+                    const isActive = offset === 0;
+                    const tags = person.tags || [];
+                    const hasNote = Boolean(person.description && person.description.trim());
+                    const isNoteOpen = openNoteId === person.ID;
 
-            {sortedVersions.map((person, index) => {
-                const offset = index - activeIndex;
-                const isActive = offset === 0;
-                const tags = person.tags || [];
-                const hasNote = Boolean(person.description && person.description.trim());
-                const isNoteOpen = openNoteId === person.ID;
+                    // Determine style based on position relative to active card
+                    let style = {};
+                    let extraClasses = "";
 
-                // Determine style based on position relative to active card
-                let style = {};
-                let extraClasses = "";
-
-                if (offset < 0) {
-                    // Cards that have been "scrolled past" (newer versions being discarded)
-                    // "moves it downwards where it fades away" & "rotates ... to the left"
-                    style = {
-                        transform: 'translateY(120%) rotate(-15deg)',
-                        opacity: 0,
-                        zIndex: 60, // Start high then drop or disappear
-                        pointerEvents: 'none'
-                    };
-                } else if (offset === 0) {
-                    // Active Card
-                    style = {
-                        transform: 'translateY(0) rotate(0deg) scale(1)',
-                        opacity: 1,
-                        zIndex: 50
-                    };
-                    extraClasses = "group hover:shadow-xl";
-                } else {
-                    // Cards in the stack (older versions)
-                    // Visual stack effect: adjust scale and y-offset
-                    if (offset > 2) {
-                        style = { opacity: 0, pointerEvents: 'none', zIndex: 0 };
-                    } else {
+                    if (offset < 0) {
+                        // Cards that have been "scrolled past" (newer versions being discarded)
+                        // "moves it downwards where it fades away" & "rotates ... to the left"
                         style = {
-                            transform: `translateY(${offset * 12}px) scale(${1 - offset * 0.04})`,
-                            opacity: 1 - (offset * 0.1), // Fade out slightly
-                            zIndex: 50 - offset
+                            transform: 'translateY(120%) rotate(-15deg)',
+                            opacity: 0,
+                            zIndex: 60, // Start high then drop or disappear
+                            pointerEvents: 'none'
                         };
+                    } else if (offset === 0) {
+                        // Active Card
+                        style = {
+                            transform: 'translateY(0) rotate(0deg) scale(1)',
+                            opacity: 1,
+                            zIndex: 50
+                        };
+                        extraClasses = "group hover:shadow-xl";
+                    } else {
+                        // Cards in the stack (older versions)
+                        // Visual stack effect: adjust scale and y-offset
+                        if (offset > 2) {
+                            style = { opacity: 0, pointerEvents: 'none', zIndex: 0 };
+                        } else {
+                            style = {
+                                transform: `translateY(${offset * 12}px) scale(${1 - offset * 0.04})`,
+                                opacity: 1 - (offset * 0.1), // Fade out slightly
+                                zIndex: 50 - offset
+                            };
+                        }
                     }
-                }
 
-                return (
-                    <Card
-                        key={person.ID}
-                        className={`absolute top-0 left-0 w-full h-full transition-all duration-700 ease-in-out origin-bottom-left flex flex-col justify-between p-6 ${extraClasses}`}
-                        style={style}
-                    >
-                        <div className="flex justify-between items-start mb-6">
-                            <div>
-                                <h3 className="text-xl font-light text-slate-900">{maskName(person.name)}</h3>
-                                <div className="flex items-center gap-2 mt-1">
-                                    <Calendar size={12} className="text-slate-400" />
-                                    <span className="text-xs text-slate-500 font-mono">
-                                        {person.date ? new Date(person.date).toLocaleDateString() : 'No Date'}
-                                    </span>
-                                    {sortedVersions.length > 1 && (
-                                        <span className="text-xs text-slate-300 ml-2 bg-slate-100 px-2 py-0.5 rounded-full">
-                                            v{sortedVersions.length - index}
+                    return (
+                        <Card
+                            key={person.ID}
+                            className={`absolute top-0 left-0 w-full h-full transition-all duration-700 ease-in-out origin-bottom-left flex flex-col justify-between p-6 ${extraClasses}`}
+                            style={style}
+                        >
+                            <div className="flex justify-between items-start mb-6">
+                                <div>
+                                    <h3 className="text-xl font-light text-slate-900">{maskName(person.name)}</h3>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <Calendar size={12} className="text-slate-400" />
+                                        <span className="text-xs text-slate-500 font-mono">
+                                            {person.date ? new Date(person.date).toLocaleDateString() : 'No Date'}
                                         </span>
-                                    )}
-                                </div>
-
-                                {/* Context capsule: quiet indicators that this snapshot carries a story */}
-                                {isActive && (hasNote || tags.length > 0) && (
-                                    <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                                        {hasNote && (
-                                            <button
-                                                type="button"
-                                                onClick={() => setOpenNoteId(isNoteOpen ? null : person.ID)}
-                                                aria-expanded={isNoteOpen}
-                                                title={isNoteOpen ? 'Hide note' : 'Show note'}
-                                                className="p-1 -ml-1 text-slate-400 hover:text-slate-600 rounded transition-colors"
-                                            >
-                                                <StickyNote size={13} />
-                                            </button>
-                                        )}
-                                        {tags.slice(0, 3).map((tag) => (
-                                            <span key={tag} className={`text-[10px] text-slate-400 bg-slate-50 border border-slate-100 px-2 py-0.5 rounded-full ${blurClass}`}>
-                                                {tag}
+                                        {sortedVersions.length > 1 && (
+                                            <span className="text-xs text-slate-300 ml-2 bg-slate-100 px-2 py-0.5 rounded-full">
+                                                v{sortedVersions.length - index}
                                             </span>
-                                        ))}
-                                        {tags.length > 3 && (
-                                            <span className="text-[10px] text-slate-400">+{tags.length - 3}</span>
                                         )}
                                     </div>
-                                )}
 
-                                {isActive && <SummaryLine versions={versions} />}
+                                    {/* Context capsule: quiet indicators that this snapshot carries a story */}
+                                    {isActive && (hasNote || tags.length > 0) && (
+                                        <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                                            {hasNote && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setOpenNoteId(isNoteOpen ? null : person.ID)}
+                                                    aria-expanded={isNoteOpen}
+                                                    title={isNoteOpen ? 'Hide note' : 'Show note'}
+                                                    className="p-1 -ml-1 text-slate-400 hover:text-slate-600 rounded transition-colors"
+                                                >
+                                                    <StickyNote size={13} />
+                                                </button>
+                                            )}
+                                            {tags.slice(0, 3).map((tag) => (
+                                                <span key={tag} className={`text-[10px] text-slate-400 bg-slate-50 border border-slate-100 px-2 py-0.5 rounded-full ${blurClass}`}>
+                                                    {tag}
+                                                </span>
+                                            ))}
+                                            {tags.length > 3 && (
+                                                <span className="text-[10px] text-slate-400">+{tags.length - 3}</span>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {isActive && <SummaryLine versions={versions} />}
+                                </div>
+
+                                {/* Actions only visible if it's the active card */}
+                                {isActive && (
+                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 bg-white/80 backdrop-blur-sm rounded-lg">
+                                        <button
+                                            onClick={() => setShowShape(s => !s)}
+                                            aria-pressed={showShape}
+                                            className="p-2 text-slate-300 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-colors"
+                                            title={showShape ? 'Show bars' : 'Show Love Shape'}
+                                        >
+                                            {showShape ? <BarChart3 size={16} /> : <RadarIcon size={16} />}
+                                        </button>
+                                        <button onClick={onAnalyze} className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Deep Analysis">
+                                            <TrendingUp size={16} />
+                                        </button>
+                                        <button onClick={() => onPulse(person)} className="p-2 text-slate-300 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-colors" title="Quick Pulse">
+                                            <Zap size={16} />
+                                        </button>
+                                        <button onClick={() => onAddVersion(person)} className="p-2 text-slate-300 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="Add New Version">
+                                            <Plus size={16} />
+                                        </button>
+                                        <button onClick={() => onEdit(person)} className="p-2 text-slate-300 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-colors" title="Edit">
+                                            <Edit2 size={16} />
+                                        </button>
+                                        <button onClick={() => onDelete(person.ID)} className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors" title="Delete">
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </div>
+                                )}
                             </div>
 
-                            {/* Actions only visible if it's the active card */}
-                            {isActive && (
-                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 bg-white/80 backdrop-blur-sm rounded-lg">
-                                    <button
-                                        onClick={() => setShowShape(s => !s)}
-                                        aria-pressed={showShape}
-                                        className="p-2 text-slate-300 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-colors"
-                                        title={showShape ? 'Show bars' : 'Show Love Shape'}
-                                    >
-                                        {showShape ? <BarChart3 size={16} /> : <RadarIcon size={16} />}
-                                    </button>
-                                    <button onClick={onAnalyze} className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Deep Analysis">
-                                        <TrendingUp size={16} />
-                                    </button>
-                                    <button onClick={() => onPulse(person)} className="p-2 text-slate-300 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-colors" title="Quick Pulse">
-                                        <Zap size={16} />
-                                    </button>
-                                    <button onClick={() => onAddVersion(person)} className="p-2 text-slate-300 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="Add New Version">
-                                        <Plus size={16} />
-                                    </button>
-                                    <button onClick={() => onEdit(person)} className="p-2 text-slate-300 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-colors" title="Edit">
-                                        <Edit2 size={16} />
-                                    </button>
-                                    <button onClick={() => onDelete(person.ID)} className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors" title="Delete">
-                                        <Trash2 size={16} />
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-
-                        {isActive && isNoteOpen && (
-                            <p className={`text-xs text-slate-500 font-light leading-relaxed bg-slate-50 rounded-lg p-3 mb-4 whitespace-pre-wrap max-h-24 overflow-y-auto ${blurClass}`}>
-                                {person.description}
-                            </p>
-                        )}
-
-                        <div className="border-t border-slate-50 pt-4 flex-grow">
-                            {showShape ? (
-                                <div className="flex justify-center">
-                                    <LoveShape snapshot={person} size={260} />
-                                </div>
-                            ) : (
-                                <LoveChart stats={person.stats} uncertain={person.uncertain || []} />
-                            )}
-                        </div>
-
-                        <div className="absolute inset-x-0 bottom-4 px-6 text-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                            {sortedVersions.length > 1 && (
-                                <p className="text-[10px] text-slate-400 uppercase tracking-widest">
-                                    {activeIndex < sortedVersions.length - 1 ? "Scroll ↓ for history" : "End of history"}
+                            {isActive && isNoteOpen && (
+                                <p className={`text-xs text-slate-500 font-light leading-relaxed bg-slate-50 rounded-lg p-3 mb-4 whitespace-pre-wrap max-h-24 overflow-y-auto ${blurClass}`}>
+                                    {person.description}
                                 </p>
                             )}
-                        </div>
-                    </Card>
-                );
-            })}
-        </div>
+
+                            <div className="border-t border-slate-50 pt-4 flex-grow">
+                                {showShape ? (
+                                    <div className="flex justify-center">
+                                        <LoveShape snapshot={person} size={260} />
+                                    </div>
+                                ) : (
+                                    <LoveChart stats={person.stats} uncertain={person.uncertain || []} />
+                                )}
+                            </div>
+
+                            {/* Hover-only, so this is the desktop half of the story; the pager
+                                below the stack is the touch half. */}
+                            <div className="hidden sm:block absolute inset-x-0 bottom-4 px-6 text-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                                {sortedVersions.length > 1 && (
+                                    <p className="text-[10px] text-slate-400 uppercase tracking-widest">
+                                        {activeIndex < sortedVersions.length - 1 ? "Scroll ↓ for history" : "End of history"}
+                                    </p>
+                                )}
+                            </div>
+                        </Card>
+                    );
+                })}
+            </div>
+
+            {/* The discoverable half of the scrub.
+                A swipe nobody is told about is a feature nobody has, and on a phone there is no
+                hover state to hint with — the "Scroll ↓ for history" line inside the card only
+                ever appears under a mouse. Two buttons and a count say the same thing out loud,
+                and give the gesture a fallback for anyone who would rather tap. */}
+            {sortedVersions.length > 1 && (
+                <div className="sm:hidden mt-3 flex items-center justify-center gap-4">
+                    <button
+                        type="button"
+                        onClick={() => setActiveIndex(index => Math.max(index - 1, 0))}
+                        disabled={activeIndex === 0}
+                        aria-label="Newer version"
+                        className="p-2 rounded-full text-slate-400 disabled:opacity-25 active:bg-slate-100 transition-colors touch-target flex items-center justify-center"
+                    >
+                        <ChevronLeft size={18} />
+                    </button>
+                    <span className="text-[11px] font-light text-slate-400 tabular-nums" aria-live="polite">
+                        {activeIndex + 1} / {sortedVersions.length}
+                    </span>
+                    <button
+                        type="button"
+                        onClick={() => setActiveIndex(index => Math.min(index + 1, last))}
+                        disabled={activeIndex === last}
+                        aria-label="Older version"
+                        className="p-2 rounded-full text-slate-400 disabled:opacity-25 active:bg-slate-100 transition-colors touch-target flex items-center justify-center"
+                    >
+                        <ChevronRight size={18} />
+                    </button>
+                </div>
+            )}
+        </>
     );
 };
 
@@ -458,8 +506,17 @@ export const AboutModal = ({ onClose }) => {
 };
 
 /**
- * One category's scoring row: slider, anchor phrase, optional guided-scoring panel,
+ * One category's scoring row: dial, slider, anchor phrase, optional guided-scoring panel,
  * and the skip/unsure toggles. Owns no data — every change goes back to PersonForm.
+ *
+ * There are two ways to set the number and they are not redundant. The track is direct and
+ * fast with a mouse; the dial is the one that works under a thumb, because the hand rests
+ * clear of the track and of the anchor phrase beside it. See `VaultKnob` for why that
+ * separation matters more here than it would on most forms.
+ *
+ * @param {number} [previousValue] what this category read in the snapshot being built on.
+ *   Shown as a mark on the track and a one-tap way back to it — a new version starts at zero
+ *   now, so this is how last time's number stays available without being assumed.
  */
 export const CategorySliderRow = ({
     category,
@@ -469,6 +526,7 @@ export const CategorySliderRow = ({
     guideAnswers,
     collapsed = false,
     hideGuide = false,
+    previousValue,
     onExpand,
     onValueChange,
     onToggleSkip,
@@ -478,6 +536,9 @@ export const CategorySliderRow = ({
     const [guideOpen, setGuideOpen] = useState(false);
     const band = guideBand(guideAnswers);
     const anchor = anchorFor(category, value);
+    // Offered only while it would actually change something — an unmoved dial showing
+    // "Last time 0" is noise, and so is one already sitting on the old number.
+    const hasPrevious = Number.isFinite(previousValue) && previousValue !== value;
 
     // Quick pulse: one line per category, carrying last time's answer, until the user says
     // this one moved. Opening a row is the whole interaction — a pulse where nothing
@@ -508,42 +569,52 @@ export const CategorySliderRow = ({
 
     return (
         <div className={skipped ? 'opacity-50' : ''}>
-            <div className="flex justify-between items-center mb-2 gap-2">
-                <div className="flex flex-col min-w-0">
-                    <span className="text-sm font-medium text-slate-700">{category.label}</span>
-                    <span className="text-[10px] text-slate-400">{category.description}</span>
-                </div>
-                <div className="flex items-center gap-1 flex-shrink-0">
-                    <span className={`text-sm font-mono w-10 text-right ${skipped ? 'text-slate-300' : uncertain ? 'text-slate-500 border-b border-dashed border-slate-400' : 'text-slate-500'}`}>
-                        {skipped ? '—' : `${uncertain ? '≈' : ''}${value}`}
-                    </span>
-                    <button
-                        type="button"
-                        onClick={onToggleUncertain}
-                        disabled={skipped}
-                        aria-pressed={uncertain}
-                        aria-label={`Mark ${category.label} unsure`}
-                        title="I'm not sure about this one"
-                        className={`w-6 h-6 rounded-full text-xs font-semibold border transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${uncertain
-                            ? 'bg-slate-700 text-white border-slate-700'
-                            : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400'
-                            }`}
-                    >
-                        ?
-                    </button>
-                    <button
-                        type="button"
-                        onClick={onToggleSkip}
-                        aria-pressed={skipped}
-                        aria-label={`Skip ${category.label}`}
-                        title="Not scoring this today"
-                        className={`p-1 rounded-full border transition-colors ${skipped
-                            ? 'bg-slate-700 text-white border-slate-700'
-                            : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400'
-                            }`}
-                    >
-                        <MinusCircle size={13} />
-                    </button>
+            <div className="flex items-center gap-3 mb-2">
+                {/* Left of the label and above the track: the one part of the row a thumb is
+                    meant to land on, positioned so that landing on it hides nothing. */}
+                <VaultKnob
+                    value={value}
+                    onChange={onValueChange}
+                    label={category.label}
+                    disabled={skipped}
+                />
+                <div className="flex-1 min-w-0 flex justify-between items-center gap-2">
+                    <div className="flex flex-col min-w-0">
+                        <span className="text-sm font-medium text-slate-700">{category.label}</span>
+                        <span className="text-[10px] text-slate-400">{category.description}</span>
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                        <span className={`text-sm font-mono w-10 text-right ${skipped ? 'text-slate-300' : uncertain ? 'text-slate-500 border-b border-dashed border-slate-400' : 'text-slate-500'}`}>
+                            {skipped ? '—' : `${uncertain ? '≈' : ''}${value}`}
+                        </span>
+                        <button
+                            type="button"
+                            onClick={onToggleUncertain}
+                            disabled={skipped}
+                            aria-pressed={uncertain}
+                            aria-label={`Mark ${category.label} unsure`}
+                            title="I'm not sure about this one"
+                            className={`w-6 h-6 rounded-full text-xs font-semibold border transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${uncertain
+                                ? 'bg-slate-700 text-white border-slate-700'
+                                : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400'
+                                }`}
+                        >
+                            ?
+                        </button>
+                        <button
+                            type="button"
+                            onClick={onToggleSkip}
+                            aria-pressed={skipped}
+                            aria-label={`Skip ${category.label}`}
+                            title="Not scoring this today"
+                            className={`p-1 rounded-full border transition-colors ${skipped
+                                ? 'bg-slate-700 text-white border-slate-700'
+                                : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400'
+                                }`}
+                        >
+                            <MinusCircle size={13} />
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -551,13 +622,22 @@ export const CategorySliderRow = ({
                 <p className="text-[11px] text-slate-400 italic">Not scoring this today — it will be left blank, not zero.</p>
             ) : (
                 <>
-                    <div className="relative py-1">
+                    <div className="relative py-2">
                         {/* Track drawn by us rather than the input, so the suggestion band can sit on it */}
                         <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-1 bg-slate-200 rounded-full pointer-events-none" />
                         {band && (
                             <div
                                 className="absolute top-1/2 -translate-y-1/2 h-1 bg-slate-400/50 rounded-full pointer-events-none"
                                 style={{ left: `${band.min}%`, width: `${band.max - band.min}%` }}
+                            />
+                        )}
+                        {/* Where this category stood last time. A mark, not a starting
+                            position: the number is offered, not assumed. */}
+                        {hasPrevious && (
+                            <div
+                                aria-hidden="true"
+                                className="absolute top-1/2 -translate-y-1/2 w-0.5 h-3 bg-slate-400 rounded-full pointer-events-none"
+                                style={{ left: `calc(${previousValue}% - 1px)` }}
                             />
                         )}
                         <input
@@ -567,7 +647,13 @@ export const CategorySliderRow = ({
                             value={value}
                             onChange={(e) => onValueChange(parseInt(e.target.value))}
                             aria-label={category.label}
-                            className="relative w-full h-1 bg-transparent rounded-lg appearance-none cursor-pointer accent-slate-600"
+                            // `touch-pan-y` is what stops a scroll from becoming a score. A
+                            // range input claims every touch that lands on it, so dragging the
+                            // page from a spot that happened to be over a track moved the
+                            // number instead — silently, since the finger was covering it.
+                            // With this, vertical belongs to the page and only a deliberate
+                            // sideways drag reaches the control.
+                            className="relative w-full h-1 bg-transparent rounded-lg appearance-none cursor-pointer accent-slate-600 touch-pan-y"
                         />
                     </div>
 
@@ -578,9 +664,21 @@ export const CategorySliderRow = ({
                         ))}
                     </div>
 
-                    {anchor && (
-                        <p className="text-[11px] text-slate-500 font-light leading-snug">{anchor.phrase}</p>
-                    )}
+                    <div className="flex items-start justify-between gap-3">
+                        {anchor && (
+                            <p className="text-[11px] text-slate-500 font-light leading-snug">{anchor.phrase}</p>
+                        )}
+                        {hasPrevious && (
+                            <button
+                                type="button"
+                                onClick={() => onValueChange(previousValue)}
+                                aria-label={`Set ${category.label} to last time's ${previousValue}`}
+                                className="flex-shrink-0 px-2 py-1 -my-1 text-[11px] font-medium text-slate-400 hover:text-slate-700 rounded-md hover:bg-slate-50 transition-colors tabular-nums"
+                            >
+                                Last time {previousValue}
+                            </button>
+                        )}
+                    </div>
 
                     {/* Guided scoring is hidden in a pulse: the fast path and the slow,
                         careful path are different tools for different days. */}
@@ -670,17 +768,35 @@ export const PersonForm = ({ onClose, onSave, initialData, isNewVersion, isPulse
     // which is the point: "nothing moved" should cost nothing to say.
     const [expanded, setExpanded] = useState(() => new Set());
 
-    // Every category needs a slider position even when its key is absent from the
-    // stored snapshot, so the zeros are the floor and the stored values sit on top.
-    const [stats, setStats] = useState(() => ({
-        ...CATEGORIES.reduce((acc, cat) => ({ ...acc, [cat.id]: 0 }), {}),
-        ...(initialData?.stats || {})
-    }));
-
     // Context describes a period, so it is never inherited by a new version — only
     // an edit of an existing snapshot seeds it. The same goes for uncertainty and
     // guide answers: last time's doubt is not this time's.
     const isEditing = Boolean(initialData) && !isNewSnapshot;
+
+    // Every category needs a slider position even when its key is absent from the
+    // stored snapshot, so the zeros are the floor and the stored values sit on top.
+    //
+    // A **new version** now starts from those zeros rather than from last time's numbers.
+    // Inheriting them looked helpful and was quietly corrosive: a row left untouched
+    // recorded a fresh, dated, apparently deliberate score that the user had never actually
+    // made this time, and a stack of those reads as stability when it is really silence.
+    // Starting at zero makes every number in a snapshot something someone decided.
+    //
+    // A **pulse** is the exception, and not an inconsistency: carrying the previous answers
+    // is the whole definition of one — "open what has moved, leave the rest" — and its rows
+    // say "unchanged" on their face, so nothing is being claimed that was not seen.
+    const [stats, setStats] = useState(() => ({
+        ...CATEGORIES.reduce((acc, cat) => ({ ...acc, [cat.id]: 0 }), {}),
+        ...((isEditing || isPulse) ? (initialData?.stats || {}) : {})
+    }));
+
+    // What the snapshot being built on read, for the mark on each track. Not applicable when
+    // editing (the values *are* these) or in a pulse (they are already carried).
+    const previousStats = isNewVersion && !isPulse ? (initialData?.stats || {}) : null;
+
+    // Sound is a per-device preference rather than a per-form one, so it is read once and
+    // written straight through. See `src/mobile/knobFeedback.js` for the default.
+    const [dialSound, setDialSound] = useState(dialSoundEnabled);
     const [description, setDescription] = useState(isEditing ? (initialData.description || '') : '');
     const [tags, setTags] = useState(isEditing ? (initialData.tags || []) : []);
     const [uncertain, setUncertain] = useState(isEditing ? (initialData.uncertain || []) : []);
@@ -788,14 +904,39 @@ export const PersonForm = ({ onClose, onSave, initialData, isNewVersion, isPulse
 
                     <div className="space-y-6">
                         <div>
-                            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">Metrics</label>
+                            <div className="flex items-center justify-between gap-3">
+                                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">Metrics</label>
+                                {/* The dial clicks. Some rooms are not the place for that, and
+                                    discretion mode already silences it — this is the standing
+                                    preference for everywhere else. */}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const next = !dialSound;
+                                        setDialSound(next);
+                                        setDialSoundEnabled(next);
+                                    }}
+                                    aria-pressed={dialSound}
+                                    aria-label={dialSound ? 'Turn off dial sound' : 'Turn on dial sound'}
+                                    title={dialSound ? 'Dial clicks are on' : 'Dial clicks are off'}
+                                    className="p-2 -m-2 text-slate-300 hover:text-slate-600 transition-colors"
+                                >
+                                    {dialSound ? <Volume2 size={15} /> : <VolumeX size={15} />}
+                                </button>
+                            </div>
                             <p className="text-[11px] text-slate-400 font-light mt-1">
                                 {isPulse
                                     ? 'Carried over from your last snapshot. Open anything that has moved — leave the rest.'
-                                    : <>
-                                        Every number is yours to set. Open <span className="italic">Guide me</span> to answer the
-                                        behaviours instead, skip what you cannot judge today, or flag a score as unsure.
-                                    </>}
+                                    : isNewVersion
+                                        ? <>
+                                            A fresh reading: every dial starts at zero, and last time's number is
+                                            marked on the track if you want it back. Turn the dial with your thumb,
+                                            or drag the track.
+                                        </>
+                                        : <>
+                                            Every number is yours to set. Open <span className="italic">Guide me</span> to answer the
+                                            behaviours instead, skip what you cannot judge today, or flag a score as unsure.
+                                        </>}
                             </p>
                         </div>
                         <div className={isPulse ? 'divide-y divide-slate-50 space-y-0' : 'contents'}>
@@ -807,6 +948,7 @@ export const PersonForm = ({ onClose, onSave, initialData, isNewVersion, isPulse
                                     uncertain={uncertain.includes(cat.id)}
                                     skipped={skipped.includes(cat.id)}
                                     guideAnswers={guideAnswers[cat.id]}
+                                    previousValue={previousStats?.[cat.id]}
                                     collapsed={isPulse && !expanded.has(cat.id)}
                                     hideGuide={isPulse}
                                     onExpand={() => setExpanded(prev => new Set(prev).add(cat.id))}

@@ -10,6 +10,9 @@ lucide-react 0.564 · recharts 3.7
 ```mermaid
 graph TD
     MAIN["main.jsx<br/>createRoot + StrictMode<br/>imports index.css"] --> APP["App.jsx<br/>BrowserRouter · token state · route guards"]
+    APP --> SESS["auth/session.js<br/>tokens · renewal · 401 retry"]
+    APP --> SXD["SessionExpiredDialog.jsx<br/>sign back in, in place"]
+    SESS -.-> SXD
     APP --> LOCK["AppLock.jsx<br/>optional screen lock"]
     APP --> DISC["context/DiscretionContext.jsx<br/>initials + blur + Ctrl+."]
     APP --> SUBS["context/SubjectsContext.jsx<br/>the one subject list"]
@@ -32,6 +35,8 @@ graph TD
     DASH --> SA["StackActions.jsx<br/>the ⋯ stack menu"]
     DASH --> RD["RelationshipDialogs.jsx<br/>rename · merge · delete"]
     DASH -.->|"internal components"| INNER["Card · LoveChart · CardStack · SummaryLine<br/>AboutModal · CategorySliderRow · PersonForm"]
+    DASH --> VK["VaultKnob.jsx<br/>the thumb-operated dial"]
+    VK --> KF["mobile/knobFeedback.js<br/>detent click + haptic"]
     CONST["constants/categories.js<br/>CATEGORIES · GUIDE_SCALE · helpers"] -.-> DASH
     CONST -.-> TL
     CONST -.-> LS
@@ -43,7 +48,10 @@ graph TD
 | File | Lines | Responsibility |
 | :--- | ----: | :------------- |
 | [`main.jsx`](../src/main.jsx) | 11 | React root, `StrictMode`, Tailwind entry import. |
-| [`App.jsx`](../src/App.jsx) | 130 | Router, token lifecycle, axios auth header + 401 interceptor, guards, `SubjectsProvider`. |
+| [`App.jsx`](../src/App.jsx) | 175 | Router, guards, `SubjectsProvider`, and the decision of what a lost session looks like. |
+| [`auth/session.js`](../src/auth/session.js) | 240 | **The session**: storage, the auth header, renewal, and the 401-renew-retry interceptor. |
+| [`auth/useSessionRenewal.js`](../src/auth/useSessionRenewal.js) | 45 | Renews on mount, tab focus, and Android resume — the reason the prompt is rare. |
+| [`SessionExpiredDialog.jsx`](../src/components/SessionExpiredDialog.jsx) | 135 | Signing back in over the current screen, rather than being evicted to Landing. |
 | [`constants/categories.js`](../src/constants/categories.js) | 253 | **The taxonomy** plus the pure helpers that read it. |
 | [`constants/cadence.js`](../src/constants/cadence.js) | 107 | Due-date arithmetic and the nudge vocabulary. Pure, so the no-guilt rules are testable. |
 | [`context/DiscretionContext.jsx`](../src/context/DiscretionContext.jsx) | 96 | Discretion mode: initials, blur class, `Ctrl+.`, tab title. |
@@ -51,7 +59,9 @@ graph TD
 | [`Navbar.jsx`](../src/components/Navbar.jsx) | 76 | Sticky nav; brand link; discretion toggle, Vault, Profile/Logout or Sign In. |
 | [`Landing.jsx`](../src/components/Landing.jsx) | 65 | Anonymous marketing screen; "Learn the Theory" opens `AboutModal`. |
 | [`Auth.jsx`](../src/components/Auth.jsx) | 103 | Login *and* signup in one toggling form. |
-| [`Dashboard.jsx`](../src/components/Dashboard.jsx) | 1072 | Six sub-components and the grid screen. |
+| [`Dashboard.jsx`](../src/components/Dashboard.jsx) | 1346 | Six sub-components and the grid screen. |
+| [`VaultKnob.jsx`](../src/components/VaultKnob.jsx) | 276 | The vault dial: scoring with a thumb without covering what you are reading. |
+| [`mobile/knobFeedback.js`](../src/mobile/knobFeedback.js) | 172 | The dial's detent — a synthesised metallic click and an Android selection haptic. |
 | [`TimelineRoute.jsx`](../src/components/TimelineRoute.jsx) | 100 | The id-keyed timeline route and the legacy name redirect: loading, empty and error states. |
 | [`StackActions.jsx`](../src/components/StackActions.jsx) | 106 | The `⋯` menu above each stack: rename, check-in rhythm, merge, delete. |
 | [`CadenceNudge.jsx`](../src/components/CadenceNudge.jsx) | 151 | The single reminder banner, its snooze, and the once-per-session rule. |
@@ -69,19 +79,24 @@ graph TD
 > surface and should be reachable before signup — and it is not circular, since `Dashboard`
 > never imports `Landing`.
 
-**One shared store, one context.** `token` lives in `App.jsx`; the subject list lives in
-`SubjectsContext`. Everything else is local `useState` in the screen that renders it. There
-is still no state library, and two consumers do not justify one.
+**One shared store, one context.** `token` lives in `App.jsx` (its storage and renewal in
+`auth/session.js`); the subject list lives in `SubjectsContext`. Everything else is local
+`useState` in the screen that renders it. There is still no state library, and two consumers
+do not justify one.
 
 ---
 
 ## 2. `App.jsx` — auth wiring and route guards
 
+The session itself now lives in [`src/auth/session.js`](../src/auth/session.js); `App.jsx`
+holds the React state and decides what the user sees. Read §2a for renewal — this section
+is about the token as a value.
+
 ### `applyToken` — the header is never written from an effect
 
 ```js
-// src/App.jsx — one writer for the header and its localStorage copy
-const applyToken = (token) => {
+// src/auth/session.js — one writer for the header and its localStorage copy
+export const applyToken = (token) => {
     if (token) {
         axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
         localStorage.setItem('token', token);
@@ -91,12 +106,12 @@ const applyToken = (token) => {
     }
 };
 
-applyToken(localStorage.getItem('token'));   // at import time, before the first render
+// src/App.jsx
+applyToken(readAccessToken());               // at import time, before the first render
 
-const setToken = useCallback((next) => {     // and synchronously on every transition
-    applyToken(next);
-    setTokenState(next);
-}, []);
+const handleLogin = (session) => {           // and synchronously on every transition
+    setTokenState(saveSession(session));     // saveSession calls applyToken
+};
 ```
 
 > **This is load-bearing, and getting it wrong is self-concealing.** Child effects commit
@@ -128,39 +143,76 @@ Three characteristics:
 - **`/` swaps components rather than redirecting** — one URL, two screens, no flash of
   redirect.
 - **Presence of a token is the only check.** Expiry and signature are never inspected
-  client-side, so an expired token still renders the dashboard for one request cycle. The
-  401 that comes back is what ends the session — see below.
+  client-side. An expired token still renders the dashboard, and the 401 that comes back is
+  now *renewed through* rather than fatal — see §2a.
 - **No catch-all route.** An unknown path renders the Navbar and nothing else.
 
-### The 401 response interceptor
+---
 
-```js
-// src/App.jsx — registered once, ejected on unmount
-axios.interceptors.response.use(
-    (response) => response,
-    (error) => {
-        if (error?.response?.status === 401) setToken(null);
-        return Promise.reject(error);
-    }
-);
-```
+## 2a. `auth/session.js` — why an expired token is no longer an event
 
-Clearing the token flips `/` from `Dashboard` to `Landing`, which replaces the old failure
-mode: an empty grid with no explanation and no way to recover but clearing `localStorage`.
+### What it replaced
 
-Two things to know:
+The interceptor used to be four lines: a 401 cleared the token, which flipped `/` from
+`Dashboard` to `Landing`. That was an improvement on the failure it replaced (an empty grid
+with no explanation) and it was still bad. The token lived 24 hours and nothing could renew
+it, so *every* client met "Invalid or expired token" on a schedule — the web app dropped to
+the landing page mid-task, and the Android app, which is resumed rather than reloaded for
+weeks at a time, met it almost every session. The message was accurate and useless: the user
+had done nothing wrong, and there was nothing in it to act on.
 
-- **The error is re-rejected**, so each caller still sees its own failure — `Auth.jsx`
-  keeps showing "Invalid credentials" on a bad login (a 401 that clears an already-absent
-  token, harmlessly).
-- **It covers every screen.** `Profile.jsx` used to call through a private `axios.create()`
-  instance, which interceptors on the global default do not reach, so a dead session ended
-  there as a permanent error banner instead of a logout. That instance is gone
-  ([Recipe 6](10-agent-guide.md#recipe-6-unify-the-axios-setup), first half).
+### The three paths, in order of how often they run
 
-Auth callbacks are trivial: `handleLogin(newToken)` → `setToken`, `handleLogout()` →
-`setToken(null)`. Logout is purely client-side; the token remains valid server-side until
-it expires.
+| When | What happens | What the user sees |
+| :--- | :----------- | :----------------- |
+| Token inside its renewal margin (5 min) at mount, tab focus, or app resume | `renewIfDue()` → `POST /api/refresh` | Nothing |
+| A request 401s | One shared refresh, then the request is replayed with the new token | Nothing |
+| Refresh token expired, revoked, or unknown | `onSessionLost()` → `SessionExpiredDialog` over the current screen | A passphrase prompt, in place |
+
+The last row is the design decision worth defending: **losing a session is not a navigation
+event.** The dialog renders *over* the mounted screen, so scroll position and half-filled
+forms survive it, and `App` keeps `token` in state while `sessionLost` is true rather than
+clearing it. Signing back in bumps `sessionEpoch`, which `SubjectsProvider` takes as a
+`reloadKey` and refetches — the failed requests are not individually replayed, the list is
+simply fetched again.
+
+### The two rules a client of this module must not break
+
+1. **One refresh at a time.** `refreshSession()` shares a single in-flight promise. Two
+   concurrent refreshes spend two tokens from a rotating family, the server reads the second
+   use as a replay, and it revokes everything. The dashboard loads subjects and relationships
+   in parallel, so concurrent 401s are the *normal* case, not an edge one.
+2. **A 5xx or a dead network is not the end of a session.** Only a refused token clears
+   local state. Clearing on a transport failure would sign out every phone that woke up out
+   of coverage.
+
+Requests marked `__isSessionCall` (login, refresh, logout) bypass the interceptor — a 401
+there is a wrong passphrase or a dead session, neither of which is renewable. `__isRetry`
+marks the replay, so a server that 401s for some other reason cannot loop.
+
+### What is stored, and what is not
+
+`localStorage`, holding the access token (key `token`, unchanged so an existing install
+survives the upgrade), the refresh token, the access token's expiry, and the last email
+address — that last one only so the prompt can ask for one field instead of two.
+
+**The password is never written to disk.** The literal request behind this feature was to
+"reuse the last login data"; a refresh token is that idea with two properties a stored
+password cannot have — the server can revoke it, and rotation makes a stolen copy
+detectable. See [API §3.1](04-api-reference.md#31-session-renewal).
+
+Storage is `localStorage` rather than `@capacitor/preferences` for the reason
+[`serverUrl.js`](../src/mobile/serverUrl.js) gives: it must be readable *synchronously*
+before the first render, and the async API cannot meet that constraint. On Android the
+WebView's storage is in the app's private data directory, which is the same protection
+`SharedPreferences` gives — neither is encrypted at rest.
+
+### It covers every screen
+
+`Profile.jsx` used to call through a private `axios.create()` instance, which interceptors
+on the global default do not reach, so a dead session ended there as a permanent error
+banner instead of a logout. That instance is gone
+([Recipe 6](10-agent-guide.md#recipe-6-unify-the-axios-setup), first half).
 
 ---
 
@@ -331,7 +383,7 @@ const isScored = (stats, id) => stats != null && stats[id] !== undefined && stat
 > *and* would have rendered a genuine 0 identically to a skip. Any new consumer of `stats`
 > must use a presence check, never `||`.
 
-### 3.4 `CardStack` (149–296) — the wheel-scrubbed version pile
+### 3.4 `CardStack` — the version pile, and the axis it is allowed to use
 
 The most intricate component in the codebase. Given all versions of one name:
 
@@ -362,6 +414,32 @@ passively, where `preventDefault()` is ignored and the page would scroll behind 
 > `[sortedVersions.length, activeIndex]` and the listener is re-registered when the index
 > moves. If you make the handler read anything else from the closure, that array must grow
 > with it.
+
+**Touch: horizontal, and only horizontal.**
+
+The touch handler used to mirror the wheel — a *vertical* drag scrubbed the stack — and that
+was a design bug, not a tuning problem. Vertical is what the page scrolls with, so every
+attempt to scroll from a card was a coin toss: sometimes the page moved, sometimes the stack
+riffled, and which one you got depended on where a finger happened to land. Two gestures
+competing for one axis cannot be fixed with a better threshold; one of them has to move.
+
+So the stack takes the horizontal axis, which nothing else on this screen wants:
+
+| Gesture | Owner |
+| :------ | :---- |
+| Vertical drag anywhere on a card | The page. Unconditionally. |
+| Horizontal drag ≥ 45px on a card | The stack. Left reveals the older snapshot, right the newer. |
+| Anything that begins as a vertical drag | Stays the page's, however far the thumb then arcs sideways (`YIELD_PX = 12`, decided once per gesture). |
+
+`style={{ touchAction: 'pan-y' }}` on the container states the same contract to the
+compositor, which both removes the ~300 ms the WebView spends deciding and keeps scrolling
+smooth while the JS handler is still making up its mind.
+
+**The pager** — below the stack, `sm:hidden`: two chevrons and an `n / N` count. A swipe
+nobody is told about is a feature nobody has, and there is no hover state on a phone to hint
+with (the "Scroll ↓ for history" line inside the card is `hidden sm:block` for exactly that
+reason). The buttons are also the fallback for anyone who would rather tap than swipe, and
+they disable at both ends rather than wrapping.
 
 **The card transform table** — `offset = index - activeIndex`:
 
@@ -437,15 +515,25 @@ sends everything else back through callbacks.
 
 What it renders, top to bottom:
 
-1. **Label, value chip and toggles.** The chip reads `42`, `≈42` when unsure, or `—` when
+1. **The [vault dial](#35d-vaultknob--the-thumb-operated-dial)**, at the left of the header
+   row and therefore above the track — the one part of the row a thumb is meant to land on.
+2. **Label, value chip and toggles.** The chip reads `42`, `≈42` when unsure, or `—` when
    skipped. The `?` chip toggles unsure and is *disabled while skipped*; the ⊖ button
    toggles skip.
-2. **The slider**, over a track this component draws itself. The native input is
+3. **The slider**, over a track this component draws itself. The native input is
    `bg-transparent` so the suggestion band can sit on the track behind the thumb — the one
-   piece of styling here that depends on the browser not painting its own track.
-3. **Tick marks** at every anchor boundary.
-4. **The live anchor phrase** for the current value.
-5. **"Guide me"**, which expands the category's `metrics[]` as rows of four-option
+   piece of styling here that depends on the browser not painting its own track. It carries
+   `touch-pan-y`: **vertical belongs to the page, horizontal to the control.** Without that,
+   a range input claims every touch that lands on it, so dragging the page from a spot that
+   happened to be over a track moved the score instead — silently, because the finger was
+   covering it.
+4. **Tick marks** at every anchor boundary, plus — on a new version — a mark showing where
+   this category stood last time.
+5. **The live anchor phrase** for the current value, and beside it a `Last time 62` button
+   when `previousValue` is set and differs from the current one. Since a new version now
+   starts at zero (§3.6), this is how last time's number stays one tap away without being
+   assumed. It disappears once taken, because an offer already accepted is noise.
+6. **"Guide me"**, which expands the category's `metrics[]` as rows of four-option
    segmented controls, then the band sentence and a `Use <midpoint>` button.
 
 When skipped, everything from the slider down is replaced by one line: *"Not scoring this
@@ -454,6 +542,62 @@ category is visibly inactive rather than silently missing.
 
 Clicking an already-selected guide answer clears it — the answer set is a record of what the
 user actually said, so it has to be retractable.
+
+### 3.5d `VaultKnob` — the thumb-operated dial
+
+[`src/components/VaultKnob.jsx`](../src/components/VaultKnob.jsx), with its feel in
+[`src/mobile/knobFeedback.js`](../src/mobile/knobFeedback.js).
+
+**Why it exists.** A 0–100 range input is fine with a mouse and poor under a thumb. The thumb
+lands on the track, so it covers the track — and what sits beside the track on this form is
+the anchor phrase, the sentence that says what 60 actually *means* for this category. The
+user was being asked to choose a number while their own hand hid the only thing explaining
+it. The dial moves the contact point off the value entirely.
+
+**The gesture.** Press, then drag: down turns the wheel clockwise and the score up, up turns
+it back. `PX_PER_UNIT = 2.6`, so the full sweep is one comfortable thumb drag, and the drag
+re-anchors at 0 and 100 — without that, a drag that ran thirty units past the stop has to
+travel thirty units back before anything moves, which reads as the control having jammed.
+`touch-action: none` on the dial is the other half of the axis contract: the page never
+takes a gesture that started here, and the dial never takes one that did not.
+
+**The detents.** Every unit crossed produces a click — synthesised metal, plus an Android
+selection haptic. That is not decoration: it is what lets the number be *heard* while the
+finger covers the dial, and it is why the control is pleasant rather than merely usable.
+Both channels are rate-limited (22 ms for sound, 32 ms for haptics), so a fast flick is a
+run of clicks rather than a hundred of them.
+
+- The sound is synthesised — a 12 ms noise burst through two high-Q bandpasses, detuned per
+  click — rather than sampled. An audio file would be four kilobytes and one more thing in
+  the build, for a worse result.
+- The `AudioContext` is built inside `pointerdown`, never at import. A context constructed
+  earlier starts suspended under every browser's autoplay policy, which is the difference
+  between the first click of the first turn being audible and the second one being.
+- Sound defaults **on** where the dial is the primary input (native) and **off** in a browser
+  tab, with a toggle in the form's Metrics header. **Discretion mode silences it outright**:
+  that mode exists because someone may be sitting next to you, and a clicking dial announces
+  both that you are scoring something and how far you moved it.
+
+**It renders on the web too, deliberately.** The problem it solves is a touch problem, and
+[`src/mobile/`](../src/mobile/) exists precisely so mobile affordances do *not* leak into the
+web build — but this is a scoring control, not platform glue. Hiding it above `sm` would fork
+the one UI that the Capacitor decision exists to keep single
+([Android §1](12-android-app.md#1-why-capacitor)), and it costs the desktop nothing: the range
+input is untouched, and the dial answers a mouse drag and the keyboard as readily as a thumb.
+What *is* platform-gated is its noise — sound defaults off in a browser.
+
+**Accessibility.** It is a real `slider` in the accessibility tree with the full keyboard
+contract (arrows, page keys, home/end), labelled `"<Category> dial"` so it does not collide
+with the range input's `"<Category>"`. It is *additional* to that input, never a replacement:
+neither the pointer path nor the keyboard path is anyone's only way in.
+
+**Drawing.** One SVG, 100-unit viewBox, one full revolution per 100 units exactly as a
+hundred-number dial is laid out. Everything that turns is in a single `<g>` with one
+`rotate()`, and the ticks and knurling are each a *single* `<path>` of many subpaths — seven
+dials × twenty-five ticks would otherwise be 175 nodes for the WebView to lay out. The
+numerals are oriented outward, so the one at the index reads upright at every position, the
+way a physical dial's do. The palette is the app's slate rather than brass: a vault wheel
+drawn in this form's own colours, not a skeuomorphic ornament dropped into it.
 
 ### 3.6 `PersonForm` — exported for tests
 
@@ -470,8 +614,8 @@ One form serving three modes, distinguished by two props:
 - **Name is `disabled` in new-version mode** (plus `opacity-50 cursor-not-allowed`) so the
   grouping key cannot drift.
 - **Sliders** — one `CategorySliderRow` per category. Initial stats are the all-zero
-  baseline **merged with** `initialData?.stats`, so a snapshot that skipped a category still
-  gives every slider a controlled value.
+  baseline, merged with `initialData?.stats` **only when editing or pulsing** — see the
+  seeding table below for why a new version no longer inherits.
 - **Submit** guards on `!name.trim()` and the button is `disabled` on the same condition.
   The payload is
   `{ name: name.trim(), date, stats, description, tags, uncertain, guide_answers }` — the
@@ -507,14 +651,29 @@ const [skipped, setSkipped]           = useState(() => (isEditing
 | :--- | :------ | :--------------------------------------- |
 | Create | zeros | empty |
 | Edit | stored values | seeded from the snapshot |
-| New version | **inherited** from the previous snapshot | **empty** |
+| New version | **zeros**, with last time's value marked on each track | **empty** |
+| Pulse | **carried** from the previous snapshot | empty (skips carried) |
 
 `skipped` has no column of its own — it is *derived* from which keys are absent, and
 converted back into absent keys on submit. That round trip is the whole skip feature.
 
-Editing seeds everything so a slider tweak cannot lose it. A new version inherits the scores
-(the last reading is the sensible starting point) but nothing else: context describes a
-period, and last time's doubt is not this time's.
+Editing seeds everything so a slider tweak cannot lose it. A new version seeds *nothing*:
+context describes a period, last time's doubt is not this time's — and, since this change,
+last time's numbers are not this time's either.
+
+> **Why a new version starts at zero.** It used to open on the previous snapshot's scores,
+> which looked helpful and was quietly corrosive: a row left untouched recorded a fresh,
+> dated, apparently deliberate score that the user had never actually made this time. A stack
+> of those reads as stability when it is really silence — and this application's entire claim
+> is that its numbers mean something. Every score in a snapshot should now be one somebody
+> decided.
+>
+> The previous reading is not thrown away: it is a mark on the track and a `Last time 62`
+> button, so "about the same as before" is still cheap to say. It just has to be said.
+>
+> **A pulse is the exception and not an inconsistency.** Carrying the previous answers is the
+> *definition* of a pulse — "open what has moved, leave the rest" — and its collapsed rows
+> say `unchanged` on their face, so nothing is claimed that the user did not see.
 
 ### 3.7 `Dashboard` — the screen
 

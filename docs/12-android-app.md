@@ -89,12 +89,13 @@ A compile-time default can be baked in, and the in-app setting still overrides i
 make build-android ANDROID_API_URL=http://192.168.1.10:8081
 ```
 
-### 2.3 The token, and an ordering constraint you must not break
+### 2.3 The session, and an ordering constraint you must not break
 
-[`App.jsx`](../src/App.jsx) reads the token from `localStorage` **synchronously at module
-scope**, and its comment explains why: child effects commit before their parent's, so a token
-applied from an effect would arrive after `Dashboard`'s first `GET /api/subjects` had already
-gone out anonymous — a 401, and the interceptor signs the user straight back out.
+[`src/auth/session.js`](../src/auth/session.js) reads the token from `localStorage`
+**synchronously at module scope**, and its comment explains why: child effects commit before
+their parent's, so a token applied from an effect would arrive after `Dashboard`'s first
+`GET /api/subjects` had already gone out anonymous — a 401, and before renewal existed the
+interceptor signed the user straight back out.
 
 The base URL has the identical constraint, so
 [`src/mobile/serverUrl.js`](../src/mobile/serverUrl.js) resolves it the identical way:
@@ -105,11 +106,24 @@ synchronously, at import time, from `localStorage`.
 > data directory, sandboxed by the OS from every other app, which is the same protection
 > `SharedPreferences` provides — neither is encrypted at rest.
 
-Token lifetime is unchanged: HS256, `exp = now + 24h`, no refresh endpoint, no revocation. That
-is a sharper edge on mobile than on the web, because a phone app is *resumed* for weeks rather
-than reloaded. The 401 interceptor handles it correctly, but the user experience is an abrupt
-return to Landing. A refresh-token flow is the fix; it is a backend change and is out of scope
-here.
+**Renewal is the part that matters most on a phone.** The access token still lives 24 hours,
+but a phone app is *resumed* for weeks rather than reloaded, so before there was any way to
+renew one, "Invalid or expired token" and an abrupt return to Landing was what the app did
+almost every session. Three things changed:
+
+- `POST /api/login` now also returns a **refresh token** (60 days, rotated on every use) and
+  `expires_in`. See [API §3.1](04-api-reference.md#31-session-renewal).
+- [`useSessionRenewal`](../src/auth/useSessionRenewal.js) renews on **Capacitor's `resume`
+  event** as well as `visibilitychange`. Both are wired, deliberately: `visibilitychange`
+  usually fires in the WebView, but `resume` is the one that can be relied on after Android
+  has killed and restored the activity. `renewIfDue()` is idempotent and returns immediately
+  unless the token is inside its five-minute margin, so the overlap costs one comparison.
+- A 401 that does slip through is renewed and the request replayed, invisibly. Only a dead
+  refresh token produces a prompt, and that prompt is an overlay on the current screen — a
+  phone user who has just typed a snapshot into a form does not lose it.
+
+The refresh token is stored the same way and in the same place as the access token, under the
+constraint above. The password is never written to disk.
 
 ### 2.4 Cleartext HTTP
 
@@ -158,8 +172,8 @@ away or it does not work at all. The timeline is *not* a tab — it is a drill-d
 | **Landing** | Unchanged; already single-column and centred. |
 | **Auth** | Unchanged layout. Fields get `inputMode`/`enterKeyHint`; the 16px rule below stops the zoom-on-focus jump. |
 | **Dashboard grid** (`md:grid-cols-2 lg:grid-cols-3`) | Already responsive — collapses to one column unchanged. Header stacks; "New Analysis" takes the full width as the screen's primary action. |
-| **Card stack** (wheel to scrub) | **Vertical swipe added.** Wheel-only meant a stack was a static picture of its newest snapshot with the rest unreachable. Height becomes `min(70vh,500px)`; a `3 / 7` position indicator replaces the depth cue the fanned cards give on a desktop. |
-| **PersonForm modal** (`max-w-2xl`, 7 sliders) | Full-width sheet from the bottom. Sliders keep native `range` inputs — the OS already gives them a large touch slop. |
+| **Card stack** (wheel to scrub) | **Horizontal swipe**, plus a chevron pager under the stack. Vertical belongs to the page — see §3.3. Height becomes `min(70vh,500px)`; the pager's `3 / 7` replaces the depth cue the fanned cards give on a desktop. |
+| **PersonForm modal** (`max-w-2xl`, 7 sliders) | Full-width sheet from the bottom. Each row gains a [vault dial](06-frontend.md#35d-vaultknob--the-thumb-operated-dial) at its left, and the range input keeps `touch-pan-y` so a scroll stays a scroll. |
 | **AnalysisTimeline** (Recharts) | Unchanged component; Recharts' `ResponsiveContainer` handles the width. Legends wrap. |
 | **Profile** | Two-column grid collapses. Gains the **check-in reminders** toggle, which has no web equivalent. |
 | **Vault** | Unchanged; already a single narrow column. |
@@ -167,6 +181,32 @@ away or it does not work at all. The timeline is *not* a tab — it is a drill-d
 
 ### 3.3 Inputs and touch
 
+**The axis contract.** Three controls on the dashboard wanted a drag, and two of them wanted
+the same axis the page scrolls with. That is not a threshold-tuning problem, and while it
+lasted the app was genuinely unpredictable: a scroll started over a slider moved a score, and
+a scroll started over a card sometimes riffled the stack instead. Every gesture now has one
+owner, declared to the compositor with `touch-action` rather than argued about in JavaScript:
+
+| Surface | `touch-action` | Vertical drag | Horizontal drag |
+| :------ | :------------- | :------------ | :-------------- |
+| The vault dial | `none` | Turns the dial | — |
+| A category's range input | `pan-y` | Scrolls the page | Moves the score |
+| A card stack | `pan-y` | Scrolls the page | Scrubs versions (≥45px) |
+| Anywhere else | default | Scrolls the page | — |
+
+The reading rule behind the table: **vertical is the page's everywhere except on a control
+small enough to land on deliberately.** The dial is that control, and it is the reason the
+sliders could give the axis up without losing precise input.
+
+- **The vault dial.** A range input under a thumb is covered *by* the thumb, and what the
+  thumb covers on this form is the anchor phrase explaining the number. The dial sits above
+  and left of the track so the hand rests clear of both, and it clicks — a synthesised
+  metallic detent per unit plus an Android selection haptic — so the value can be heard while
+  the finger is on it. Full design notes in
+  [Frontend §3.5d](06-frontend.md#35d-vaultknob--the-thumb-operated-dial).
+- **A 22px slider thumb on coarse pointers.** The native one is ~14px, half the 24dp minimum,
+  which is most of why placing a score by tapping the track was a game of chance. Scoped to
+  `@media (pointer: coarse)` in `index.css`, so the desktop control is untouched.
 - **48dp minimum targets.** Icon buttons were `p-1.5`/`p-2` (~28–36px). Interactive controls
   now carry `min-h-[48px]`, and the bottom bar's are 56px.
 - **16px font on inputs below `md`.** Android's WebView zooms the page when a focused field is
@@ -187,7 +227,8 @@ away or it does not work at all. The timeline is *not* a tab — it is a drill-d
 | **Offline read-through cache** | [`offlineCache.js`](../src/mobile/offlineCache.js) | Last-known-good list, shown with its age when the server is unreachable. **Read-only by design** — queueing writes against a find-or-create path with server-assigned ids is a synchronisation feature needing conflict rules this app has never defined. Cleared on logout. |
 | **Check-in reminders** | [`cadenceReminders.js`](../src/mobile/cadenceReminders.js) | Local notifications only — nothing is sent to a server, preserving the claim in `cadence.js` that due dates never leave the machine. Bound by that file's product rule: the body is `nudgeSentence()` verbatim, **no badge count**, one notification per relationship, scheduled for 10:00. |
 | **Hardware back button** | [`useNativeShell.js`](../src/mobile/useNativeShell.js) | Owned explicitly. Capacitor's default pops WebView history, which walks behind the React Router stack and can strand the app on a blank document. |
-| **Haptics** | `usePullToRefresh` | One light tap when the refresh gesture arms. |
+| **Haptics** | `usePullToRefresh`, [`knobFeedback.js`](../src/mobile/knobFeedback.js) | One light tap when the refresh gesture arms; a **selection** haptic per dial detent — the API Android tunes for picker wheels, where an `impact` per unit at thumb speed is a buzz rather than a click. Rate-limited to 32ms. |
+| **Silent session renewal** | [`useSessionRenewal`](../src/auth/useSessionRenewal.js) | Renews on `resume`, which is when a token that has sat in the background for a week is most likely to be dead. See §2.3. |
 
 Deliberately **not** built: swipe-to-delete on cards. Deleting a relationship removes its entire
 history and the app already routes that through a confirm dialog naming the snapshot count. A
@@ -206,6 +247,7 @@ android-config/              committed native files, overlaid onto the generated
 android/                     GENERATED, gitignored — never hand-edit
 src/mobile/                  the platform layer
   platform.js                isNative / isAndroid predicates
+  knobFeedback.js            the vault dial's click and haptic
   serverUrl.js               base URL, synchronously; asset rebasing
   useNativeShell.js          back button, status bar, keyboard
   usePullToRefresh.js        pull-to-refresh over the document scroller
@@ -307,8 +349,9 @@ Honest list, so none of it reads as an oversight:
 - **No release signing config in Gradle.** `bundle-android` signs with `jarsigner` after the
   fact, deliberately: `android/` is regenerated on every build, and keeping the keystore out
   of the Gradle files keeps it out of the build context and therefore out of any image layer.
-- **No refresh-token flow.** 24-hour expiry with no refresh is a worse fit for an app that is
-  resumed than for a page that is reloaded (§2.3). The fix is server-side.
+- **No biometric unlock.** The app lock is a passphrase over `crypto.subtle`; binding it to
+  the Android Keystore would need a native plugin and is the one place a rewrite argument
+  (§1) has real force.
 - **No offline writes.** See the note in §3.4.
 - **No CI target.** `.github/workflows/` builds nothing today; `make build-android` is a
   single self-contained command and would drop into a workflow as-is.

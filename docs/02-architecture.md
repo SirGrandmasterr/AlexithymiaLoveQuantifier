@@ -174,23 +174,35 @@ graph LR
     P["password"] -->|"bcrypt cost 14"| HASH["users.password"]
     LOGIN["POST /api/login"] -->|"CompareHashAndPassword"| OK{"match?"}
     OK -->|no| U401["401 Invalid credentials"]
-    OK -->|yes| JWT["HS256 token<br/>claim user_id<br/>exp = now + 24h"]
+    OK -->|yes| JWT["HS256 access token<br/>claim user_id<br/>exp = now + 24h"]
+    OK -->|yes| RT["refresh token<br/>32 random bytes<br/>stored hashed, 60 days"]
     JWT --> LS["localStorage['token']"]
     LS --> HDR["axios Authorization header"]
     HDR --> MWV["AuthMiddleware.ValidateToken"]
     MWV --> CTX["gin ctx userID (uint)"]
     CTX --> SCOPE["every query: WHERE user_id = ?"]
+    MWV -->|401| REF["POST /api/refresh<br/>rotate + replay the request"]
+    RT -.-> REF
+    REF -->|"token refused"| ASK["ask for the passphrase<br/>over the current screen"]
 ```
 
 Properties of this design:
 
-- **Stateless.** No session table, no refresh token, no server-side revocation. Logout is
-  purely client-side: `handleLogout` sets `token` to `null`, and the effect in `App.jsx`
-  deletes the axios header and the `localStorage` entry. An already-issued token stays
-  valid until its 24-hour expiry.
-- **Expiry is discovered, not predicted.** The client never inspects `exp`; a global axios
-  response interceptor in `App.jsx` clears the token on any `401`, which flips `/` back to
-  Landing. Every screen calls through the global `axios`, so the interceptor sees them all.
+- **Stateless request path, stateful renewal.** Verifying a request still touches nothing
+  but the signing key. The one piece of session state is `refresh_tokens`, read only when a
+  client asks for a new access token; it is what makes logout and revocation possible at
+  all. An already-issued *access* token stays valid until its 24-hour expiry, which is the
+  price of the stateless request path and the reason that number is small.
+- **Expiry is renewed through, not surfaced.** The client stores `expires_in` and renews
+  ahead of it on resume; a `401` that still arrives triggers one shared refresh and a replay
+  of the failed request. Every screen calls through the global `axios`, so the interceptor
+  sees them all. Only a refused *refresh* token reaches the user, as a prompt over the
+  screen they were on — see
+  [Frontend §2a](06-frontend.md#2a-authsessionjs--why-an-expired-token-is-no-longer-an-event).
+- **Rotation is the compensation for a long-lived credential.** Every refresh consumes its
+  token and issues a new one, so presenting a spent token means either a replay or a theft —
+  and every token that user holds is revoked. The client-side consequence is a hard rule:
+  never two refreshes at once.
 - **A signature is not an account.** `AuthMiddleware` also confirms the user row still
   exists, because a token outlives the account it names — a dropped volume or a `down -v`
   leaves a browser holding a token that verifies perfectly against a user id that is gone.
@@ -217,7 +229,10 @@ Properties of this design:
 | :---- | :------- | :------- | :---- |
 | Users, subjects | Postgres or SQLite, via GORM | Durable | Soft-deleted, never hard-deleted by the app. |
 | Avatars | `./uploads` on the backend's working directory | Durable on host, **ephemeral in Docker** (no volume). | Served publicly. |
-| JWT | `localStorage['token']` | 24 h or until logout | Also mirrored into `axios.defaults`. |
+| Access token | `localStorage['token']` | 24 h, renewed silently | Also mirrored into `axios.defaults`. |
+| Refresh token | `localStorage['alq:refresh-token']` | 60 days, rotated on every use | Hashed copy in `refresh_tokens`; revoked on logout. |
+| Access token expiry | `localStorage['alq:token-expires-at']` | With the token | Enables renewal *before* a request fails. |
+| Last email address | `localStorage['alq:last-email']` | Until logout replaces it | So the re-auth prompt asks for one field. **The password is never stored.** |
 | Subject list | `useState` in `Dashboard` | Per mount | Fetched once on mount; mutated locally afterwards. |
 | Active card index per stack | `useState` in each `CardStack` | Per mount | Reset to 0 whenever `versions.length` changes. |
 | Which stack dialog is open | `stackDialog` in `Dashboard` | Until closed | Stores the relationship **id**, not the stack, so it re-reads live state. |

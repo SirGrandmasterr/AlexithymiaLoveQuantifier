@@ -50,7 +50,7 @@ This application helps users track, analyze, and reflect on their connections wi
 -   **Framework:** Gin (Web Framework)
 -   **Database ORM:** GORM
 -   **Database:** PostgreSQL 15
--   **Authentication:** JWT (Stateless) stored in `Authorization: Bearer <token>`
+-   **Authentication:** JWT access token in `Authorization: Bearer <token>`, renewed by a rotating server-side refresh token
 -   **Security:** Bcrypt (Password hashing)
 
 ### Android
@@ -102,7 +102,9 @@ API requests accept and return JSON.
 | Method | Endpoint         | Auth? | Payload | Description                     |
 | :----- | :--------------- | :---- | :------ | :------------------------------ |
 | POST   | `/signup`        | No    | `{ "email": "x@y.com", "password": "..." }` | Creates user. Returns `201`. |
-| POST   | `/login`         | No    | `{ "email": "x@y.com", "password": "..." }` | Returns `200` & `{ "token": "jwt..." }` |
+| POST   | `/login`         | No    | `{ "email": "x@y.com", "password": "..." }` | Returns `200` & `{ "token": "jwt...", "refresh_token": "...", "expires_in": 86400 }` |
+| POST   | `/refresh`       | No    | `{ "refresh_token": "..." }` | New session; rotates the token it consumed. Returns `200` + same shape as login. |
+| POST   | `/logout`        | No    | `{ "refresh_token": "..." }` | Revokes the refresh token. Always `204`. |
 | GET    | `/me`            | Yes   | None | Returns the `User` object. |
 | GET    | `/subjects`      | Yes   | None | Returns array of `AnalysisSubject`s. |
 | POST   | `/subjects`      | Yes   | `{ "name": "...", "description": "", "date": "YYYY-MM-DD", "stats": { "eros": 50, "ludus": 20 } }` | Creates subject. Returns `201` + Subject. |

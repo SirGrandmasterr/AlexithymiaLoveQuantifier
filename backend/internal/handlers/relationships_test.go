@@ -39,7 +39,10 @@ func setupSQLiteDB(t *testing.T) *gorm.DB {
 		}
 	})
 
-	if err := db.AutoMigrate(&models.User{}, &models.Relationship{}, &models.AnalysisSubject{}); err != nil {
+	// The server's own list, so a table added to the schema cannot be missing from the
+	// tests that exercise it — which is exactly how models.RefreshToken would have been
+	// left out here.
+	if err := db.AutoMigrate(database.Models()...); err != nil {
 		t.Fatalf("Failed to migrate schema: %v", err)
 	}
 

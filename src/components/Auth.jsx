@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { Heart } from 'lucide-react';
+import { rememberEmail, lastEmail } from '../auth/session';
 
 export default function Auth({ onLogin }) {
     const [isLogin, setIsLogin] = useState(true);
-    const [email, setEmail] = useState('');
+    // Prefilled from the last successful sign-in on this device. The address only — the
+    // passphrase is never stored, which is what the refresh token in `src/auth/session.js`
+    // exists to avoid needing.
+    const [email, setEmail] = useState(lastEmail);
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
@@ -16,10 +20,15 @@ export default function Auth({ onLogin }) {
 
         try {
             const endpoint = isLogin ? '/api/login' : '/api/signup';
-            const response = await axios.post(endpoint, { email, password });
+            // `__isSessionCall` keeps the response interceptor out of it: a 401 here is a
+            // wrong passphrase, which this form reports, not a session to renew.
+            const response = await axios.post(endpoint, { email, password }, { __isSessionCall: true });
 
             if (isLogin) {
-                onLogin(response.data.token);
+                rememberEmail(email);
+                // The whole payload, not just the token: the refresh half is what keeps this
+                // screen from reappearing tomorrow.
+                onLogin(response.data);
             } else {
                 // Auto login after signup or ask to login
                 // For simplicity, let's switch to login view or auto-login if backend returned token (it usually doesn't for signup unless implemented)

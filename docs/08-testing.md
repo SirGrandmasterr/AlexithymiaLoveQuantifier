@@ -41,7 +41,7 @@ in `tests/` and fail on `@playwright/test` imports.
 
 ### Coverage today
 
-Twelve files, 161 tests, all passing.
+Fourteen files, 194 tests, all passing.
 
 Two components now need providers to render at all — `Dashboard` reads `useSubjects()` and
 navigates, `TimelineRoute` does both — so their tests wrap in `MemoryRouter` +
@@ -56,14 +56,36 @@ copy it rather than rendering the component bare.
 > `Dashboard.test.jsx`'s variant derives the relationships from the snapshots, so most
 > fixtures only need a `relationship_id` on each row.
 
-[`src/components/Auth.test.jsx`](../src/components/Auth.test.jsx) — 7 tests:
+Two suites are worth knowing about before writing anything that touches a session or a
+touch gesture:
+
+- [`src/auth/session.test.js`](../src/auth/session.test.js) — 13 tests. The load-bearing one
+  is **"shares one request between concurrent callers"**: two parallel refreshes spend two
+  tokens from a rotating family, the server reads the second as a replay, and the user is
+  signed out. That failure only appears under concurrency, and the dashboard is concurrent by
+  construction. The other pair worth preserving is the distinction between a *refused* token
+  (session over) and a 5xx or dead network (session intact) — get that wrong and every phone
+  that wakes up out of coverage is signed out.
+- [`src/components/VaultKnob.test.jsx`](../src/components/VaultKnob.test.jsx) — 10 tests over
+  `fireEvent.pointerDown/Move/Up` with explicit `clientY`, at 2.6px per unit. It asserts the
+  drag direction, one detent per unit, the stops, and that the dial re-anchors after being
+  driven into one.
+
+The card-stack gesture tests in `Dashboard.test.jsx` dispatch `Event`s directly rather than
+using `fireEvent`, because what they assert is whether the container's `{ passive: false }`
+listener called `preventDefault` — that is, which of the page and the stack owns the gesture.
+They wrap the dispatch in `act()`: the listener is a plain DOM one, outside React's event
+system, so nothing else flushes the state update.
+
+[`src/components/Auth.test.jsx`](../src/components/Auth.test.jsx) — 8 tests:
 
 | Test | Asserts |
 | :--- | :------ |
 | renders login view by default | "Welcome back", Sign In button, toggle link |
 | toggles to signup view | "Create your account", Create Account button, reverse toggle |
 | allows email/password input | controlled inputs hold typed values |
-| handles successful login | correct `POST /api/login` payload, loading state, `onLogin(token)` |
+| handles successful login | correct `POST /api/login` payload, loading state, `onLogin(session)` — the whole payload, refresh token included |
+| prefills the address the last sign-in used | the email is remembered, the passphrase is not |
 | handles successful signup | correct `POST /api/signup` payload, success message, auto-return to login |
 | displays API error message | `err.response.data.error` is rendered, button re-enabled |
 | displays generic error | falls back to "An error occurred" for a bare `Error` |
@@ -191,7 +213,7 @@ await waitFor(() => {
     expect(submitButton).toBeDisabled();
     expect(submitButton).toHaveTextContent('Please wait...');
 });
-resolveMock({ data: { token: mockToken } });   // then release it
+resolveMock({ data: { token: mockToken, refresh_token: 'refresh-abc', expires_in: 86400 } });
 await waitFor(() => expect(mockOnLogin).toHaveBeenCalledWith(mockToken));
 ```
 
@@ -437,11 +459,23 @@ user), and bcrypt hashing both ways.
 > can decode to the same bytes and the token stays valid. Forge the payload instead — it is
 > also the attack that actually matters.
 
+### 2.4a `session_test.go` — rotation, replay, and revocation
+
+Nine tests on real in-memory SQLite, because what matters about rotation is the state left
+behind — which row is revoked, and which token still works on the *next* call. They cover:
+the refresh token being stored only as a hash; a refresh rotating and retiring the token it
+consumed; a replayed token revoking every token the user holds; expired, unknown, and
+deleted-account tokens; logout ending the session for good; and the expired-row sweep.
+
+`setupSQLiteDB` migrates from `database.Models()` rather than a hand-written list, so a table
+cannot exist in the server and be missing from the tests — which is exactly how
+`RefreshToken` would otherwise have been left out.
+
 ### 2.5 Untested backend surface
 
-`Signup`, `Login`, `GetUserProfile`, and `UpdateUserProfile` have no handler tests.
-Testing `Signup`/`Login` through sqlmock is feasible but slow: bcrypt cost 14 makes each
-hash roughly a second.
+`Signup`, `GetUserProfile`, and `UpdateUserProfile` have no handler tests. `Login` is now
+covered indirectly by `session_test.go`, which drives it for real (bcrypt cost 14 included —
+that is most of the suite's ten seconds).
 
 ---
 

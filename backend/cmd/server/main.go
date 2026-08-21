@@ -28,6 +28,10 @@ func main() {
 	// Public routes
 	r.POST("/api/signup", handlers.Signup)
 	r.POST("/api/login", handlers.Login)
+	// Both are public because the access token they concern is, by the time they are
+	// called, expired. The refresh token is the credential; see internal/handlers/session.go.
+	r.POST("/api/refresh", handlers.Refresh)
+	r.POST("/api/logout", handlers.Logout)
 
 	// Serve uploaded files statically
 	r.Static("/uploads", "./uploads")
