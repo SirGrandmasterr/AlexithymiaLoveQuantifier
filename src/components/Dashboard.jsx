@@ -11,14 +11,14 @@ import { RenameRelationshipDialog, MergeRelationshipDialog, DeleteRelationshipDi
 import { timelinePath } from './TimelineRoute';
 import { useSubjects } from '../context/SubjectsContext';
 import { useDiscretion } from '../context/DiscretionContext';
-import { CATEGORIES, GUIDE_SCALE, anchorFor, guideBand, isScored, summarizeStack } from '../constants/categories';
+import { CATEGORIES, GUIDE_SCALE, anchorFor, anchorPhrase, nextPhraseSeed, guideBand, isScored, summarizeStack } from '../constants/categories';
 import usePullToRefresh from '../mobile/usePullToRefresh';
 import { syncReminders } from '../mobile/cadenceReminders';
 import { dialSoundEnabled, setDialSoundEnabled } from '../mobile/knobFeedback';
 
 // The taxonomy and its helpers now live in src/constants/categories.js. They are
 // re-exported here because the dashboard is where callers have always looked for them.
-export { CATEGORIES, anchorFor, guideBand, isScored };
+export { CATEGORIES, anchorFor, anchorPhrase, guideBand, isScored };
 export const CATEGORIES_EXPORT = CATEGORIES;
 
 const Card = ({ children, className = '', style = {} }) => (
@@ -517,6 +517,9 @@ export const AboutModal = ({ onClose }) => {
  * @param {number} [previousValue] what this category read in the snapshot being built on.
  *   Shown as a mark on the track and a one-tap way back to it — a new version starts at zero
  *   now, so this is how last time's number stays available without being assumed.
+ * @param {number} [phraseSeed] which of the band's five phrasings to show. Owned by the form
+ *   rather than the row so that one opening speaks with one voice, and the next opening picks
+ *   a different one — see `anchorPhrase`.
  */
 export const CategorySliderRow = ({
     category,
@@ -527,6 +530,7 @@ export const CategorySliderRow = ({
     collapsed = false,
     hideGuide = false,
     previousValue,
+    phraseSeed = 0,
     onExpand,
     onValueChange,
     onToggleSkip,
@@ -535,7 +539,9 @@ export const CategorySliderRow = ({
 }) => {
     const [guideOpen, setGuideOpen] = useState(false);
     const band = guideBand(guideAnswers);
-    const anchor = anchorFor(category, value);
+    // Recomputed on every render and deliberately not memoised: it is a lookup and a
+    // modulo, and the value it depends on changes on every detent of the dial.
+    const phrase = anchorPhrase(category, value, phraseSeed);
     // Offered only while it would actually change something — an unmoved dial showing
     // "Last time 0" is noise, and so is one already sitting on the old number.
     const hasPrevious = Number.isFinite(previousValue) && previousValue !== value;
@@ -665,8 +671,8 @@ export const CategorySliderRow = ({
                     </div>
 
                     <div className="flex items-start justify-between gap-3">
-                        {anchor && (
-                            <p className="text-[11px] text-slate-500 font-light leading-snug">{anchor.phrase}</p>
+                        {phrase && (
+                            <p className="text-[11px] text-slate-500 font-light leading-snug">{phrase}</p>
                         )}
                         {hasPrevious && (
                             <button
@@ -797,6 +803,11 @@ export const PersonForm = ({ onClose, onSave, initialData, isNewVersion, isPulse
     // Sound is a per-device preference rather than a per-form one, so it is read once and
     // written straight through. See `src/mobile/knobFeedback.js` for the default.
     const [dialSound, setDialSound] = useState(dialSoundEnabled);
+
+    // One seed per opening of this form, so every row speaks in the same voice today and a
+    // different one next time. Taken in a state initialiser rather than at render, or the
+    // sentences would change under the user on every keystroke.
+    const [phraseSeed] = useState(nextPhraseSeed);
     const [description, setDescription] = useState(isEditing ? (initialData.description || '') : '');
     const [tags, setTags] = useState(isEditing ? (initialData.tags || []) : []);
     const [uncertain, setUncertain] = useState(isEditing ? (initialData.uncertain || []) : []);
@@ -949,6 +960,7 @@ export const PersonForm = ({ onClose, onSave, initialData, isNewVersion, isPulse
                                     skipped={skipped.includes(cat.id)}
                                     guideAnswers={guideAnswers[cat.id]}
                                     previousValue={previousStats?.[cat.id]}
+                                    phraseSeed={phraseSeed}
                                     collapsed={isPulse && !expanded.has(cat.id)}
                                     hideGuide={isPulse}
                                     onExpand={() => setExpanded(prev => new Set(prev).add(cat.id))}

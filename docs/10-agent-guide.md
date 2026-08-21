@@ -131,7 +131,8 @@ server's validation allowlist — skip step 3 and every save carrying the new ke
    [`src/constants/categories.js`](../src/constants/categories.js), matching the
    existing shape exactly: `id`, `label`, `description`, `color`, `hex`, `textColor`,
    `borderColor`, `extendedDescription`, `coreMotivation`, `metrics[{title, description}]`,
-   `anchors[{min, max, phrase}]`. Use **literal** Tailwind class strings. The anchor bands
+   `anchors[{min, max, phrases}]` — **five** phrasings per band, five or six bands covering
+   0-100. Use **literal** Tailwind class strings. The anchor bands
    must start at 0, end at 100 and be contiguous — a unit test enforces it. `hex` must match
    `color`; it is what the SVG charts stroke with.
 2. Add the `id` to `CategoryIDs` in

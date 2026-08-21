@@ -274,8 +274,8 @@ row, the form, and the default-exported screen. **The taxonomy no longer lives h
 moved to [`src/constants/categories.js`](../src/constants/categories.js) (§3.1) and is
 re-exported for compatibility.
 
-Named exports: `CATEGORIES` / `CATEGORIES_EXPORT` and the helpers `anchorFor`, `guideBand`,
-`isScored` (all re-exports), plus `AboutModal` (for `Landing`), `PersonForm` and
+Named exports: `CATEGORIES` / `CATEGORIES_EXPORT` and the helpers `anchorFor`,
+`anchorPhrase`, `guideBand`, `isScored` (all re-exports), plus `AboutModal` (for `Landing`), `PersonForm` and
 `CategorySliderRow` (so the form can be unit-tested without mounting the whole dashboard).
 
 ### 3.1 `CATEGORIES` — now in `src/constants/categories.js`
@@ -295,7 +295,7 @@ content. Structurally, each entry is:
     extendedDescription: '…',      // AboutModal detail paragraph
     coreMotivation: '…',
     metrics: [{ title, description }, …],
-    anchors: [{ min: 0, max: 20, phrase: '…' }, …]   // 3-4 contiguous bands covering 0-100
+    anchors: [{ min: 0, max: 16, phrases: ['…', …] }, …]  // 5-6 bands, five phrasings each
 }
 ```
 
@@ -304,14 +304,42 @@ content. Structurally, each entry is:
 > two places or shipping an invisible line. There is now one entry per category and one
 > place to edit. `CATEGORY_COLORS` is gone — read `cat.hex`.
 
-The module also exports the pure helpers every screen shares: `anchorFor`, `guideBand`,
-`isScored`, `byDateDesc`, and `summarizeStack`. They live beside the taxonomy because they
-are all knowledge *about* categories and stats, and none of them touch React.
+The module also exports the pure helpers every screen shares: `anchorFor`, `anchorPhrase`,
+`nextPhraseSeed`, `guideBand`, `isScored`, `byDateDesc`, and `summarizeStack`. They live
+beside the taxonomy because they are all knowledge *about* categories and stats, and none of
+them touch React.
 
-`anchors` is the Phase 2 addition: the phrase for the band containing the current slider
-value is shown live under the slider. Bands must start at 0, end at 100, and leave no gap —
-`Dashboard.test.jsx` asserts exactly that for all seven categories, so a malformed band is a
-test failure rather than a blank line in the UI.
+**`anchors` and the five phrasings.** A phrase from the band containing the current slider
+value is shown live under the slider. Bands must start at 0, end at 100, and leave no gap;
+each must carry exactly `PHRASES_PER_BAND` (five) distinct phrasings, and no phrasing may
+repeat across the bands of one category. `Dashboard.test.jsx` asserts all of that for all
+seven categories, so a malformed band is a test failure rather than a blank line in the UI.
+
+Each band used to hold one sentence, which meant a category's whole scale was four sentences
+and re-reading them taught nothing. The five are written through five deliberate lenses —
+attention, behaviour, a concrete scene, absence, and the felt quality — so they describe one
+position from five directions rather than paraphrasing it. **When adding or editing a
+category, write all five**; four of five is the failure mode the test exists to catch.
+
+```js
+export const anchorPhrase = (category, value, seed = 0) => …   // one of the band's five
+export const nextPhraseSeed = () => …                          // one per form opened
+```
+
+`anchorPhrase` is bound by two rules that pull against each other:
+
+1. **It must not change while the thumb is moving.** It keys off the *band*, never the value,
+   so dragging from 51 to 67 leaves the sentence still. A phrase reshuffling under a moving
+   dial is unreadable, and reads as a bug.
+2. **It must not be the same sentence forever.** The seed comes from the form and changes
+   each time one is opened, so the second scoring session says something the first did not.
+
+The seed is a **rotating counter with a random start**, not a fresh `Math.random()` per
+render: a counter guarantees five openings walk the whole set, where random selection would
+happily show the same phrasing three times running. The band index and a per-category offset
+are added in, so one pass down the form shows five different lenses rather than the same one
+seven times. `PersonForm` draws its seed once, in a `useState` initialiser — drawing it
+during render would reshuffle every sentence on every keystroke.
 
 Re-exported as `CATEGORIES_EXPORT` (line 147) purely so `AnalysisTimeline` can receive it
 as a prop. The odd name exists because the local `const CATEGORIES` already occupies the
@@ -335,8 +363,9 @@ const GUIDE_SCALE = [{ label: 'Never', value: 0 }, { label: 'Sometimes', value: 
                      { label: 'Often', value: 70 }, { label: 'Constantly', value: 100 }];
 const GUIDE_BAND_RADIUS = 8;
 
-export const anchorFor = (category, value) => …   // the band containing value
-export const guideBand = (answers) => …           // { count, midpoint, min, max } | null
+export const anchorFor = (category, value) => …          // the band containing value
+export const anchorPhrase = (category, value, seed) => … // one of that band's five phrasings
+export const guideBand = (answers) => …                  // { count, midpoint, min, max } | null
 ```
 
 **The two-number trap:** an answer is stored as its **index** (`0..3`) and averaged as its
@@ -529,7 +558,9 @@ What it renders, top to bottom:
    covering it.
 4. **Tick marks** at every anchor boundary, plus — on a new version — a mark showing where
    this category stood last time.
-5. **The live anchor phrase** for the current value, and beside it a `Last time 62` button
+5. **A live anchor phrase** for the current value — one of the band's five, held steady
+   while the dial turns and re-drawn from a different lens the next time the form is opened
+   — and beside it a `Last time 62` button
    when `previousValue` is set and differs from the current one. Since a new version now
    starts at zero (§3.6), this is how last time's number stays one tap away without being
    assumed. It disappears once taken, because an offer already accepted is noise.

@@ -69,8 +69,9 @@ Each category additionally carries, in code:
 - `coreMotivation` — the italicised "why" line.
 - `metrics[]` — 2–4 `{ title, description }` pairs; the behavioural indicators. Six
   categories have four metrics; `selflessness` has two.
-- `anchors[]` — 3–4 `{ min, max, phrase }` bands that give every slider position a
-  behavioural meaning. See [Anchored sliders](#anchored-sliders) below.
+- `anchors[]` — 5–6 `{ min, max, phrases }` bands that give every slider position a
+  behavioural meaning, each carrying **five** phrasings of it. See
+  [Anchored sliders](#anchored-sliders) below.
 
 **Where this lives:** the `CATEGORIES` array,
 [`src/constants/categories.js`](../src/constants/categories.js). It is a plain module-level
@@ -231,8 +232,9 @@ time, so it cannot make anything overdue.
 - A **metric** is a piece of *educational copy* — a behavioural indicator listed in the
   Category Explorer and in guided scoring to help the user choose a number. Metric text is
   never stored; the user's *answers* to metrics are (see [guided scoring](#guided-scoring)).
-- An **anchor** is a phrase attached to a range of slider positions, so a number means
-  something before it is chosen.
+- An **anchor** is a band of slider positions with five phrasings attached, so a number
+  means something before it is chosen — and means more than one thing, said more than one
+  way.
 
 ---
 
@@ -240,9 +242,24 @@ time, so it cannot make anything overdue.
 
 ### Anchored sliders
 A naked 0–100 slider asks for exactly the introspection alexithymia impairs. Every category
-therefore carries `anchors[]`: contiguous bands covering 0–100, each with one behavioural
-phrase in the second person. The phrase for the band containing the current value is shown
-live beneath the slider, and the band boundaries are drawn as tick marks.
+therefore carries `anchors[]`: contiguous bands covering 0–100 — six for most categories,
+five for `selflessness`, which has half as many metrics behind it and so resolves more
+coarsely. One phrasing from the band containing the current value is shown live beneath the
+slider, and the band boundaries are drawn as tick marks.
+
+**Each band carries five phrasings, not one.** A single sentence per band meant the whole
+scale was explained by a handful of sentences, and a user who had read them once learned
+nothing from reading them again — which is a poor deal for the person this feature exists
+for. The five are written through five different lenses: where your attention goes, what you
+actually do, a recognisable scene, what their absence is like, and how it feels from inside.
+They describe one position on the scale from five directions rather than restating it.
+
+Which one appears is chosen by `anchorPhrase(category, value, seed)`, under two constraints
+that pull against each other: it must not change while the thumb is moving (so it depends on
+the *band*, never the value), and it must not be the same sentence forever (so the seed
+changes each time the form is opened). The seed is a rotating counter with a random start —
+five openings walk the whole set, where a fresh random draw each time would happily repeat
+itself and defeat the point.
 
 Anchors are **content, not computation** — they describe the position the user chose, and
 choosing a position never consults them.

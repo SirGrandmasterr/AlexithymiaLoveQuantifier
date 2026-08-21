@@ -62,6 +62,12 @@ self-hosted personal tool. Severity assumes eventual public exposure.
 > pager, and scoring by thumb happens on a dial that sits clear of everything it affects —
 > [Android §3.3](12-android-app.md#33-inputs-and-touch).
 >
+> Also closed: each anchor band carried a single sentence, so a category's whole 0-100 scale
+> was explained by four of them and a user who had read them once learned nothing on the
+> second pass. There are now five or six bands per category, each with five phrasings written
+> through five different lenses, and the one shown rotates between form openings
+> ([Concepts §3a](01-concepts.md#anchored-sliders)).
+>
 > Also closed: a new version opened on the previous snapshot's scores, so an untouched row
 > recorded a fresh dated score the user never made. New versions start at zero, with last
 > time's value marked on the track and one tap away

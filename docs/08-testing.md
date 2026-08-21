@@ -98,7 +98,8 @@ the pure helpers, the exported `PersonForm`, and the whole `Dashboard` screen:
 | Anchors | the band containing a value at the boundaries (0, 20, 21, 100), and that **every** category's bands start at 0, end at 100, and leave no gap — a content guard, not just a code one |
 | Guide band | `{0:1, 2:2}` (35 and 70) → `{count: 2, midpoint: 53, min: 45, max: 61}`; clamping at both ends; `null` until something is answered |
 | Context capsule | trimmed-name payload including `uncertain`/`guide_answers`; Enter adds a tag instead of submitting; edit seeds note + tags; new version starts empty |
-| Guided scoring | the anchor phrase follows the slider; answering a metric renders the band **without moving the slider**; `Use 70` sets exactly the midpoint; the saved payload carries the answers |
+| Guided scoring | an anchor phrase from the right band follows the slider; answering a metric renders the band **without moving the slider**; `Use 70` sets exactly the midpoint; the saved payload carries the answers |
+| Anchor phrasing | every band has five distinct phrasings, none repeated across a category; `anchorPhrase` holds still across a whole band and walks all five over five seeds |
 | Skip / unsure | a skipped category is absent from `stats` (not zero); an unsure id is listed; skipping a category drops its unsure flag; edit seeds both from the snapshot; a new version inherits scores but not uncertainty |
 | Card surface | note icon and up to three chips, `+1` overflow, `—` for five skipped categories and `≈60%` for an unsure one, and **no** `0%` anywhere; the summary line; the bars ⇄ Love Shape flip |
 | Summary line | `summarizeStack` — dominant pair, taxonomy-order tie-break, suppressed below two scored categories, "most changed" withheld below three snapshots, and skipped snapshots excluded from a range |
