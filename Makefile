@@ -71,8 +71,7 @@ MIGRATE := $(DC) run --rm $(BACKEND_SERVICE) ./migrate
 # Server settings screen overrides it and wins. 10.0.2.2 is the emulator's alias for the host
 # — inside the emulator, localhost is the emulated device. Port 8080 is a bare
 # `go run ./cmd/server`; under `make up` the backend is published on 8081 instead, and 8080
-# there is Nginx, which does not proxy /uploads.
-ANDROID_API_URL ?= http://212.132.80.55:8082/login
+ANDROID_API_URL ?= https://api.alexithymialovequantifier.voglerprojekte.com
 ANDROID_OUT := dist-android
 ANDROID_IMAGE := alq-android-build
 GRADLE_TASK ?= assembleDebug

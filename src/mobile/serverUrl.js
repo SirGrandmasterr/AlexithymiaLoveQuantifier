@@ -41,11 +41,17 @@ const STORAGE_KEY = 'alq:server-url';
  * point a native client at the backend directly. Going through Nginx also picks up the
  * request-size cap and the login rate limit, which the backend has no equivalent of.
  */
-const DEFAULT_NATIVE_URL = import.meta.env.VITE_ANDROID_API_URL || 'http://10.0.2.2:8080';
+/**
+ * In production, default native clients to the official API subdomain:
+ * https://api.alexithymialovequantifier.voglerprojekte.com
+ *
+ * For local development/testing, VITE_ANDROID_API_URL can override this (e.g. http://10.0.2.2:8080).
+ */
+const DEFAULT_NATIVE_URL = import.meta.env.VITE_ANDROID_API_URL || import.meta.env.VITE_API_URL || 'https://api.alexithymialovequantifier.voglerprojekte.com';
 
 /**
  * Trailing slashes are stripped so `baseURL + '/api/subjects'` never doubles up, and a bare
- * host is assumed to be cleartext because the deployment model this serves is a box on a LAN.
+ * host is assumed to be HTTPS for production domain or HTTP for LAN/IP addresses.
  */
 export const normalizeServerUrl = (raw) => {
     const trimmed = (raw || '').trim();
@@ -58,7 +64,7 @@ export const normalizeServerUrl = (raw) => {
 /** `null` when valid, otherwise a sentence to show under the field. */
 export const validateServerUrl = (raw) => {
     const normalized = normalizeServerUrl(raw);
-    if (!normalized) return 'Enter the address of your server, for example http://10.0.2.2:8080';
+    if (!normalized) return 'Enter the address of your server, for example https://api.alexithymialovequantifier.voglerprojekte.com';
 
     let parsed;
     try {
@@ -69,7 +75,7 @@ export const validateServerUrl = (raw) => {
 
     if (!parsed.hostname) return 'That address has no host.';
     if (parsed.pathname !== '/' && parsed.pathname !== '') {
-        return 'Give the server root only — no path after the port.';
+        return 'Give the server root only — no path after the port or domain.';
     }
     return null;
 };
@@ -83,12 +89,18 @@ const readStored = () => {
 };
 
 /**
- * The empty string is a meaningful value on the web: it means "same origin", which preserves
- * today's Vite-proxy and Nginx behaviour exactly. Only native builds get a default host.
+ * On the web, empty string means "same origin" (/api/...), preserving standard proxying
+ * when hosted under the main domain. If VITE_API_URL is explicitly set, it will be used.
+ * Native builds default to DEFAULT_NATIVE_URL.
  */
 export const getServerUrl = () => {
-    if (!isNative()) return '';
-    return normalizeServerUrl(readStored() || DEFAULT_NATIVE_URL);
+    const stored = readStored();
+    if (stored) return normalizeServerUrl(stored);
+    if (!isNative()) {
+        const webEnv = import.meta.env.VITE_API_URL;
+        return webEnv ? normalizeServerUrl(webEnv) : '';
+    }
+    return normalizeServerUrl(DEFAULT_NATIVE_URL);
 };
 
 export const setServerUrl = (raw) => {

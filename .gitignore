@@ -33,6 +33,8 @@ dist-ssr
 # Database dumps written by `make db-backup` / `make db-reset`. They contain the users
 # table, i.e. everyone's bcrypt hashes.
 /backups/
+/uploads/
+backend/**/uploads/
 
 # Playwright
 /test-results/

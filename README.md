@@ -6,7 +6,7 @@ This application helps users track, analyze, and reflect on their connections wi
 
 ## 🚀 Quick Start (Emergency Onboarding)
 
-**Prerequisites:** Docker & Docker Compose. Alternatively, standard Node/Go environments are sufficient. A detailed local un-containerized setup process is provided in `Setup Guide.md`.
+**Prerequisites:** Docker & Docker Compose. Alternatively, standard Node/Go environments are sufficient. Comprehensive production deployment behind Nginx reverse-proxy and local setup instructions are provided in `Setup Guide.md`.
 
 1.  **Clone & Run:**
     ```bash
