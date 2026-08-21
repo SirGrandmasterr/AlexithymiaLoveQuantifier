@@ -413,14 +413,11 @@ edit ([§4](#4-database-service)).
 
 ### What is still missing: TLS
 
-Nginx speaks cleartext HTTP on `${FRONTEND_PORT}`. Passwords, JWTs and every answer in the
-vault cross the network in the open, and nothing above changes that — a strong database
-password does not help if the token authorising the request was readable in transit. On a
-LAN that is a judgement call; on a public address it is the largest remaining hole.
+The container Nginx speaks HTTP internally on `127.0.0.1:${FRONTEND_PORT:-8082}`. In production on the Linux server, the host Nginx reverse-proxy terminates TLS (via Let's Encrypt / Certbot) for:
+- `alexithymialovequantifier.voglerprojekte.com` (WebApp)
+- `api.alexithymialovequantifier.voglerprojekte.com` (API Subdomain)
 
-Terminate TLS in front of this stack (Caddy or Traefik with an ACME certificate is the
-least work — point it at `frontend` and stop publishing `${FRONTEND_PORT}` to the world),
-and set `sslmode=require` on the Postgres DSN if the database ever moves off this host.
+and forwards traffic to `127.0.0.1:8082`. This provides complete end-to-end TLS encryption and CORS security. See `Setup Guide.md` for the full host Nginx site configuration.
 
 ---
 

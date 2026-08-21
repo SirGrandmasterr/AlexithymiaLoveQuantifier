@@ -22,6 +22,9 @@ func main() {
 
 	r := gin.Default()
 
+	// Enable CORS for cross-subdomain and mobile client access
+	r.Use(handlers.CORSMiddleware())
+
 	// Public routes
 	r.POST("/api/signup", handlers.Signup)
 	r.POST("/api/login", handlers.Login)
