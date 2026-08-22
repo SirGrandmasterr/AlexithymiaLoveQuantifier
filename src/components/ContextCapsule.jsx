@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
 
-// Context capsules: the preset chips offered at snapshot time. Free text is allowed
-// too — these are the common cases, not a closed vocabulary. The limits mirror the
-// server-side rules in validateTags (backend/internal/handlers/subjects.go).
-export const CONTEXT_TAGS = ['conflict', 'distance', 'trip together', 'milestone', 'reconciliation', 'routine period', 'life change'];
-export const MAX_TAGS = 12;
-export const MAX_TAG_LENGTH = 40;
+// The tag vocabulary and its limits moved to src/constants/contextTags.js when the journal
+// began sharing them: a pure constants module cannot import from a component. Re-exported
+// here so every existing importer of this file keeps working and there is still one name to
+// look for.
+import { CONTEXT_TAGS, MAX_TAGS, MAX_TAG_LENGTH } from '../constants/contextTags';
+
+export { CONTEXT_TAGS, MAX_TAGS, MAX_TAG_LENGTH };
 
 /**
  * The notes + tags editor. Used by PersonForm at snapshot time and by WhatChanged

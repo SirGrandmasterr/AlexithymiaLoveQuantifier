@@ -1,11 +1,11 @@
 # 08 — Testing
 
 Three layers, three runners. Status below was verified by running each suite
-(2026-07-26).
+(E2E 2026-07-26; backend and frontend 2026-08-22, at the 6-A closeout).
 
 | Layer | Runner | Location | Verified status |
 | :---- | :----- | :------- | :-------------- |
-| Frontend unit | Vitest + Testing Library + jsdom | `src/**/*.test.{js,jsx}` | ✅ **161/161 pass** |
+| Frontend unit | Vitest + Testing Library + jsdom | `src/**/*.test.{js,jsx}` | ✅ **609/609 pass** |
 | Backend unit / integration | `go test` + sqlmock + in-memory SQLite | `backend/internal/**/*_test.go` | ✅ **all packages pass** |
 | End-to-end | Playwright | `tests/` | ❌ **failing** — needs servers that nothing starts |
 
@@ -41,12 +41,27 @@ in `tests/` and fail on `@playwright/test` imports.
 
 ### Coverage today
 
-Fourteen files, 194 tests, all passing.
+Twenty-four files, 609 tests, all passing (2026-08-23, session B2).
 
-Two components now need providers to render at all — `Dashboard` reads `useSubjects()` and
-navigates, `TimelineRoute` does both — so their tests wrap in `MemoryRouter` +
-`SubjectsProvider`. `Dashboard.test.jsx` has a `renderDashboard()` helper for exactly this;
-copy it rather than rendering the component bare.
+> **The day graph's legend names the same feelings the check-in chips do.** Since B2 a bare
+> `screen.getByText('connectedness')` on the day view finds **two** elements — the drawing's
+> key and the chip it was drawn from — and both are correct. Tests about the *rows* scope with
+> `within(...)`: `Journal.test.jsx` has a `rows()` helper that waits for
+> `[data-entry-kind="checkin"]` and returns a scoped query set, and `CheckinComposer.test.jsx`
+> gates on the delete button instead of on a feeling's label. Four suites had to change when
+> the legend landed; a fifth (`RitualCards.test.jsx`) switched to `findAllByText`.
+
+> **The two day-graph suites are one letter apart.** `dayGraph.test.js` is the geometry — 62
+> tests, no DOM — and `DayGraph.test.jsx` is the drawing: 32 tests that count `<path>`s, read a
+> `stroke-dasharray`, dispatch touch events and assert which of the page and the graph called
+> `preventDefault`. They are *different files on a case-insensitive filesystem*, so an import
+> of either must spell the extension out; see [Frontend §4be](06-frontend.md#4be-daygraphjsx--the-day-drawn).
+
+Three components now need providers to render at all — `Dashboard` reads `useSubjects()` and
+navigates, `TimelineRoute` does both, and `Journal` needs `SubjectsProvider`,
+`JournalProvider` **and** `DiscretionProvider` — so their tests wrap in `MemoryRouter` plus
+the providers. `Dashboard.test.jsx` has a `renderDashboard()` helper and `Journal.test.jsx` a
+`renderAt(path)` one; copy whichever is closer rather than rendering the component bare.
 
 > **`axios.get` must be mocked per URL, not once.** Since Phase 4 the provider loads
 > `/api/subjects` **and** `/api/relationships` in parallel, so a bare
@@ -54,7 +69,19 @@ copy it rather than rendering the component bare.
 > relationship list ends up full of snapshots. Both `Dashboard.test.jsx` and
 > `SubjectsContext.test.jsx` have a `mockFetch` helper that dispatches on the URL; use it.
 > `Dashboard.test.jsx`'s variant derives the relationships from the snapshots, so most
-> fixtures only need a `relationship_id` on each row.
+> fixtures only need a `relationship_id` on each row. **Phase 6 adds two more URLs** —
+> `/api/journal/entries` and `/api/journal/days` — so a journal test dispatches on four;
+> `Journal.test.jsx`, `JournalContext.test.jsx`, `CheckinComposer.test.jsx`,
+> `RitualCards.test.jsx`, `JournalPeople.test.jsx` and `JournalTriggers.test.jsx` carry that
+> version of the helper. Since A8 **`Dashboard.test.jsx`
+> wraps in `JournalProvider` too** — the dashboard's nudge slot is shared with the journal's
+> nightly prompt, so the dashboard's tree is the tree `App.jsx` actually mounts.
+
+> **A test that depends on which day it is fakes only `Date`.**
+> `vi.useFakeTimers({ toFake: ['Date'] })` plus `vi.setSystemTime(...)` pins `civilDay()`
+> without taking `setTimeout` away from testing-library, which is what makes `userEvent` and
+> `waitFor` still work. `Journal.test.jsx` pins 12:00 **UTC**, safely past the 04:00 rollover
+> in every zone the suite could run in, so "today" is the same day wherever it runs.
 
 Two suites are worth knowing about before writing anything that touches a session or a
 touch gesture:
@@ -98,7 +125,8 @@ the pure helpers, the exported `PersonForm`, and the whole `Dashboard` screen:
 | Anchors | the band containing a value at the boundaries (0, 20, 21, 100), and that **every** category's bands start at 0, end at 100, and leave no gap — a content guard, not just a code one |
 | Guide band | `{0:1, 2:2}` (35 and 70) → `{count: 2, midpoint: 53, min: 45, max: 61}`; clamping at both ends; `null` until something is answered |
 | Context capsule | trimmed-name payload including `uncertain`/`guide_answers`; Enter adds a tag instead of submitting; edit seeds note + tags; new version starts empty |
-| Guided scoring | the anchor phrase follows the slider; answering a metric renders the band **without moving the slider**; `Use 70` sets exactly the midpoint; the saved payload carries the answers |
+| Guided scoring | an anchor phrase from the right band follows the slider; answering a metric renders the band **without moving the slider**; `Use 70` sets exactly the midpoint; the saved payload carries the answers |
+| Anchor phrasing | every band has five distinct phrasings, none repeated across a category; `anchorPhrase` holds still across a whole band and walks all five over five seeds |
 | Skip / unsure | a skipped category is absent from `stats` (not zero); an unsure id is listed; skipping a category drops its unsure flag; edit seeds both from the snapshot; a new version inherits scores but not uncertainty |
 | Card surface | note icon and up to three chips, `+1` overflow, `—` for five skipped categories and `≈60%` for an unsure one, and **no** `0%` anywhere; the summary line; the bars ⇄ Love Shape flip |
 | Summary line | `summarizeStack` — dominant pair, taxonomy-order tie-break, suppressed below two scored categories, "most changed" withheld below three snapshots, and skipped snapshots excluded from a range |
@@ -130,6 +158,31 @@ undated footnote, the conditional dashed-point hint, and the compare selector.
 a skip, uncertainty carried through, no compare series without `compareTo`) and `ShapeDot`
 (filled / open-dashed / filled-dashed).
 
+[`src/components/dayGraph.test.js`](../src/components/dayGraph.test.js) — 62 tests, and
+**the pattern to copy for any chart logic** (see the Recharts note below). No DOM at all: the
+day graph's geometry is four pure functions, so the whole suite is fixtures in and geometry
+out. `buildDayCurve` gets the eight construction rules of
+[§8.2](../product_vision/06-emotional-journal.md#82-from-discrete-check-ins-to-a-continuous-branching-curve)
+one at a time — the trunk starting at the first check-in and not at midnight, two simultaneous
+feelings leaving it at the same `t`, a feeling reported twice interpolating without dipping
+below either endpoint, decay crossing `BRANCH_END_THRESHOLD` at the minute the half-life
+implies, a later check-in *without* the feeling not ending its branch, an explicit `level`
+check-in ending every other branch over `NEUTRAL_SETTLE_MIN`, and both sides of the
+`CONFIDENT_MIN` boundary for `extrapolated`. Then `branchPaths` (one path per lifetime, birth
+and merge at trunk valence, dashed for `unclear` and for `uncertain`), `project` (exactly the
+2-D ribbon at `pitch = 0`, `yaw = 180°` mirroring x), `paintersOrder` (stable for equal
+depths) and `dayGraphLegend` (first-appearance order, and holding no names at all).
+
+> Three of its habits are worth stealing. **Compute the expected minute from the constant**
+> rather than pasting the number the implementation produced: the decay case asserts
+> `150 · log₂(1 / 0.2)`, and a second case re-runs the same day at a different half-life, so a
+> constant that stopped driving the arithmetic would fail rather than pass with stale numbers.
+> **Assert both sides of every boundary** — 90 minutes is confident and 95 is not.
+> And **read the source file back**: one case greps `dayGraph.js` for a React, Recharts or
+> three.js import and for JSX, which is the only way a "this module never renders" claim stays
+> true a year later. Use `resolve(process.cwd(), '<repo path>')` — Vitest rewrites
+> `import.meta.url` into something `fileURLToPath` refuses.
+
 [`src/components/TimelineRoute.test.jsx`](../src/components/TimelineRoute.test.jsx) — 8
 tests, rendered through `MemoryRouter` + `SubjectsProvider`. The id route: `timelinePath`,
 direct entry fetching and rendering, a name that would have needed URL encoding (it is no
@@ -154,18 +207,213 @@ longest wait first. `nudgeSentence` is asserted against a forbidden-word list
 (`overdue`, `missed`, `streak`, `should`, `behind`, `!`) — the no-guilt rule is a product
 constraint, so it is tested like one.
 
+[`src/constants/journal.test.js`](../src/constants/journal.test.js) — 134 tests, all pure.
+It carries **the two rails Phase 6 adds**, and they are the reason it exists as much as the
+readers are.
+
+1. **The forbidden-word walk.** `cadence.test.js` checks one sentence against six words.
+   This one walks *every string* in `JOURNAL_COPY`, plus every `RITUAL_QUESTIONS[].text` and
+   `.note` and every `FEELINGS[].label` and `.gloss`, against eighteen: the original six plus
+   `forgot`, `healthy`, `unhealthy`, `concerning`, `symptom`, `disorder`, `diagnos`, `fail`,
+   `guilt`, `lazy`, `bad`, `good job`. It is a **recursive walk over the object**, not a list
+   of strings someone remembered to add, so a sentence written next session is covered the
+   moment it lands — which is what makes "no bare string literals in a journal component"
+   (Appendix B) worth enforcing. Two cases guard the walk itself: one asserts it reaches a
+   deeply nested path, and one plants an offending string and asserts it is caught.
+2. **Id parity with the backend.** The test **reads
+   `backend/internal/domain/journal.go` off disk** and asserts `FEELINGS`, `RITUAL_QUESTIONS`
+   and `ENTRY_KINDS` hold exactly the ids of `domain.FeelingIDs`, `domain.RitualQuestionIDs`
+   and `domain.JournalKinds`, in the same order, in **both directions** — and that the Go
+   file holds no labels or colours, so the copy has one home the walk above can reach. This
+   is the test that stops the two languages drifting; adding a feeling in one and not the
+   other is red, not a silent `400` months later.
+
+The rest: the payload readers against a v1 payload, unknown keys (preserved on `raw`), an
+unknown `about` kind, a **ritual with a skipped question — absent, never `false`** — a
+trigger merge chain two deep, a self-referencing merge and a two-trigger cycle (neither
+loops); `civilDay` at 03:59 and 04:00, across a month, a year, and **both DST changes**,
+with a guard case asserting the suite really is in a zone that has one; `personCandidates`
+(exact wins alone and is marked exact, `Lucie` offers `Lucie M`, case- and
+diacritic-insensitive matching, never more than three, never a selection, nothing for an
+empty name) and `triggerCandidates` (`arbeit` matches `Arbeit`; `work` does not); and
+`clientId` with `crypto.randomUUID` removed, because a self-hosted install over plain
+`http://` has no secure context and no `randomUUID`. A6 added eleven more for the day
+view's arithmetic: `shiftDay` across a month, a year, a leap day and both DST changes,
+`monthBounds` (February in a leap year and out of one), and `timeOfDay` answering `null`
+rather than a plausible wrong time for `null` — `new Date(null)` is the epoch, not an
+invalid date. A7 added five for the two halves of *when was this*: `tzOffsetMinutes` counting
+minutes **east** of Greenwich (the opposite way to `getTimezoneOffset`, which is the sign
+error that would pass on a machine sitting on UTC) and `rfc3339Local` writing the local
+offset rather than a `Z`, both across a DST boundary, with a guard case asserting
+`process.env.TZ` really took. A8 added nine for the ritual's two pure pieces: `ritualDeck`
+(the core five alone, an optional tail ordered by the *set* rather than by the order the user
+switched them on, capped at three, an unknown id dropped rather than drawn as a blank card)
+and `minutesIntoCivilDay` / `ritualTimeReached`, which measure the hour **from the rollover
+rather than from midnight** — so 01:00 is late in tonight's civil day and 04:00 is early in
+tomorrow's, and a ritual started after midnight is still tonight's. A9 added twenty-two for
+the two vocabulary views: `topFeelings` (most first, **tied on `FEELINGS` order** so the same
+data always names the same two, an unknown id kept after every known one and then
+alphabetically); `summarizePerson` (counting every kind of entry that names them, splitting
+the facts from everything else so the remove dialog's two numbers cannot overlap, and
+reaching a feeling through the mention's `ref` — the fixture puts the same person at ref 0
+on one entry and ref 1 on the next, which is what makes that a real assertion); and
+`summarizeTrigger` resolving through the merge chain, with a case proving that **without** the
+resolver the pre-rename entries would be a different trigger. Plus the two correction
+builders: a rename minting its own `client_id` and carrying `supersedes_id` and the old id in
+`corrects`, the list **accumulating across two renames** rather than pointing one hop back,
+and a merge naming the survivor by its `live` id and carrying its label rather than inventing
+one — with a round trip through `readTrigger` proving the row it produces resolves. And
+`countCopy`, which carries **the whole clause including its verb**: the singular and plural
+are two templates, because one with a number dropped into it produced *“1 entry stop being
+linked”* on a running screen past a green suite.
+
+[`src/context/JournalContext.test.jsx`](../src/context/JournalContext.test.jsx) — 22 tests.
+`useJournal()` throwing outside its provider (matching `useSubjects`), the default range
+being the month of the current civil day, both journal endpoints fetched with the same
+`from`/`to`, and — the invariant-17 test — **exactly one** `GET /api/relationships` in the
+whole tree, because the journal reads the people rather than fetching them. Then `loadRange`
+refetching and refusing a reversed or malformed range; a failure holding a written sentence
+and preferring the server's own message; `createEntry` minting a v4 `client_id` when the
+caller did not, keeping the caller's when it did, drawing a replayed post once, and dropping
+the row a correction superseded; `deleteEntry`; `resolveTrigger` answering for a renamed
+trigger by the id old check-ins still hold; and `markedDays` merging the counts endpoint with
+entries written since — while never marking a day whose only entry is a trigger, because
+vocabulary is not an event.
+
+[`src/components/Journal.test.jsx`](../src/components/Journal.test.jsx) — 25 tests, through
+`MemoryRouter` + all three providers. The day: a check-in's feelings by their **labels** (the
+id `rapport` shows as *connectedness*), its person chip under the relationship's current name,
+its trigger chip resolved from the stored id, its context tag, its time and its transcript; an
+`unclear` feeling and an `uncertain: true` one drawn dashed while `false` and absent stay
+solid; the ritual as the footer *after* the check-ins, with a question in `asked` and not in
+`answers` rendering as *Unanswered*. The three §9.4 empty states asserted against
+`JOURNAL_COPY` verbatim, including the first-run card appearing only on a journal that holds
+nothing and whose ritual setting has never been touched. Prev/next across both month
+boundaries and the refetch that follows; the month strip's 31 cells and its marks; a path that
+is not a day redirecting to today. Under discretion: names to initials, transcript and trigger
+label carrying `BLUR_CLASS`, feeling chips untouched. A failed load in the screen's own
+`role="alert"` slot with the header, the strip and the empty state all still on screen. And
+`MobileBottomNav`'s five slots, with Journal lit on `/journal/2026-08-21` and on
+`/journal/people/3` but not on `/`. A9 replaced the placeholder-route cases with one that
+asserts the day header links to **People** and **Triggers** — the bottom bar has one journal
+slot, so those two links are the only way in to either screen.
+
+[`src/components/JournalPeople.test.jsx`](../src/components/JournalPeople.test.jsx) —
+20 tests. The one thing no other file in the suite can assert: a relationship with
+`snapshot_count: 0` is **listed** and **not** linked to a timeline, while one with snapshots
+is. Then the counts and the two most-attached feelings, with a deliberately reversed fixture
+proving the tie-break is `FEELINGS` order rather than payload order, and a feeling attached to
+nobody staying out of the summary. The detail screen is **keyed by id**: a rename lands
+mid-session through a `reloadKey` bump and the heading follows it while the same two mentions
+and one fact stay exactly where they were. *Remove this person from the journal* states both
+counts, agrees with each of them (*1 fact … goes* / *1 entry … stops*), leaves out a clause
+with nothing to count, issues **one** `DELETE /api/journal/people/7` on confirm and **none**
+on cancel, keeps its dialog and message on a failed write (trap 4), and is not rendered at all
+when the journal holds nothing about them. Under discretion both screens mask names and the
+transcript and fact carry `BLUR_CLASS`.
+
+[`src/components/JournalTriggers.test.jsx`](../src/components/JournalTriggers.test.jsx) —
+19 tests, asserting on **the request body** for the same reason the composer's tests do:
+there is no rename endpoint and no merge endpoint to mock, only a `POST` a Go validator will
+reject if the payload is wrong. The list's counts and its taxonomy tie-break; the detail
+listing only the check-ins that name the trigger; **no delete anywhere on the screen**, which
+is what stops a trigger a check-in still references being stranded out of an export. A
+**two-deep merge chain** as the client actually sees it — two correction rows and a survivor,
+the superseded originals absent — resolving to one row, gathering all three entries under it,
+and listing neither merged id; and the same chain resolved by the **day view** (A6) and by the
+**composer** (A7), which offer the survivor's label and its live id and nothing else. Rename
+posts `supersedes_id` and the new label and updates the list **without refetching
+`/api/subjects` or `/api/relationships`**. The merge dialog carries the count *and* the
+one-way sentence, shows neither before a target is chosen, leaves one row behind, and offers
+nothing that would take it apart again. A copy rail walks every text node the screen renders
+— list, detail and both dialogs — against `JOURNAL_COPY`, the closed vocabularies and the
+user's own words, with filled templates matched **by shape** (`{count}` → `.+`) rather than
+listed one filling at a time, and a planted sentence proving the filter looks.
+
+[`src/components/CheckinComposer.test.jsx`](../src/components/CheckinComposer.test.jsx) —
+35 tests, driven the way a user drives the composer: from `/journal`, through the button the
+day view puts on screen, to **the request body that reaches `POST /api/journal/entries`**.
+Asserting on the request rather than on component state is the point — the §7.2 shape is a
+contract with a Go validator that would reject a wrong one at runtime and pass every
+assertion made one level higher up.
+
+The zone is **pinned to `Europe/Berlin`** for the whole file, with a guard case asserting it
+took, so `tz_offset_min: 120` and the `+02:00` on `at` are real assertions rather than
+whatever the machine running the suite happens to be.
+
+Three taps — open, one word, save — producing `source: "chips"`, one feeling, intensity 2 and
+**no `uncertain` key at all**; the dots cycling 1 → 2 → 3 with a `expect(card.textContent).not.toMatch(/\d/)`
+guard, because "dots, never numbers" is a product rule; the `≈` toggle writing
+`uncertain: true`. A known person sending `relationship_id`, a new one sending `name` and no
+id, `Lucie` offering `Lucie M` **and attaching nothing on its own**, an exact name resolving
+with no *new person* beside it, and two feelings about one person making one mention. A known
+trigger sending its `client_id`, a new label minting one that the feeling's `about` then
+names, two feelings sharing one minted trigger, a merged trigger offered under the surviving
+label only, and — twice over — **a label typed and then removed, or never confirmed, minting
+nothing**. The cap stated and the sixth chip disabled; `unclear` saved alone and clearing
+whatever else was picked. Moving a chip between feelings. A 500 leaving the sheet open with
+every chip, strength and attachment intact (trap 4) and the server's own message when it sent
+one. Under discretion, a person chip as `L. M.` and the note carrying `BLUR_CLASS`. One
+`toEqual` against a **literal request object**, so a dropped, added or renamed key fails here
+rather than at runtime. And the day view's delete: the dialog naming the time, the words and
+what survives; the delete itself; the decline; and a failure keeping the dialog open.
+
+[`src/components/RitualCards.test.jsx`](../src/components/RitualCards.test.jsx) — 32 tests,
+zone pinned to `Europe/Berlin` and the clock pinned to 23:00 local, both with guard cases. The
+deck: the core five in the fixed order, two optional ones appended in the *set's* order, and
+`question_set.asked` recording every card that was shown. The three gestures, driven as
+pointer events on the card: right → `true`, left → `false`, and **up → a key absent from
+`answers` and present in `asked`** — the invariant-14 assertion this whole session exists to
+protect. A tap records nothing and does not advance, and a drag below the threshold springs
+back; `gestureIntent` is exported and tested as arithmetic beside them, because a tap is the
+case a DOM-level gesture test is least likely to reproduce faithfully. The buttons and the
+arrow keys are asserted to produce the **same request body** as the swipes, key for key.
+
+The closing card writes the word twice — `day_word` on the ritual and a separate `checkin`
+with `source: "ritual_word"` at the **same `at` and `day`** — with no `intensity` on the
+feeling and no `uncertain` on the day word, because neither is a statement the user made.
+Skipping it writes neither. *Who?* appears only behind a yes **and** the setting, writes
+mentions carrying the unmasked name while the chip shows initials, and writes none when
+skipped. `detent` fires once per commit and **not at all** under discretion. `touch-action:
+none` is asserted on the card and absent from every ancestor, in inline styles and class
+names both. The prompt line: silent before the hour and silent with the ritual off, one
+sentence after it, **never beside the cadence banner**, gone for the session after *Not
+tonight* — with the cadence banner still waiting, because the slot stays the ritual's. And a
+day with a check-in and no ritual renders no ritual row, no heading, no *Unanswered*, no zero
+and nothing matching `/didn't|did not|last night/`.
+
+The copy rail here is a **walk over what reached the screen** rather than over the module: on
+every card, every rendered text node must be a string in `JOURNAL_COPY`, a question text, a
+feeling label, a person's name, or one of the two arrow glyphs. A planted sentence proves the
+filter looks. `Profile.test.jsx` runs the same walk over its Journal section.
+
+[`src/components/Profile.test.jsx`](../src/components/Profile.test.jsx) — 10 tests, the
+Journal settings section (§9.7). The three controls and their defaults; the ritual turning on
+at 22:30 and its hour moving; the hour surviving an off-and-on; the eight optional questions
+each shown with the `note` that says why it is there; the cap at three **stated** before the
+unchosen ones disable, and the chosen three staying tappable so the way out is obvious;
+*Ask who I was with* off until it is asked for; a second visit reading back what the first
+wrote; and a value the section did not write leaving it at its defaults rather than taking
+the screen down. One test is a negative: **the five settings whose features do not exist yet
+must not be on this screen.** They are described in `JOURNAL_COPY.settings` because A5 wrote
+all eight, and rendering a toggle for something the app cannot do would make a Vault claim
+false (invariant 2e) — this is the test that stops one arriving by accident.
+
 [`src/context/DiscretionContext.test.jsx`](../src/context/DiscretionContext.test.jsx) —
 9 tests: `initials` (including the never-empty fallback), off by default, names to initials
 and notes to blur when on, the tab title dropping the app name, `Ctrl+.`, and the choice
 surviving a remount.
 
-[`src/components/Vault.test.jsx`](../src/components/Vault.test.jsx) — 12 tests.
+[`src/components/Vault.test.jsx`](../src/components/Vault.test.jsx) — 15 tests.
 `buildCSV` gets four of them because its one rule is easy to break: **a skipped category is
 an empty cell, never a zero.** Also quoting (commas and quotes in a note) and an undated
-snapshot. The page tests cover the storage summary, the four privacy claims being present
-verbatim, "Last export: never", the dry-run-then-confirm import flow (asserting the dry run
-posts first and nothing is written until Import is clicked), a malformed file, and the
-app-lock honesty copy.
+snapshot. `buildJournalCSV` gets four more: one row per feeling with no transcript column, a
+person and a trigger resolved to their names (with a comma inside one of them, so the
+quoting is exercised there too), an absent intensity left empty, and nothing written at all
+when a journal has no feelings in it. The page tests cover the storage summary, the four
+privacy claims being present verbatim, "Last export: never", the dry-run-then-confirm import
+flow (asserting the dry run posts first and nothing is written until Import is clicked), a
+malformed file, and the app-lock honesty copy.
 
 [`src/components/AppLock.test.jsx`](../src/components/AppLock.test.jsx) — 6 tests:
 pass-through when no passphrase is set, that `localStorage` holds a hash and never the
@@ -189,6 +437,15 @@ transform table remains the highest-value addition.
 > Every chart component therefore exports its data shaping and its dot renderers as pure
 > functions, and those are what the suites assert on. Do the same for any new chart: a test
 > that asserts on rendered SVG will pass vacuously or not at all.
+>
+> **[`dayGraph.js`](../src/components/dayGraph.js) is the pattern to follow** — invariant 19
+> taken to its conclusion rather than worked around. The day graph uses no charting library at
+> all: every decision about where a line goes lives in four exported pure functions with 62
+> tests on them, and the component (B2) is a `map` over paths. `AnalysisTimeline`'s
+> `buildTimelineData` and `LoveShape`'s `buildShapeData` are the same idea at a smaller scale.
+> When a new chart needs logic, put the logic here-shaped and the drawing in the component;
+> hand-drawn SVG then makes even the drawing assertable, which is why `LoveShape.test.jsx` can
+> check `stroke-dasharray` and a Recharts test cannot.
 
 ### Patterns to copy
 
@@ -394,12 +651,57 @@ about a query.
 | `TestCreateSubjectReusesRelationshipByName` | The compatibility contract: `"Alex"` and `"  Alex  "` share a relationship, `"Sam"` gets its own, exactly two relationships exist |
 | `TestGetSubjectsOrdersByDate` | The `ORDER BY` against a real engine: newest first, undated last |
 | `TestAggregateTimeScan` | The four shapes `MAX(date)` arrives as, including the RFC 3339 spelling found in databases written by older driver versions |
+| `TestMergeMovesJournalMentions` | A merge moves the journal's mentions in the same transaction, **including ones on soft-deleted entries** — the entry is recoverable, so a mention left behind would come back pointing at a relationship that no longer exists. `mentions_moved` reports the count, the `label` survives as the quotation it is, and the response still carries the target's whole summary |
+| `TestMergeReportsZeroMentionsWhenThereAreNone` | The field is present and `0`, not absent, for an account with no journal |
+| `TestDeleteRelationshipDetachesMentions` | The entries **survive** a person being deleted, keeping their rows, their labels and their `relationship_id` — the relationship is soft-deleted, so every join through it drops out without anything being rewritten |
+| `TestMentionCountsCoverOnlyTheEntriesTheJournalShows` | The two numbers the delete dialog depends on are one number. `mention_count` (read when the dialog opens) and `mentions_detached` (returned when it is confirmed) both cover entries that are neither deleted nor superseded. It also pins `snapshot_count` at **2 rather than 6** for two snapshots joined against three mentions — the fan-out that made the journal's arrival a silent regression in a number every screen reads |
 
 That last one is worth keeping. `MAX()` drops a column's declared type, so SQLite hands back
 a **string** where Postgres hands back a `time.Time`; a plain `*time.Time` field fails to
 scan, and the failure only shows up once a relationship has a dated snapshot. GORM also
 refuses to scan into a struct field that implements only half of the `Valuer`/`Scanner` pair,
 which is why `aggregateTime` carries an otherwise-unused `Value()`.
+
+### 2.2b `journal_test.go` — the journal's write path, its reads, and its two deletes
+
+[`backend/internal/handlers/journal_test.go`](../backend/internal/handlers/journal_test.go)
+follows `relationships_test.go`: **real in-memory SQLite**, because the endpoint's whole point
+is what the rows look like afterwards — one relationship, one entry, one mention, and
+*nothing at all* when a step fails. Two cases near the bottom use sqlmock, where the statement
+shape is the subject rather than the result.
+
+Every failure case asserts `countEntries(db)` as well as the status: a `400` that left a row
+behind is a worse bug than a `500`.
+
+**The write path** (A2) is one table-driven `TestCreateJournalEntry` plus the cases that need
+their own fixtures: a valid check-in, ritual and person fact; a **new trigger created in the
+same transaction**; an **existing trigger referenced by id**; a trigger belonging to another
+user (`404`, nothing written); an `about` naming a trigger the request did not list (`400`);
+unknown feeling and question ids; a `day` three days from `at`; a mention with neither id nor
+name; a mention naming another user's relationship (`404`); a duplicate `client_id` (`200`
+with the stored row, not a second one); `supersedes_id` stamping `superseded_at` and a second
+supersede answering `409`; a trigger merge correction carrying `merged_into`; unauthorized;
+and a database error rolling the whole thing back.
+
+**The reads** (A3) are `TestGetJournalEntries` — range filter, superseded rows excluded,
+ordering, `kind=trigger`, the `relationship_id` filter, a malformed `from` (`400`) — plus
+`TestGetJournalDays` for the grouped counts and
+`TestGetJournalDaysExcludesDeletedAndSupersededRows`. `TestJournalMentionResolvesByName`
+covers find-or-create on real SQLite.
+
+**Two tests pin a rule that reads as an implementation detail and is not:**
+
+| Test | What it pins |
+| :--- | :----------- |
+| `TestCreateJournalEntryRejectsASupersededTrigger` | A renamed or merged-away trigger cannot be attached to a new entry — through **both** shapes. `{"trigger": id}` always refused it; `{"label": …, "client_id": id}` went down the find-or-create branch, matched on `(user_id, client_id)` alone and quietly accepted it until 2026-08-22. Same id, same answer, and no check-in left behind either way |
+| `TestDeleteJournalPersonCountsOnlyTheEntriesTheJournalShows` | `facts_deleted` and `mentions_detached` count only what the journal displays, while the **action** still covers superseded rows. The dialog states those numbers before acting, having read them from `GET /api/journal/entries`; counting a different set here told anyone who had corrected an entry that two facts would go and then took four |
+
+A9 added the two for `DeleteJournalPerson`:
+
+| Test | What it pins |
+| :--- | :----------- |
+| `TestDeleteJournalPersonRemovesFactsAndDetachesMentions` | Two facts go as **soft** deletes and drop out of reads; the check-in and the ritual **survive** with their mention rows and their `label`; every `relationship_id` naming that person is `NULL`, on the deleted facts as well as on the survivors; another person's mention, the relationship itself and its snapshot are untouched; the two reported counts are disjoint; and a second run reports zeroes rather than repeating itself |
+| `TestDeleteJournalPersonScopesToTheCaller` | Another user's person is `404` and nothing of theirs changed — not the fact, not the link; an unknown id, a non-numeric id and a missing user are `404`/`404`/`401` |
 
 ### 2.3 `upload_test.go` — multipart handling
 
@@ -440,6 +742,15 @@ Same reasoning as `relationships_test.go`: these are claims about data, not abou
 | `TestImportKeepsALocalCadence` | A rhythm set here wins over the file's; an unset one takes the file's |
 | `TestImportRequiresAuth` | All three vault routes 401 without a user |
 | `TestGetMeta` | Counts scoped to the caller, the oldest date, the backend name, and no configuration detail in the payload |
+| `TestGetMetaCountsJournal` | Superseded entries count, soft-deleted ones do not, and `oldest_journal_day` serialises as a bare `YYYY-MM-DD` string |
+| `TestGetMetaWithAnEmptyJournal` | An absent span is `null`, not an empty string |
+| `TestExportCarriesTheWholeJournal` | Version 2, eight entries in `day`/`at` order including the superseded ones, a mention naming the person, the correction pair, and **no row id anywhere in the block** |
+| `TestExportImportJournalRoundTrip` | Export → import → re-export: every entry, mention, payload key, `superseded_at` and `supersedes` identical, and `supersedes_id` remapped onto the newly imported row |
+| `TestReimportSkipsJournalEntriesByClientID` | The same file into the same account skips all eight by client id and adds no mention |
+| `TestImportStillReadsAVersionOneFile` | A pre-journal file still imports and writes no journal rows |
+| `TestImportRejectsAJournalInAVersionOneFile` | A file that says version 1 and carries a journal is 400, naming the version |
+| `TestImportJournalMentionCreatesTheRelationshipOnce` | Two entries naming one unknown person create one relationship; an empty label takes the resolved name; a second run skips both |
+| `TestImportRejectsATriggerTheFileDoesNotContain` | 400 naming the missing client id, with the file's relationship not written either |
 
 ### 2.4 `auth_test.go` — the package that used to be untestable
 

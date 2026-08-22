@@ -2,6 +2,7 @@ package database
 
 import (
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -290,5 +291,320 @@ func TestDatabaseIntegration_SubjectRelationships(t *testing.T) {
 	// Attempt Unscoped fetch - should succeed discovering the hidden record
 	if err := db.Unscoped().First(&deletedFetch, "id = ?", retrieved.ID).Error; err != nil {
 		t.Errorf("Failed to retrieve soft-deleted record using Unscoped: %v", err)
+	}
+}
+
+// openJournalDB builds a file-backed SQLite database carrying the whole model set. A file
+// rather than setupMemoryDB's shared in-memory handle: these tests assert on unique-index
+// violations, and a database shared with every other test in the package would make a
+// collision mean two different things.
+func openJournalDB(t *testing.T, name string) *gorm.DB {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), name)), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("Failed to open SQLite file database: %v", err)
+	}
+	// Windows will not delete the temp file while the handle is open.
+	t.Cleanup(func() {
+		if sqlDB, err := db.DB(); err == nil {
+			sqlDB.Close()
+		}
+	})
+	if err := db.AutoMigrate(Models()...); err != nil {
+		t.Fatalf("Failed to migrate the model set: %v", err)
+	}
+	return db
+}
+
+// journalEntryColumns is every column journal_entries must have after a migration. Listed
+// out rather than derived from the struct so that deleting a field fails this test instead
+// of quietly agreeing with itself.
+var journalEntryColumns = []string{
+	"id", "created_at", "updated_at", "deleted_at",
+	"user_id", "client_id", "kind", "day", "at", "schema_version", "payload",
+	"superseded_at", "supersedes_id",
+}
+
+var journalMentionColumns = []string{"id", "entry_id", "relationship_id", "label", "ref"}
+
+// TestAutoMigrateAddsJournalTables is the Phase-6 sibling of TestAutoMigrateAddsNewColumns:
+// a database that predates the journal has neither table, and AutoMigrate has to build both
+// without touching the rows that were already there.
+//
+// It drops whole tables rather than columns because SQLite refuses to drop a column a
+// foreign key references, and journal_mentions.entry_id is one — the same reason
+// relationship_id is not in additiveColumns.
+func TestAutoMigrateAddsJournalTables(t *testing.T) {
+	db := openJournalDB(t, "pre-journal.db")
+
+	// A Phase-5 row, written before the journal existed, which the migration must not disturb.
+	if err := db.Create(&models.AnalysisSubject{UserID: 1, Name: "Lucie", Stats: map[string]int{"eros": 85}}).Error; err != nil {
+		t.Fatalf("Failed to seed a pre-journal snapshot: %v", err)
+	}
+
+	// Mentions first: the foreign key points at the entries table.
+	if err := db.Migrator().DropTable(&models.JournalMention{}, &models.JournalEntry{}); err != nil {
+		t.Fatalf("Failed to drop the journal tables: %v", err)
+	}
+	for _, model := range []interface{}{&models.JournalEntry{}, &models.JournalMention{}} {
+		if db.Migrator().HasTable(model) {
+			t.Fatalf("Expected %T's table to be gone before the migration", model)
+		}
+	}
+
+	if err := db.AutoMigrate(Models()...); err != nil {
+		t.Fatalf("AutoMigrate failed on the pre-journal schema: %v", err)
+	}
+
+	if !db.Migrator().HasTable(&models.JournalEntry{}) {
+		t.Fatal("Expected AutoMigrate to create journal_entries")
+	}
+	if !db.Migrator().HasTable(&models.JournalMention{}) {
+		t.Fatal("Expected AutoMigrate to create journal_mentions")
+	}
+	for _, column := range journalEntryColumns {
+		if !db.Migrator().HasColumn(&models.JournalEntry{}, column) {
+			t.Errorf("Expected journal_entries to have the %s column", column)
+		}
+	}
+	for _, column := range journalMentionColumns {
+		if !db.Migrator().HasColumn(&models.JournalMention{}, column) {
+			t.Errorf("Expected journal_mentions to have the %s column", column)
+		}
+	}
+
+	// The composite unique index is the one constraint the write path relies on, so its
+	// absence would not surface until two retried posts had written two rows.
+	if !db.Migrator().HasIndex(&models.JournalEntry{}, "idx_journal_user_client") {
+		t.Error("Expected the composite unique index idx_journal_user_client")
+	}
+	if !db.Migrator().HasIndex(&models.JournalEntry{}, "idx_journal_user_day") {
+		t.Error("Expected the composite index idx_journal_user_day")
+	}
+	assertIndexColumns(t, db, "journal_entries", "idx_journal_user_client", []string{"user_id", "client_id"}, true)
+	assertIndexColumns(t, db, "journal_entries", "idx_journal_user_day", []string{"user_id", "day"}, false)
+
+	// The pre-journal row is untouched — the migration is additive, not a rebuild.
+	var snapshot models.AnalysisSubject
+	if err := db.First(&snapshot, "name = ?", "Lucie").Error; err != nil {
+		t.Fatalf("Failed to read the pre-journal snapshot back: %v", err)
+	}
+	if snapshot.Stats["eros"] != 85 {
+		t.Errorf("Expected the pre-journal snapshot to survive with its stats, got %v", snapshot.Stats)
+	}
+}
+
+// assertIndexColumns checks an index's columns and their order, which HasIndex does not:
+// a unique index on client_id alone would satisfy HasIndex and would reserve every client
+// id across every user.
+func assertIndexColumns(t *testing.T, db *gorm.DB, table, index string, want []string, unique bool) {
+	t.Helper()
+	indexes, err := db.Migrator().GetIndexes(table)
+	if err != nil {
+		t.Fatalf("Failed to read the indexes of %s: %v", table, err)
+	}
+	for _, found := range indexes {
+		if found.Name() != index {
+			continue
+		}
+		columns := found.Columns()
+		if len(columns) != len(want) {
+			t.Errorf("Expected %s over %v, got %v", index, want, columns)
+			return
+		}
+		for i, column := range want {
+			if columns[i] != column {
+				t.Errorf("Expected %s column %d to be %q, got %q", index, i, column, columns[i])
+			}
+		}
+		if isUnique, ok := found.Unique(); ok && isUnique != unique {
+			t.Errorf("Expected %s unique=%v, got %v", index, unique, isUnique)
+		}
+		return
+	}
+	t.Errorf("Expected an index named %s on %s", index, table)
+}
+
+// TestJournalEntryPayloadRoundTrip walks a check-in payload through the serializer:json
+// column and back. It matters more here than for stats: a snapshot's stats are a flat map
+// of ints, while a payload nests an array of objects inside an object, and that is the
+// shape a hand-rolled encoder gets wrong.
+//
+// Every number is written as a float64 on purpose. JSON has one number type, so an int
+// written here comes back as a float64 and a DeepEqual over the two would fail on the type
+// rather than on the value — which is a fact about the column, and worth a reader knowing
+// before they store an int and compare it later.
+func TestJournalEntryPayloadRoundTrip(t *testing.T) {
+	db := openJournalDB(t, "payload.db")
+
+	payload := map[string]interface{}{
+		"v":             float64(1),
+		"source":        "voice",
+		"tz_offset_min": float64(120),
+		"transcript":    "long day, good evening",
+		"feelings": []interface{}{
+			map[string]interface{}{
+				"id": "rapport", "intensity": float64(3), "uncertain": false,
+				"about": []interface{}{
+					map[string]interface{}{"kind": "person", "ref": float64(0)},
+					map[string]interface{}{"kind": "tag", "tag": "conflict"},
+				},
+			},
+			map[string]interface{}{"id": "unclear", "intensity": float64(1), "uncertain": true},
+		},
+		"tags": []interface{}{"evening", "at home"},
+		"proposal": map[string]interface{}{
+			"model": "none", "prompt_version": float64(1),
+			"proposed": []interface{}{"pleasure", "rapport"},
+			"accepted": []interface{}{"rapport"},
+			"replaced": map[string]interface{}{"pleasure": "calm"},
+		},
+	}
+
+	at := time.Date(2026, 8, 22, 21, 4, 0, 0, time.UTC)
+	entry := models.JournalEntry{
+		UserID: 1, ClientID: "6f1c3a0e-0000-4000-8000-000000000001",
+		Kind: "checkin", Day: "2026-08-22", At: at, Payload: payload,
+	}
+	if err := db.Create(&entry).Error; err != nil {
+		t.Fatalf("Failed to create a journal entry: %v", err)
+	}
+
+	var retrieved models.JournalEntry
+	if err := db.First(&retrieved, "id = ?", entry.ID).Error; err != nil {
+		t.Fatalf("Failed to read the entry back: %v", err)
+	}
+
+	if !reflect.DeepEqual(retrieved.Payload, payload) {
+		t.Errorf("Expected the payload to round-trip identically.\n got: %#v\nwant: %#v", retrieved.Payload, payload)
+	}
+
+	// Spelled out as well as compared, because a DeepEqual failure on a nested map says
+	// very little about which level went wrong.
+	feelings, ok := retrieved.Payload["feelings"].([]interface{})
+	if !ok || len(feelings) != 2 {
+		t.Fatalf("Expected two feelings in the round-tripped payload, got %#v", retrieved.Payload["feelings"])
+	}
+	first, ok := feelings[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected the first feeling to be an object, got %#v", feelings[0])
+	}
+	if first["id"] != "rapport" || first["intensity"] != float64(3) {
+		t.Errorf("Expected the nested feeling to survive, got %#v", first)
+	}
+	about, ok := first["about"].([]interface{})
+	if !ok || len(about) != 2 {
+		t.Fatalf("Expected two about entries inside the nested feeling, got %#v", first["about"])
+	}
+	proposal, ok := retrieved.Payload["proposal"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected the nested proposal object to survive, got %#v", retrieved.Payload["proposal"])
+	}
+	replaced, ok := proposal["replaced"].(map[string]interface{})
+	if !ok || replaced["pleasure"] != "calm" {
+		t.Errorf("Expected the twice-nested replaced map to survive, got %#v", proposal["replaced"])
+	}
+
+	// The columns beside the payload, since they are what queries actually filter on.
+	if retrieved.Day != "2026-08-22" {
+		t.Errorf("Expected day %q, got %q", "2026-08-22", retrieved.Day)
+	}
+	if !retrieved.At.UTC().Equal(at) {
+		t.Errorf("Expected at %v, got %v", at, retrieved.At.UTC())
+	}
+	if retrieved.SchemaVersion != 1 {
+		t.Errorf("Expected schema_version to default to 1, got %d", retrieved.SchemaVersion)
+	}
+	if retrieved.SupersededAt != nil || retrieved.SupersedesID != nil {
+		t.Errorf("Expected a fresh entry to supersede nothing, got %v / %v", retrieved.SupersededAt, retrieved.SupersedesID)
+	}
+}
+
+// TestJournalEntryClientIDIsUniquePerUser is the constraint a retried POST depends on: the
+// same entry sent twice must collide rather than land twice. Per user, not globally — two
+// clients mint ids independently, and a global unique index would let one user's id make
+// another user's write fail.
+func TestJournalEntryClientIDIsUniquePerUser(t *testing.T) {
+	db := openJournalDB(t, "client-id.db")
+
+	const clientID = "6f1c3a0e-0000-4000-8000-00000000000a"
+	at := time.Date(2026, 8, 22, 21, 4, 0, 0, time.UTC)
+	first := models.JournalEntry{UserID: 1, ClientID: clientID, Kind: "checkin", Day: "2026-08-22", At: at}
+	if err := db.Create(&first).Error; err != nil {
+		t.Fatalf("Failed to create the first entry: %v", err)
+	}
+
+	retry := models.JournalEntry{UserID: 1, ClientID: clientID, Kind: "checkin", Day: "2026-08-22", At: at}
+	if err := db.Create(&retry).Error; err == nil {
+		t.Error("Expected a second entry with the same (user_id, client_id) to be rejected")
+	} else {
+		t.Logf("Received the expected constraint error: %v", err)
+	}
+
+	// The same client id under a different user is a different row, not a collision.
+	other := models.JournalEntry{UserID: 2, ClientID: clientID, Kind: "checkin", Day: "2026-08-22", At: at}
+	if err := db.Create(&other).Error; err != nil {
+		t.Errorf("Expected the same client id under another user to be accepted, got: %v", err)
+	}
+
+	var count int64
+	db.Model(&models.JournalEntry{}).Where("client_id = ?", clientID).Count(&count)
+	if count != 2 {
+		t.Errorf("Expected two rows carrying that client id, one per user, got %d", count)
+	}
+
+	// A soft-deleted entry keeps its client id reserved on purpose: a retry after a delete
+	// should collide rather than resurrect the row.
+	if err := db.Delete(&first).Error; err != nil {
+		t.Fatalf("Failed to soft-delete the first entry: %v", err)
+	}
+	afterDelete := models.JournalEntry{UserID: 1, ClientID: clientID, Kind: "checkin", Day: "2026-08-22", At: at}
+	if err := db.Create(&afterDelete).Error; err == nil {
+		t.Error("Expected a soft-deleted entry to keep its client id reserved")
+	}
+}
+
+// TestJournalMentionBelongsToItsEntry covers the association and the two columns that carry
+// a name the user said: a mention may name a relationship or only a label, because a person
+// can be mentioned before they are anyone in the database.
+func TestJournalMentionBelongsToItsEntry(t *testing.T) {
+	db := openJournalDB(t, "mentions.db")
+
+	relationship := models.Relationship{UserID: 1, Name: "Lucie"}
+	if err := db.Create(&relationship).Error; err != nil {
+		t.Fatalf("Failed to create the relationship: %v", err)
+	}
+
+	entry := models.JournalEntry{
+		UserID: 1, ClientID: "6f1c3a0e-0000-4000-8000-00000000000b",
+		Kind: "checkin", Day: "2026-08-22", At: time.Date(2026, 8, 22, 21, 4, 0, 0, time.UTC),
+		Mentions: []models.JournalMention{
+			{RelationshipID: &relationship.ID, Label: "Lucie", Ref: 0},
+			{Label: "the new colleague", Ref: 1},
+		},
+	}
+	if err := db.Create(&entry).Error; err != nil {
+		t.Fatalf("Failed to create an entry with mentions: %v", err)
+	}
+
+	var retrieved models.JournalEntry
+	if err := db.Preload("Mentions").First(&retrieved, "id = ?", entry.ID).Error; err != nil {
+		t.Fatalf("Failed to read the entry back with its mentions: %v", err)
+	}
+	if len(retrieved.Mentions) != 2 {
+		t.Fatalf("Expected two mentions, got %d", len(retrieved.Mentions))
+	}
+	if retrieved.Mentions[0].RelationshipID == nil || *retrieved.Mentions[0].RelationshipID != relationship.ID {
+		t.Errorf("Expected the first mention to name the relationship, got %v", retrieved.Mentions[0].RelationshipID)
+	}
+	if retrieved.Mentions[0].Label != "Lucie" {
+		t.Errorf("Expected the label to be kept beside the id, got %q", retrieved.Mentions[0].Label)
+	}
+	// Absent, not zero: a person named in passing has no relationship row yet.
+	if retrieved.Mentions[1].RelationshipID != nil {
+		t.Errorf("Expected an unresolved mention to have a nil relationship_id, got %v", *retrieved.Mentions[1].RelationshipID)
+	}
+	if retrieved.Mentions[1].Ref != 1 {
+		t.Errorf("Expected ref 1 on the second mention, got %d", retrieved.Mentions[1].Ref)
 	}
 }

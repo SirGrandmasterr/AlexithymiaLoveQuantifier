@@ -22,11 +22,19 @@ import (
 // The `ID` casing follows gorm.Model's default JSON encoding, which the frontend already
 // relies on for snapshots — one casing rule, however unusual, beats two.
 type RelationshipSummary struct {
-	ID            uint          `json:"ID"`
-	Name          string        `json:"name"`
-	CadenceDays   *int          `json:"cadence_days"`
-	SnapshotCount int           `json:"snapshot_count"`
-	LatestDate    aggregateTime `json:"latest_date"`
+	ID          uint   `json:"ID"`
+	Name        string `json:"name"`
+	CadenceDays *int   `json:"cadence_days"`
+
+	SnapshotCount int `json:"snapshot_count"`
+	// MentionCount is how many journal entries the journal *shows* for this person — not
+	// deleted and not superseded. It is here so the delete dialog can say what will happen
+	// before it happens (Phase 6 §7.3), which is the only reason it exists, and it is
+	// counted over exactly the entries a user could see so the sentence is true of what
+	// they will observe. DeleteRelationship's `mentions_detached` is scoped identically.
+	MentionCount int `json:"mention_count"`
+
+	LatestDate aggregateTime `json:"latest_date"`
 }
 
 // Cadence bounds. Below a week a "rhythm" is really a nag; above a year it has stopped
@@ -97,6 +105,15 @@ type MergeRelationshipInput struct {
 	SourceID uint `json:"source_id"`
 }
 
+// MergeRelationshipResponse is the target's summary plus what the merge had to move that a
+// summary cannot show. The summary is embedded rather than nested so the response stays the
+// shape every other relationship endpoint returns and a client that ignores the new field
+// keeps working.
+type MergeRelationshipResponse struct {
+	RelationshipSummary
+	MentionsMoved int64 `json:"mentions_moved"`
+}
+
 // currentUserID pulls the id the auth middleware stashed, reporting the 401 itself so the
 // four handlers below do not each repeat it.
 func currentUserID(c *gin.Context) (uint, bool) {
@@ -114,6 +131,30 @@ func currentUserID(c *gin.Context) (uint, bool) {
 // appears, honestly reporting zero — hiding it would make it impossible to delete. The
 // `deleted_at IS NULL` lives in the join condition rather than a WHERE so soft-deleted
 // snapshots drop out of the count without dropping their relationship from the result.
+//
+// The journal is reached for `mention_count` (§7.3) through a **pre-aggregated subquery**,
+// not through two more joins onto the raw tables. That is the whole of the interesting part.
+// Joining `journal_mentions` here directly would multiply the rows — a person with 40
+// snapshots and 2,000 mentions produces 80,000 before any COUNT collapses them — on the one
+// query every screen in the app issues on load and after every mutation, and it would grow
+// in both dimensions for the life of the account. `DISTINCT` would make the answer correct
+// and the work quadratic anyway. Grouped first, the journal side contributes **one row per
+// relationship**, so there is no product to collapse: `snapshot_count` stays a plain COUNT
+// over the snapshot join, and the repeated mention count is folded back with MAX, which is
+// exact because every repetition is the same number.
+//
+// The count is over the entries the journal *shows* — neither soft-deleted nor superseded —
+// so that the number the delete dialog states matches what the user will observe change, and
+// matches DeleteRelationship's `mentions_detached`.
+const liveMentionCounts = `(SELECT journal_mentions.relationship_id AS relationship_id,
+                                   COUNT(*) AS mention_count
+                              FROM journal_mentions
+                              JOIN journal_entries
+                                ON journal_entries.id = journal_mentions.entry_id
+                             WHERE journal_entries.deleted_at IS NULL
+                               AND journal_entries.superseded_at IS NULL
+                             GROUP BY journal_mentions.relationship_id)`
+
 func summaryQuery(userID uint) *gorm.DB {
 	return database.DB.
 		Model(&models.Relationship{}).
@@ -121,10 +162,13 @@ func summaryQuery(userID uint) *gorm.DB {
 		        relationships.name AS name,
 		        relationships.cadence_days AS cadence_days,
 		        COUNT(analysis_subjects.id) AS snapshot_count,
+		        COALESCE(MAX(journal_counts.mention_count), 0) AS mention_count,
 		        MAX(analysis_subjects.date) AS latest_date`).
 		Joins(`LEFT JOIN analysis_subjects
 		       ON analysis_subjects.relationship_id = relationships.id
 		       AND analysis_subjects.deleted_at IS NULL`).
+		Joins(`LEFT JOIN `+liveMentionCounts+` AS journal_counts
+		       ON journal_counts.relationship_id = relationships.id`).
 		Where("relationships.user_id = ?", userID).
 		Group("relationships.id, relationships.name")
 }
@@ -346,6 +390,7 @@ func MergeRelationship(c *gin.Context) {
 		return
 	}
 
+	var mentionsMoved int64
 	err := database.DB.Transaction(func(tx *gorm.DB) error {
 		if input.SourceID == targetID {
 			return errSameRelationship
@@ -374,6 +419,23 @@ func MergeRelationship(c *gin.Context) {
 			return err
 		}
 
+		// Journal mentions move in the same transaction, for the same reason and with the
+		// same reach as the snapshots above: a mention still pointing at a retired
+		// relationship is the stranded row this handler exists to prevent. There is no
+		// Unscoped() here because there is nothing to unscope — a mention has no soft
+		// delete of its own, so this statement already moves the mentions of soft-deleted
+		// entries, which is exactly what is wanted.
+		//
+		// Scoping by relationship_id alone is safe: findOwnedRelationship has already
+		// proved the source is this user's, so every mention pointing at it is too.
+		mentions := tx.Model(&models.JournalMention{}).
+			Where("relationship_id = ?", source.ID).
+			Update("relationship_id", target.ID)
+		if mentions.Error != nil {
+			return mentions.Error
+		}
+		mentionsMoved = mentions.RowsAffected
+
 		return tx.Delete(source).Error
 	})
 
@@ -394,7 +456,10 @@ func MergeRelationship(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to merge relationships"})
 		return
 	}
-	c.JSON(http.StatusOK, summary)
+	c.JSON(http.StatusOK, MergeRelationshipResponse{
+		RelationshipSummary: summary,
+		MentionsMoved:       mentionsMoved,
+	})
 }
 
 // DeleteRelationship removes the whole history — distinct from DELETE /subjects/:id, which
@@ -411,6 +476,7 @@ func DeleteRelationship(c *gin.Context) {
 	}
 
 	var deleted int64
+	var mentionsDetached int64
 	err := database.DB.Transaction(func(tx *gorm.DB) error {
 		relationship, err := findOwnedRelationship(tx, relationshipID, userID)
 		if err != nil {
@@ -424,6 +490,29 @@ func DeleteRelationship(c *gin.Context) {
 		}
 		deleted = subjects.RowsAffected
 
+		// The mentions are counted and then left exactly as they are. Deleting a person
+		// should not rewrite the user's own record of a day: the entry stays, and its
+		// mention keeps both its row and its `label` — the name as it was said, which is a
+		// quotation and still reads correctly. Nothing is stranded by leaving
+		// relationship_id in place either, because the relationship it names is
+		// soft-deleted, so every join through it drops out on its own.
+		//
+		// The count is reported so the confirmation dialog can say what will happen before
+		// it happens, which is the only reason this number exists — and it is counted over
+		// the entries the journal *shows*, the same scope as `mention_count` on the summary
+		// the dialog read a moment earlier. Counting rows on entries the user has already
+		// deleted, or on statements a correction has superseded, would report a number
+		// nothing on screen could account for.
+		err = tx.Model(&models.JournalMention{}).
+			Joins(`JOIN journal_entries ON journal_entries.id = journal_mentions.entry_id
+			       AND journal_entries.deleted_at IS NULL
+			       AND journal_entries.superseded_at IS NULL`).
+			Where("journal_mentions.relationship_id = ?", relationship.ID).
+			Count(&mentionsDetached).Error
+		if err != nil {
+			return err
+		}
+
 		return tx.Delete(relationship).Error
 	})
 
@@ -436,5 +525,9 @@ func DeleteRelationship(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Relationship deleted", "snapshots_deleted": deleted})
+	c.JSON(http.StatusOK, gin.H{
+		"message":           "Relationship deleted",
+		"snapshots_deleted": deleted,
+		"mentions_detached": mentionsDetached,
+	})
 }

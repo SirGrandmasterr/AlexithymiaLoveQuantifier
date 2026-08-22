@@ -72,6 +72,13 @@ export const buildStacks = (people, relationships) => {
                 // instant a snapshot is added without waiting for a refetch.
                 cadence_days: known?.cadence_days ?? null,
                 snapshot_count: versions.length,
+                // The journal's count, unlike the two above, has no client-side source to
+                // derive it from — the dashboard holds no entries. It comes through as the
+                // server sent it, and falls back to 0 for a stack whose relationship is
+                // missing from the list, which is the same case the name falls back in.
+                // The delete dialog omits its journal clause at 0, so a fallback understates
+                // rather than inventing a number.
+                mention_count: known?.mention_count ?? 0,
                 latest_date: latestSnapshotDate(versions)
             },
             versions

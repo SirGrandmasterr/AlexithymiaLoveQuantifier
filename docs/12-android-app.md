@@ -156,13 +156,24 @@ one-line change that costs nothing once HTTPS is in place.
 
 The desktop header puts five controls in the top-right corner — the hardest point to reach on
 a phone held in one hand. Below `md` they move to
-[`MobileBottomNav`](../src/components/MobileBottomNav.jsx): **Analysis, Vault, Profile**, and
-**Discretion**.
+[`MobileBottomNav`](../src/components/MobileBottomNav.jsx): **Analysis, Journal, Vault,
+Profile**, and **Discretion**.
 
 Discretion is a mode rather than a destination and still earns a slot, because of what it is
 for: hiding names and notes when someone glances over. On a desktop that is `Ctrl+.`; on the
 device you are actually holding when someone sits down beside you, it has to be one thumb-press
 away or it does not work at all. The timeline is *not* a tab — it is a drill-down from a card.
+
+**Journal is the fifth slot, and five is the ceiling.** Material's bottom bar takes three to
+five destinations. At 360 dp — the narrowest screen this app targets — five equal slots
+measure **72 × 56 dp** each, comfortably above the 48 dp minimum touch target, with no label
+truncated (*Analysis* at 11 px is the widest word there). Measured in the browser at that
+width on 2026-08-22, not estimated. A sixth would be 60 dp and still legal, but the labels
+stop fitting; anything after this is a drill-down, not a tab.
+
+The journal's own microphone button does **not** live in the bar. It floats bottom-right above
+it on `/journal` only, inside the thumb's arc, and it arrives with the voice-capture work in
+6-C — until then its place is simply empty rather than a disabled control.
 
 ### 3.2 Screen-by-screen
 
@@ -177,6 +188,7 @@ away or it does not work at all. The timeline is *not* a tab — it is a drill-d
 | **AnalysisTimeline** (Recharts) | Unchanged component; Recharts' `ResponsiveContainer` handles the width. Legends wrap. |
 | **Profile** | Two-column grid collapses. Gains the **check-in reminders** toggle, which has no web equivalent. |
 | **Vault** | Unchanged; already a single narrow column. |
+| **Journal** (`/journal`, `/journal/:day`) | Already a single narrow column and built for the handset first. The month strip wraps to as many rows as it needs; the day's cards are full-width. `pb-nav` on the app shell keeps the last card clear of the bottom bar. The microphone button and the launcher shortcut into `/journal?record=1` arrive with 6-C and 6-F. |
 | **AppLock** | Unchanged, and works — `androidScheme: https` keeps `crypto.subtle` available. |
 
 ### 3.3 Inputs and touch
@@ -190,13 +202,36 @@ owner, declared to the compositor with `touch-action` rather than argued about i
 | Surface | `touch-action` | Vertical drag | Horizontal drag |
 | :------ | :------------- | :------------ | :-------------- |
 | The vault dial | `none` | Turns the dial | — |
+| A ritual card (`/journal/ritual`) | `none` | Up skips the question | Right is yes, left is no |
 | A category's range input | `pan-y` | Scrolls the page | Moves the score |
 | A card stack | `pan-y` | Scrolls the page | Scrubs versions (≥45px) |
+| The day graph (`/journal`) | `pan-y` | Scrolls the page | Turns the drawing (≥45px) |
 | Anywhere else | default | Scrolls the page | — |
 
-The reading rule behind the table: **vertical is the page's everywhere except on a control
-small enough to land on deliberately.** The dial is that control, and it is the reason the
-sliders could give the axis up without losing precise input.
+The reading rule behind the table: **vertical is the page's everywhere except where nothing
+else on the screen wants it.** Two surfaces qualify, for two different reasons:
+
+- **The vault dial** is a control small enough to land on deliberately, which is why the
+  sliders could give the axis up without losing precise input.
+
+The **day graph** takes the card stack's contract rather than inventing one: 45 px of
+horizontal travel to turn, 12 px of vertical travel to hand the gesture back permanently, and
+`touch-action: pan-y` on the plot so the compositor knows before JavaScript does. It also has
+the card stack's pager equivalent — two rotate buttons — so the gesture is nobody's only way
+in, and it gives the gesture back to the page at the last angle rather than swallowing a drag
+that can no longer do anything. `DayGraph.test.jsx` dispatches the events and asserts *which*
+of the page and the graph called `preventDefault`, which is the only way to test an axis
+split. Design notes in
+[Frontend §4be](06-frontend.md#4be-daygraphjsx--the-day-drawn).
+- **The nightly ritual is the one *whole screen* that qualifies.** It is `fixed inset-0`,
+  over the header and the bottom bar, and it does not scroll — so there is nothing under the
+  card for a vertical drag to scroll, and the card may take everything. **The claim is
+  conditional and the condition is on the line that makes it**: if the ritual ever grows a
+  scrollable region, the card drops to `pan-y` and swipe-up-to-skip becomes the skip button
+  only. A swipe that fights the page is worse than no swipe. `RitualCards.test.jsx` asserts
+  that `touch-action: none` is on the card and on **none** of its ancestors, so a wrapper
+  that quietly claimed the axis for the whole route would be caught. Design notes in
+  [Frontend §2f](06-frontend.md#2f-ritualcardsjsx--journalritual-the-nightly-questions).
 
 - **The vault dial.** A range input under a thumb is covered *by* the thumb, and what the
   thumb covers on this form is the anchor phrase explaining the number. The dial sits above
@@ -227,7 +262,7 @@ sliders could give the axis up without losing precise input.
 | **Offline read-through cache** | [`offlineCache.js`](../src/mobile/offlineCache.js) | Last-known-good list, shown with its age when the server is unreachable. **Read-only by design** — queueing writes against a find-or-create path with server-assigned ids is a synchronisation feature needing conflict rules this app has never defined. Cleared on logout. |
 | **Check-in reminders** | [`cadenceReminders.js`](../src/mobile/cadenceReminders.js) | Local notifications only — nothing is sent to a server, preserving the claim in `cadence.js` that due dates never leave the machine. Bound by that file's product rule: the body is `nudgeSentence()` verbatim, **no badge count**, one notification per relationship, scheduled for 10:00. |
 | **Hardware back button** | [`useNativeShell.js`](../src/mobile/useNativeShell.js) | Owned explicitly. Capacitor's default pops WebView history, which walks behind the React Router stack and can strand the app on a blank document. |
-| **Haptics** | `usePullToRefresh`, [`knobFeedback.js`](../src/mobile/knobFeedback.js) | One light tap when the refresh gesture arms; a **selection** haptic per dial detent — the API Android tunes for picker wheels, where an `impact` per unit at thumb speed is a buzz rather than a click. Rate-limited to 32ms. |
+| **Haptics** | `usePullToRefresh`, [`knobFeedback.js`](../src/mobile/knobFeedback.js), `RitualCards.jsx` | One light tap when the refresh gesture arms; one **selection** haptic per committed ritual card, and none at all in discretion mode; a **selection** haptic per dial detent — the API Android tunes for picker wheels, where an `impact` per unit at thumb speed is a buzz rather than a click. Rate-limited to 32ms. |
 | **Silent session renewal** | [`useSessionRenewal`](../src/auth/useSessionRenewal.js) | Renews on `resume`, which is when a token that has sat in the background for a week is most likely to be dead. See §2.3. |
 
 Deliberately **not** built: swipe-to-delete on cards. Deleting a relationship removes its entire

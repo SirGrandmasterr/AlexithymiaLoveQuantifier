@@ -3,9 +3,11 @@ import { render, screen, waitFor, within, fireEvent, act } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route, useParams } from 'react-router-dom';
 import axios from 'axios';
-import Dashboard, { PersonForm, CATEGORIES_EXPORT, anchorFor, guideBand } from './Dashboard';
+import Dashboard, { PersonForm, CATEGORIES_EXPORT, anchorFor, anchorPhrase, guideBand } from './Dashboard';
+import { PHRASES_PER_BAND } from '../constants/categories';
 import { SubjectsProvider } from '../context/SubjectsContext';
 import { DiscretionProvider } from '../context/DiscretionContext';
+import { JournalProvider } from '../context/JournalContext';
 import { summarizeStack } from '../constants/categories';
 
 vi.mock('axios');
@@ -15,15 +17,22 @@ const TimelineProbe = () => {
     return <div>timeline for relationship {id}</div>;
 };
 
-/** The dashboard now reads shared state and navigates, so it needs both providers. */
+/**
+ * The dashboard reads shared state and navigates, so it needs the providers App.jsx wraps it
+ * in. `JournalProvider` is among them since A8: the nudge slot is shared with the journal's
+ * nightly prompt, and which of the two shows depends on whether tonight's ritual is already
+ * on the day (§3.6).
+ */
 const renderDashboard = () => render(
     <MemoryRouter initialEntries={['/']}>
         <DiscretionProvider>
             <SubjectsProvider>
-                <Routes>
-                    <Route path="/" element={<Dashboard />} />
-                    <Route path="/relationships/:id/timeline" element={<TimelineProbe />} />
-                </Routes>
+                <JournalProvider>
+                    <Routes>
+                        <Route path="/" element={<Dashboard />} />
+                        <Route path="/relationships/:id/timeline" element={<TimelineProbe />} />
+                    </Routes>
+                </JournalProvider>
             </SubjectsProvider>
         </DiscretionProvider>
     </MemoryRouter>
@@ -60,6 +69,86 @@ const subjectWithContext = {
     tags: ['conflict', 'distance', 'life change', 'routine period'],
     stats: { ...emptyStats, eros: 85, mania: 60 }
 };
+
+/**
+ * §2.2 — the field that stops a journal-only person becoming a near-duplicate.
+ *
+ * The gap A7 found on the running app: a person created by a check-in and then snapshotted
+ * had to be typed out in full, because the field offered nothing at all. Resolution is
+ * exact after trim (invariant 2b), so "Lucie" typed where "Lucie M" exists is two people
+ * from then on.
+ */
+describe('PersonForm — name suggestions', () => {
+    const onSave = vi.fn();
+    const onClose = vi.fn();
+
+    // The list `useSubjects()` holds: every relationship, snapshot or no snapshot.
+    const suggestions = [
+        { ID: 7, name: 'Lucie M', snapshot_count: 0 },
+        { ID: 9, name: 'Noor', snapshot_count: 2 }
+    ];
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('offers every relationship, including the ones the dashboard does not draw', () => {
+        render(<PersonForm onSave={onSave} onClose={onClose} suggestions={suggestions} />);
+
+        const list = document.querySelector('[data-name-suggestions]');
+        expect(list).toBeInTheDocument();
+        expect([...list.querySelectorAll('option')].map(option => option.value))
+            .toEqual(['Lucie M', 'Noor']);
+
+        // The field is wired to it, by the id React minted rather than a literal.
+        const field = screen.getByPlaceholderText('Enter name...');
+        expect(field.getAttribute('list')).toBe(list.id);
+        expect(list.id).toBeTruthy();
+    });
+
+    it('suggests without choosing — the submitted name is still the typed one', async () => {
+        render(<PersonForm onSave={onSave} onClose={onClose} suggestions={suggestions} />);
+
+        await userEvent.type(screen.getByPlaceholderText('Enter name...'), 'Lucie M');
+        await userEvent.click(screen.getByRole('button', { name: /analyze & save/i }));
+
+        // Invariant 15: nothing is written that the user did not confirm. A datalist cannot
+        // fill the field on its own, and the server’s find-or-create is still the one thing
+        // that decides which relationship this string means.
+        expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ name: 'Lucie M' }));
+    });
+
+    it('offers nothing on a new version or a pulse, where the person is already decided', () => {
+        const { rerender } = render(
+            <PersonForm
+                onSave={onSave}
+                onClose={onClose}
+                suggestions={suggestions}
+                initialData={subjectWithContext}
+                isNewVersion
+            />
+        );
+        expect(document.querySelector('[data-name-suggestions]')).toBeNull();
+        expect(screen.getByPlaceholderText('Enter name...')).toBeDisabled();
+
+        rerender(
+            <PersonForm
+                onSave={onSave}
+                onClose={onClose}
+                suggestions={suggestions}
+                initialData={subjectWithContext}
+                isPulse
+            />
+        );
+        expect(document.querySelector('[data-name-suggestions]')).toBeNull();
+    });
+
+    it('renders no empty list when there is nothing to suggest', () => {
+        render(<PersonForm onSave={onSave} onClose={onClose} />);
+
+        expect(document.querySelector('[data-name-suggestions]')).toBeNull();
+    });
+});
 
 describe('PersonForm — context capsules', () => {
     const onSave = vi.fn();
@@ -142,22 +231,98 @@ describe('PersonForm — context capsules', () => {
 });
 
 describe('Anchors — the taxonomy content contract', () => {
+    const lastBand = (cat) => cat.anchors[cat.anchors.length - 1];
+
     it('resolves the band containing a value, including at the boundaries', () => {
-        expect(anchorFor(eros, 0).phrase).toBe(eros.anchors[0].phrase);
-        expect(anchorFor(eros, 20).phrase).toBe(eros.anchors[0].phrase);
-        expect(anchorFor(eros, 21).phrase).toBe(eros.anchors[1].phrase);
-        expect(anchorFor(eros, 100).phrase).toBe(eros.anchors[eros.anchors.length - 1].phrase);
+        const [first, second] = eros.anchors;
+
+        expect(anchorFor(eros, 0)).toBe(first);
+        expect(anchorFor(eros, first.max)).toBe(first);
+        expect(anchorFor(eros, first.max + 1)).toBe(second);
+        expect(anchorFor(eros, 100)).toBe(lastBand(eros));
     });
 
     it('covers 0-100 contiguously for every category', () => {
         CATEGORIES_EXPORT.forEach((cat) => {
-            expect(cat.anchors.length).toBeGreaterThanOrEqual(3);
+            // Five is the floor rather than the count: selflessness resolves more coarsely
+            // than the rest on purpose, because it has half as many metrics behind it.
+            expect(cat.anchors.length).toBeGreaterThanOrEqual(5);
             expect(cat.anchors[0].min).toBe(0);
-            expect(cat.anchors[cat.anchors.length - 1].max).toBe(100);
+            expect(lastBand(cat).max).toBe(100);
             cat.anchors.forEach((band, index) => {
                 if (index > 0) expect(band.min).toBe(cat.anchors[index - 1].max + 1);
             });
         });
+    });
+
+    // The five phrasings are the feature: one sentence per band meant the whole scale was
+    // explained by a handful of sentences that taught nothing on a second reading.
+    it('gives every band five distinct phrasings', () => {
+        CATEGORIES_EXPORT.forEach((cat) => {
+            cat.anchors.forEach((band) => {
+                expect(band.phrases).toHaveLength(PHRASES_PER_BAND);
+                expect(new Set(band.phrases).size).toBe(PHRASES_PER_BAND);
+                band.phrases.forEach((phrase) => {
+                    expect(phrase.trim().length).toBeGreaterThan(0);
+                });
+            });
+        });
+    });
+
+    it('never repeats a phrasing across the bands of one category', () => {
+        CATEGORIES_EXPORT.forEach((cat) => {
+            const all = cat.anchors.flatMap(band => band.phrases);
+            expect(new Set(all).size).toBe(all.length);
+        });
+    });
+});
+
+describe('anchorPhrase — which of the five is shown', () => {
+    const bandFor = (value) => anchorFor(eros, value);
+
+    // The load-bearing property: the sentence must not reshuffle while the dial is turning.
+    // It depends on the band, not the value.
+    it('holds still while the value moves within one band', () => {
+        const band = eros.anchors[3];
+        const readings = [];
+        for (let value = band.min; value <= band.max; value += 1) {
+            readings.push(anchorPhrase(eros, value, 7));
+        }
+
+        expect(new Set(readings).size).toBe(1);
+        expect(band.phrases).toContain(readings[0]);
+    });
+
+    it('says something different on the next opening of the form', () => {
+        const seen = new Set();
+        for (let seed = 0; seed < PHRASES_PER_BAND; seed += 1) {
+            seen.add(anchorPhrase(eros, 60, seed));
+        }
+
+        // Five consecutive seeds walk the whole set, which is why the seed is a counter
+        // rather than a fresh random number per render.
+        expect(seen.size).toBe(PHRASES_PER_BAND);
+    });
+
+    it('varies the lens between bands, so one pass down the scale is not one sentence five times', () => {
+        const shown = eros.anchors.map(band => anchorPhrase(eros, band.min, 3));
+        const positions = shown.map((phrase, index) => eros.anchors[index].phrases.indexOf(phrase));
+
+        expect(new Set(positions).size).toBeGreaterThan(1);
+    });
+
+    it('always returns a phrase belonging to the value it was asked about', () => {
+        CATEGORIES_EXPORT.forEach((cat) => {
+            [0, 17, 42, 63, 88, 100].forEach((value) => {
+                const phrase = anchorPhrase(cat, value, 11);
+                expect(anchorFor(cat, value).phrases).toContain(phrase);
+            });
+        });
+    });
+
+    it('returns null when no band contains the value', () => {
+        expect(anchorPhrase(eros, 101, 0)).toBeNull();
+        expect(bandFor(101)).toBeNull();
     });
 });
 
@@ -190,15 +355,23 @@ describe('PersonForm — guided scoring, skipping and uncertainty', () => {
         await userEvent.type(screen.getByPlaceholderText('Enter name...'), 'Alex');
     };
 
-    it('shows the anchor phrase for the current slider position', async () => {
+    it('shows an anchor phrase from the band the slider is in', async () => {
+        // Which of the five appears depends on the seed the form drew when it opened, so
+        // the assertion is about the band the phrase belongs to. `anchorPhrase` is where
+        // the choice itself is pinned down.
+        const shownFrom = (band) => band.phrases.find(phrase => screen.queryByText(phrase));
+
         render(<PersonForm onSave={onSave} onClose={onClose} />);
 
-        expect(screen.getByText(eros.anchors[0].phrase)).toBeInTheDocument();
+        const low = anchorFor(eros, 0);
+        expect(shownFrom(low)).toBeTruthy();
 
         fireEvent.change(screen.getByLabelText('Eros'), { target: { value: '80' } });
 
-        expect(screen.getByText(eros.anchors[3].phrase)).toBeInTheDocument();
-        expect(screen.queryByText(eros.anchors[0].phrase)).not.toBeInTheDocument();
+        const high = anchorFor(eros, 80);
+        expect(high).not.toBe(low);
+        expect(shownFrom(high)).toBeTruthy();
+        expect(shownFrom(low)).toBeUndefined();
     });
 
     it('suggests a range from the guide answers without moving the slider', async () => {
@@ -987,6 +1160,41 @@ describe('Dashboard — stack-level actions', () => {
         await waitFor(() => {
             expect(axios.patch).toHaveBeenCalledWith('/api/relationships/1', { cadence_days: null });
         });
+    });
+
+    /**
+     * The journal half of the same dialog (Phase 6 §7.3). A delete leaves every journal
+     * entry exactly where it is, and a confirmation that lists only the snapshots describes
+     * half of what is about to happen. The count is `mention_count` off the relationship
+     * summary, read before the delete rather than reported after it.
+     */
+    it('names the journal mentions a relationship delete will leave behind', async () => {
+        mockFetch([alexV1, alexV2, alexM], [
+            { ID: 1, name: 'Alex', snapshot_count: 2, mention_count: 4 },
+            { ID: 2, name: 'Alex M', snapshot_count: 3, mention_count: 0 }
+        ]);
+        renderDashboard();
+        await openMenu('Alex');
+        await userEvent.click(screen.getByRole('menuitem', { name: /delete relationship/i }));
+
+        expect(screen.getByText(/journal mentions/)).toHaveTextContent(
+            '4 journal mentions of them stay: the entries are still there, and will no longer '
+            + 'be linked to a person.'
+        );
+    });
+
+    it('says nothing about the journal for someone the journal has never named', async () => {
+        mockFetch([alexV1, alexV2, alexM], [
+            { ID: 1, name: 'Alex', snapshot_count: 2, mention_count: 0 },
+            { ID: 2, name: 'Alex M', snapshot_count: 3, mention_count: 0 }
+        ]);
+        renderDashboard();
+        await openMenu('Alex');
+        await userEvent.click(screen.getByRole('menuitem', { name: /delete relationship/i }));
+
+        // A clause whose count is zero is left out, never rendered as "0 journal mentions".
+        expect(screen.getByText(/All 2 snapshots of/)).toBeInTheDocument();
+        expect(screen.queryByText(/journal mention/)).not.toBeInTheDocument();
     });
 
     it('spells out how many snapshots a relationship delete will take', async () => {

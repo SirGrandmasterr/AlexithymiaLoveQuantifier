@@ -90,3 +90,67 @@ type RefreshToken struct {
 	// kept rather than deleted: it is the only thing that makes a replay detectable.
 	RevokedAt *time.Time `json:"revoked_at"`
 }
+
+// JournalEntry is one event in the emotional journal: a check-in, a nightly ritual, a fact
+// the user confirmed about a person, or a trigger they named. Rows are append-only — a
+// correction inserts a new row and stamps SupersededAt on the one it replaces, so readers
+// filter on one column instead of walking a chain, and nothing a user said is rewritten by
+// something they said later.
+//
+// The table exists before anything can write to it: the row shape is the part that is
+// expensive to change once there is data, so it is settled first.
+type JournalEntry struct {
+	gorm.Model
+	// UserID leads both composite indexes below. ClientID is unique per user rather than
+	// globally, and every read of this table is scoped to one user, so user_id is the
+	// first column of each index rather than an index of its own.
+	UserID uint `gorm:"index;not null;uniqueIndex:idx_journal_user_client,priority:1;index:idx_journal_user_day,priority:1" json:"user_id"`
+	// ClientID is minted by the client before the first write. It makes a retried POST
+	// idempotent — an offline queue can send the same entry twice and get the same row —
+	// and it is the identity an envelope scheme would bind the ciphertext to, were the
+	// design in docs/13 ever confirmed. Unique per user, not globally.
+	ClientID string `gorm:"type:varchar(36);not null;default:'';uniqueIndex:idx_journal_user_client,priority:2" json:"client_id"`
+	// Kind is "checkin", "ritual", "person_fact" or "trigger" — domain.JournalKinds. The
+	// column default is what stops a row ever scanning as an empty kind.
+	Kind string `gorm:"type:varchar(16);not null;default:'checkin';index" json:"kind"`
+	// Day is the local civil day the entry belongs to, YYYY-MM-DD, chosen by the client
+	// with the rollover hour applied — an entry made at 02:00 belongs to the day before.
+	// Stored as text on purpose: it is a partition key, not a timestamp, and a date column
+	// would reintroduce the MAX()-typing trap that aggregateTime exists to absorb.
+	Day string `gorm:"type:varchar(10);not null;default:'';index:idx_journal_user_day,priority:2" json:"day"`
+	// At is the instant, UTC; the offset the client was in is inside the payload. It is a
+	// value rather than a pointer because every entry has an instant by definition, and it
+	// is a deliberate exception to the YYYY-MM-DD rule, which governs a snapshot's date of
+	// state. A check-in is a moment, and a date would lose what the day graph draws.
+	At time.Time `gorm:"index;not null" json:"at"`
+	// SchemaVersion is the payload format. Readers switch on it, so a v1 row stays
+	// readable after a v2 exists.
+	SchemaVersion int `gorm:"not null;default:1" json:"schema_version"`
+	// Payload is the self-describing record — the same JSON-in-text pattern as Stats and
+	// GuideAnswers, and opaque to SQL for the same reason. Keys the server does not know
+	// are kept, not dropped: a newer client may write a field an older server has never
+	// heard of.
+	Payload map[string]interface{} `gorm:"serializer:json" json:"payload"`
+	// SupersededAt is set when a later row with supersedes_id = this.ID is inserted. A
+	// reader wanting the current state filters on it; a reader wanting the history does
+	// not.
+	SupersededAt *time.Time `gorm:"index" json:"superseded_at"`
+	SupersedesID *uint      `gorm:"index" json:"supersedes_id"`
+
+	Mentions []JournalMention `gorm:"foreignKey:EntryID" json:"mentions"`
+}
+
+// JournalMention links an entry to a person. It is a table rather than a JSON array so that
+// a merge can move it with one UPDATE and a relationship can count its mentions — the same
+// reason relationship_id is a column on analysis_subjects and not a key inside stats.
+type JournalMention struct {
+	ID             uint  `gorm:"primarykey" json:"ID"`
+	EntryID        uint  `gorm:"index;not null" json:"entry_id"`
+	RelationshipID *uint `gorm:"index" json:"relationship_id"`
+	// Label is the name as it was said that day, denormalized like AnalysisSubject.Name:
+	// it survives a rename (which is fine — it is a quotation) and a relationship delete.
+	Label string `gorm:"not null;default:''" json:"label"`
+	// Ref is the position in the payload's people array, so a feeling's `about` can point
+	// at a mention without repeating the name.
+	Ref int `gorm:"not null;default:0" json:"ref"`
+}

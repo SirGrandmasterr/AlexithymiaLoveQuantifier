@@ -12,7 +12,10 @@ erDiagram
     USER ||--o{ RELATIONSHIP : "owns (unenforced)"
     USER ||--o{ ANALYSIS_SUBJECT : "owns (unenforced)"
     USER ||--o{ REFRESH_TOKEN : "has sessions (unenforced)"
+    USER ||--o{ JOURNAL_ENTRY : "owns (unenforced)"
     RELATIONSHIP ||--o{ ANALYSIS_SUBJECT : "has versions (FK on new tables)"
+    JOURNAL_ENTRY ||--o{ JOURNAL_MENTION : "names people (FK)"
+    RELATIONSHIP ||--o{ JOURNAL_MENTION : "is named by (id only, no FK)"
 
     RELATIONSHIP {
         uint id PK
@@ -63,6 +66,30 @@ erDiagram
         text tags "JSON: []string, context capsule, max 12"
         text uncertain "JSON: []string, category ids flagged unsure"
         text guide_answers "JSON: category -> metric index -> scale index"
+    }
+
+    JOURNAL_ENTRY {
+        uint id PK
+        datetime created_at
+        datetime updated_at
+        datetime deleted_at "soft delete, indexed"
+        uint user_id "indexed, not null; no FK constraint"
+        string client_id "varchar(36), not null, default ''; unique with user_id"
+        string kind "varchar(16), not null, default 'checkin'; indexed"
+        string day "varchar(10) YYYY-MM-DD, not null, default ''; text on purpose"
+        datetime at "indexed, not null; the instant, UTC"
+        int schema_version "not null, default 1"
+        text payload "JSON: the self-describing record, opaque to SQL"
+        datetime superseded_at "nullable, indexed; set when a correction replaces this row"
+        uint supersedes_id "nullable, indexed; the row this one corrects"
+    }
+
+    JOURNAL_MENTION {
+        uint id PK
+        uint entry_id "indexed, not null; real FK to journal_entries"
+        uint relationship_id "nullable, indexed; no FK constraint"
+        string label "not null, default ''; the name as it was said"
+        int ref "not null, default 0; position in the payload's people array"
     }
 ```
 
@@ -211,6 +238,123 @@ type AnalysisSubject struct {
   `belongs_to`/`has_many` association**, so no referential integrity is enforced by the
   database and deleting a user orphans their subjects. This is unchanged by Phase 4 — no
   user-delete endpoint exists.
+
+### `JournalEntry`
+
+```go
+type JournalEntry struct {
+	gorm.Model
+	UserID        uint                   `gorm:"index;not null;uniqueIndex:idx_journal_user_client,priority:1;index:idx_journal_user_day,priority:1" json:"user_id"`
+	ClientID      string                 `gorm:"type:varchar(36);not null;default:'';uniqueIndex:idx_journal_user_client,priority:2" json:"client_id"`
+	Kind          string                 `gorm:"type:varchar(16);not null;default:'checkin';index" json:"kind"`
+	Day           string                 `gorm:"type:varchar(10);not null;default:'';index:idx_journal_user_day,priority:2" json:"day"`
+	At            time.Time              `gorm:"index;not null" json:"at"`
+	SchemaVersion int                    `gorm:"not null;default:1" json:"schema_version"`
+	Payload       map[string]interface{} `gorm:"serializer:json" json:"payload"`
+	SupersededAt  *time.Time             `gorm:"index" json:"superseded_at"`
+	SupersedesID  *uint                  `gorm:"index" json:"supersedes_id"`
+
+	Mentions []JournalMention `gorm:"foreignKey:EntryID" json:"mentions"`
+}
+```
+
+One event in the emotional journal — added in Phase 6 ([design](../product_vision/06-emotional-journal.md#62-entities)).
+The table and the ids exist before any endpoint does: the row shape is the expensive thing
+to change once there is data, so it is settled first. **Nothing writes to this table yet.**
+
+- **Rows are append-only.** A correction is a *new* row carrying `supersedes_id`, and the row
+  it replaces gets `superseded_at` stamped. Readers that want the current state filter on one
+  indexed column instead of walking a chain; readers that want the history do not filter at
+  all. Nothing a user said is ever rewritten by something they said later — which is also why
+  there is no `PUT`.
+- **`ClientID` is the idempotency key.** The client mints it before the first write, so a
+  retried POST — from an offline queue, or a phone that lost the response — collides with the
+  row it already wrote instead of writing a second one. Unique **per user**, not globally:
+  `idx_journal_user_client` is `(user_id, client_id)` in that order, and two clients mint ids
+  independently. The index is a plain unique index rather than a partial one, so a
+  soft-deleted entry keeps its `client_id` reserved on purpose — a retry after a delete should
+  collide, not resurrect the row.
+- **`Kind` is `"checkin"`, `"ritual"`, `"person_fact"` or `"trigger"`**, validated against
+  [`domain.JournalKinds`](../backend/internal/domain/journal.go). The column default is what
+  stops a row ever scanning as an empty kind, for the same reason `AnalysisSubject.Kind`
+  carries one.
+- **`Day` is text, not a date, and that is the point.** It is the local civil day the entry
+  belongs to (`YYYY-MM-DD`, with the client's rollover hour applied, so a 02:00 note belongs to
+  the day before) — a partition key rather than a timestamp. A real date column would put
+  `MIN`/`MAX` back into the typing trap `aggregateTime` exists to absorb
+  ([Agent Guide trap 10a](10-agent-guide.md#3-traps-that-fail-silently)); as `varchar(10)`
+  those aggregates are strings on both engines and still sort correctly.
+- **`At` is a value, not a pointer, and is a documented exception** to the `YYYY-MM-DD` rule
+  (invariant 8). That rule governs a snapshot's *date of state*; a check-in is an instant, and
+  a date would lose what the day graph draws. Every entry has an instant by definition, so
+  there is no nil to represent. The client sends RFC 3339 with an offset, the server stores
+  UTC, and the offset the client was in is kept inside the payload.
+- **`Payload` is the JSON-in-text pattern** again, through the same `serializer:json`
+  mechanism as `Stats` — a `map[string]interface{}` in Go, opaque to SQL. Its shapes are
+  versioned by `SchemaVersion` on the row and by a `v` inside the payload, so a reader never
+  has to know *when* a row was written to know how to read it. Two consequences worth
+  knowing: JSON has one number type, so an int written here reads back as a `float64`; and
+  keys the server does not recognise are **kept**, because a newer client may write a field an
+  older server has never heard of and dropping it silently is the description-wipe mistake in
+  a new form.
+- **The vocabularies are server-side ids only.**
+  [`domain.FeelingIDs`](../backend/internal/domain/journal.go), `domain.RitualQuestionIDs` and
+  `domain.JournalKinds` mirror `domain.CategoryIDs`: the labels, the two axes the day graph
+  draws on, and the colours are frontend-owned and arrive with the journal's UI. The ids are
+  permanent — adding one is two edits in two languages and no schema change, and removing one
+  is forbidden, because an id that stops validating orphans every entry that used it. A retired
+  id is to be marked `retired: true` in the frontend constant, so the UI stops offering it while
+  the server keeps accepting it for old rows and for an import of them.
+
+### `JournalMention`
+
+```go
+type JournalMention struct {
+	ID             uint   `gorm:"primarykey" json:"ID"`
+	EntryID        uint   `gorm:"index;not null" json:"entry_id"`
+	RelationshipID *uint  `gorm:"index" json:"relationship_id"`
+	Label          string `gorm:"not null;default:''" json:"label"`
+	Ref            int    `gorm:"not null;default:0" json:"ref"`
+}
+```
+
+Who an entry was about. It is a **table rather than an array inside `payload`** for the same
+reason `relationship_id` is a column on `analysis_subjects` and not a key inside `stats`: a
+merge has to move it with one `UPDATE`, and a relationship has to be able to count its
+mentions.
+
+- **`RelationshipID` is nullable and means what it says.** A person can be mentioned before
+  they are anyone in the database — absent is not zero here either. Where a name *does* become
+  a relationship, it does so through `database.FindOrCreateRelationship`, the same function
+  the snapshot path and the backfill use (invariant 2b).
+- **`Label` is denormalized like `AnalysisSubject.Name`**, and for a stronger reason: it is the
+  name as it was said that day, so it survives a rename — which is fine, it is a quotation —
+  and it survives the relationship being deleted.
+- **`Ref` is the position in the payload's people array**, so a feeling's `about` can point at
+  a mention without repeating the name.
+- **`EntryID` carries a real foreign key** (`fk_journal_entries_mentions`), declared through
+  `JournalEntry.Mentions`. `RelationshipID` does **not** — it is an indexed id, checked in the
+  handlers like every other ownership question. The foreign key has the SQLite consequence the
+  Phase 4 one had: the column cannot be dropped, which is why
+  `TestAutoMigrateAddsJournalTables` drops whole tables rather than columns
+  ([trap 10b](10-agent-guide.md#3-traps-that-fail-silently)).
+- There is **no `gorm.Model`**: no soft delete and no timestamps. A mention has no life of its
+  own — it belongs to an append-only row that carries its own instant, and deleting an entry is
+  what removes the statement.
+
+**What merging and deleting a person do to mentions.** The two are deliberately different,
+and the difference is the whole argument for `Relationship` being the one register of people
+([Phase 6 §2.2](../product_vision/06-emotional-journal.md)):
+
+| Action | Mentions |
+| :----- | :------- |
+| `PATCH /api/relationships/:id` (rename) | **Nothing.** A mention points at the id, and its `label` is a quotation of what was said that day — rewriting it would put words in the user's mouth. |
+| `POST /api/relationships/:id/merge` | **Moved**, in the same transaction as the snapshots: `UPDATE journal_mentions SET relationship_id = target WHERE relationship_id = source`. No `Unscoped()` is needed — a mention has no soft delete, so this already covers mentions on soft-deleted *entries*, which matters for the same reason it matters for snapshots: the entry is recoverable, and a mention left behind would come back pointing at a relationship that no longer exists. The count comes back as `mentions_moved`. |
+| `DELETE /api/relationships/:id` | **Counted and left alone.** The rows stay, the labels stay, and `relationship_id` keeps pointing at the now soft-deleted relationship, so every join through it drops out on its own without anything being rewritten. Deleting a person must not rewrite the user's own record of a day. The count comes back as `mentions_detached` so the dialog can state it. |
+| `DELETE /api/journal/entries/:id` | **Nothing.** The entry is soft-deleted and its mentions stay attached to it; every read that counts them joins through the entry, so they stop counting without a row being destroyed, and restoring the entry restores them intact. |
+
+Only the merge writes to `journal_mentions`, and it writes one statement. That was the test
+the design set for putting people in one table rather than two.
 
 ---
 
@@ -363,7 +507,8 @@ wait for Postgres; see [Deployment](09-deployment.md#no-readiness-gate-for-postg
 **3. Auto-migrates on every boot:**
 
 ```go
-// database.Models() — {User, Relationship, AnalysisSubject, RefreshToken}
+// database.Models() — {User, Relationship, AnalysisSubject, RefreshToken,
+//                      JournalEntry, JournalMention}, in dependency order
 err = DB.AutoMigrate(Models()...)
 ```
 
@@ -381,6 +526,15 @@ pre-existing database gains the columns on the next boot with no data touched, w
 dropping all four, seeding a legacy row, and re-migrating. Add any future additive column to
 that test's `additiveColumns` list.
 
+A whole new table is the same story one level up: `journal_entries` and `journal_mentions`
+arrived in Phase 6 by being added to `Models()`, and
+[`TestAutoMigrateAddsJournalTables`](../backend/internal/database/database_test.go) asserts it
+by dropping both from a database carrying rows and re-migrating — tables rather than columns,
+because SQLite will not drop a column a foreign key references. It checks the columns *and*
+the composite indexes: a unique index that came back as `client_id` alone rather than
+`(user_id, client_id)` would still satisfy `HasIndex`, and would reserve every client id
+across every user.
+
 `Kind` is the one with a **column default** rather than a nullable type, and the test asserts
 the legacy row comes back `full` — see [§1](#analysissubject) for why a NULL there would
 break every read rather than merely look odd.
@@ -389,8 +543,8 @@ Destructive or renaming changes require manual SQL against each environment. Pla
 this before proposing a rename.
 
 Table names are GORM's pluralised snake_case defaults: `users`, `relationships`,
-`analysis_subjects`. Those literal names appear in test expectations, so renaming a model
-breaks `subjects_test.go`.
+`analysis_subjects`, `refresh_tokens`, `journal_entries`, `journal_mentions`. Those literal
+names appear in test expectations, so renaming a model breaks `subjects_test.go`.
 
 **4. Backfills relationships, idempotently:**
 
@@ -472,9 +626,9 @@ timeline URL, intact.
 
 | Path | Written by | Notes |
 | :--- | :--------- | :---- |
-| `backend/alexithymia.db` | SQLite fallback | **Committed to git** and not in `.gitignore`. It contains real dev users and their bcrypt hashes. See [Known Issues](11-known-issues.md#the-development-sqlite-database-is-committed-to-git). |
+| `backend/alexithymia.db` | SQLite fallback | **No longer tracked** — it was committed once (last at `2e4d71c`) and has since been removed. Verified untracked on 2026-08-22. It is also **not** in `.gitignore`, so a fresh one created by running the server locally shows up in `git status` and is one `git add .` away from being committed again with real users and their bcrypt hashes in it. Delete it when you are done with it. See [Known Issues](11-known-issues.md#the-development-sqlite-database-is-committed-to-git). |
 | `backend/uploads/profile_<nanos>.<ext>` | `UploadProfilePicture` when run from `backend/` | The path is relative to the process working directory. |
-| `backend/internal/handlers/uploads/profile_<nanos>.<ext>` | the same handler when run by `go test ./...` | Test artefacts, created because the working directory during tests is the package directory. Four such files are currently committed. |
+| `backend/internal/handlers/uploads/profile_<nanos>.<ext>` | the same handler when run by `go test ./...` | Test artefacts, created because the working directory during tests is the package directory. **Six** such files are committed, and `backend/**/uploads/` *is* in `.gitignore`, so the ~20 more that `go test` drops there never appear in `git status`. Do not delete the six. |
 
 Both upload directories are byproducts of `uploadDir := "./uploads"` being
 CWD-relative ([`upload.go:36`](../backend/internal/handlers/upload.go#L36)) — the

@@ -3,9 +3,11 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -571,4 +573,208 @@ func TestAggregateTimeScan(t *testing.T) {
 // itoa keeps the URL building above readable.
 func itoa(id uint) string {
 	return strconv.FormatUint(uint64(id), 10)
+}
+
+// A mention left pointing at a retired relationship is the stranded row the merge handler
+// exists to prevent — the same reason it already moves soft-deleted snapshots.
+func TestMergeMovesJournalMentions(t *testing.T) {
+	db := setupSQLiteDB(t)
+	target := seedStack(t, db, 1, "Lucie M", "2026-03-01")
+	source := seedStack(t, db, 1, "Lucie", "2026-01-10")
+
+	live := seedEntry(t, db, 1, kindCheckin, "2026-08-20", "2026-08-20T09:00:00Z", source.ID)
+	onDeleted := seedEntry(t, db, 1, kindCheckin, "2026-08-21", "2026-08-21T09:00:00Z", source.ID)
+	untouched := seedEntry(t, db, 1, kindCheckin, "2026-08-21", "2026-08-21T10:00:00Z", target.ID)
+
+	// A mention on a soft-deleted entry has to move too: the entry is recoverable, so a
+	// mention left behind would come back pointing at a relationship that no longer exists.
+	db.Delete(&models.JournalEntry{}, onDeleted.ID)
+
+	w := call(t, http.MethodPost, fmt.Sprintf("/relationships/%d/merge", target.ID), 1,
+		fmt.Sprintf(`{"source_id":%d}`, source.ID), relationshipRoutes)
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200 but got %d (body: %s)", w.Code, w.Body.String())
+	}
+
+	var merged MergeRelationshipResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &merged); err != nil {
+		t.Fatalf("Failed to parse the merge response: %v", err)
+	}
+	if merged.MentionsMoved != 2 {
+		t.Errorf("Expected mentions_moved 2 (one live, one on a soft-deleted entry), got %d", merged.MentionsMoved)
+	}
+	// The summary is still there, embedded, so an existing client reads the same shape.
+	if merged.Name != "Lucie M" || merged.ID != target.ID {
+		t.Errorf("Expected the target's summary in the response, got %+v", merged.RelationshipSummary)
+	}
+
+	var pointingAtSource int64
+	db.Model(&models.JournalMention{}).Where("relationship_id = ?", source.ID).Count(&pointingAtSource)
+	if pointingAtSource != 0 {
+		t.Errorf("Expected nothing left pointing at the retired relationship, found %d", pointingAtSource)
+	}
+	var pointingAtTarget int64
+	db.Model(&models.JournalMention{}).Where("relationship_id = ?", target.ID).Count(&pointingAtTarget)
+	if pointingAtTarget != 3 {
+		t.Errorf("Expected all three mentions on the target, found %d", pointingAtTarget)
+	}
+
+	// The label is a quotation of what was said that day and is not rewritten by a merge.
+	var moved models.JournalMention
+	db.Where("entry_id = ?", live.ID).First(&moved)
+	if moved.Label != "seeded" {
+		t.Errorf("Expected the mention's label to survive the merge, got %q", moved.Label)
+	}
+	if untouched.ID == 0 {
+		t.Error("Expected the seeded target entry to exist")
+	}
+}
+
+func TestMergeReportsZeroMentionsWhenThereAreNone(t *testing.T) {
+	db := setupSQLiteDB(t)
+	target := seedStack(t, db, 1, "Lucie M", "2026-03-01")
+	source := seedStack(t, db, 1, "Lucie", "2026-01-10")
+
+	w := call(t, http.MethodPost, fmt.Sprintf("/relationships/%d/merge", target.ID), 1,
+		fmt.Sprintf(`{"source_id":%d}`, source.ID), relationshipRoutes)
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200 but got %d (body: %s)", w.Code, w.Body.String())
+	}
+
+	var merged MergeRelationshipResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &merged); err != nil {
+		t.Fatalf("Failed to parse the merge response: %v", err)
+	}
+	if merged.MentionsMoved != 0 {
+		t.Errorf("Expected mentions_moved 0, got %d", merged.MentionsMoved)
+	}
+	if !strings.Contains(w.Body.String(), `"mentions_moved":0`) {
+		t.Errorf("Expected the field present and zero rather than omitted, got %s", w.Body.String())
+	}
+}
+
+// Deleting a person does not rewrite the user's own record of a day.
+func TestDeleteRelationshipDetachesMentions(t *testing.T) {
+	db := setupSQLiteDB(t)
+	lucie := seedStack(t, db, 1, "Lucie", "2026-01-10", "2026-03-01")
+	other := seedStack(t, db, 1, "Noor", "2026-02-01")
+
+	first := seedEntry(t, db, 1, kindCheckin, "2026-08-20", "2026-08-20T09:00:00Z", lucie.ID)
+	second := seedEntry(t, db, 1, kindCheckin, "2026-08-21", "2026-08-21T09:00:00Z", lucie.ID, other.ID)
+
+	w := call(t, http.MethodDelete, fmt.Sprintf("/relationships/%d", lucie.ID), 1, "", relationshipRoutes)
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200 but got %d (body: %s)", w.Code, w.Body.String())
+	}
+
+	var body struct {
+		Message          string `json:"message"`
+		SnapshotsDeleted int64  `json:"snapshots_deleted"`
+		MentionsDetached int64  `json:"mentions_detached"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("Failed to parse the delete response: %v", err)
+	}
+	if body.SnapshotsDeleted != 2 {
+		t.Errorf("Expected 2 snapshots deleted, got %d", body.SnapshotsDeleted)
+	}
+	if body.MentionsDetached != 2 {
+		t.Errorf("Expected the dialog's count of 2 mentions, got %d", body.MentionsDetached)
+	}
+
+	// The entries survive, and so do their labels — a check-in about a deleted person still
+	// reads as it did the day it was made.
+	var entries []models.JournalEntry
+	if err := db.Preload("Mentions").Where("user_id = ?", 1).Order("id ASC").Find(&entries).Error; err != nil {
+		t.Fatalf("Failed to read the entries back: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("Expected both entries to survive, found %d", len(entries))
+	}
+	if entries[0].ID != first.ID || entries[1].ID != second.ID {
+		t.Errorf("Expected the same two entries, got %d and %d", entries[0].ID, entries[1].ID)
+	}
+	for _, entry := range entries {
+		for _, mention := range entry.Mentions {
+			if mention.Label != "seeded" {
+				t.Errorf("Expected the label to survive the delete, got %q", mention.Label)
+			}
+		}
+	}
+
+	// relationship_id is left exactly as it was: the relationship is soft-deleted, so every
+	// join through it drops out on its own and nothing had to be rewritten.
+	var stillPointing int64
+	db.Model(&models.JournalMention{}).Where("relationship_id = ?", lucie.ID).Count(&stillPointing)
+	if stillPointing != 2 {
+		t.Errorf("Expected the mentions to keep their relationship_id, found %d", stillPointing)
+	}
+
+	// And the read path stops offering them under that person, because the entries are
+	// still there but the person is not.
+	var remaining []models.Relationship
+	db.Where("user_id = ?", 1).Find(&remaining)
+	if len(remaining) != 1 || remaining[0].ID != other.ID {
+		t.Errorf("Expected only Noor to remain, got %+v", remaining)
+	}
+}
+
+// The two numbers the delete dialog depends on are the same number: `mention_count`, read
+// when the dialog opens, and `mentions_detached`, returned when it is confirmed. Both count
+// the entries the journal *shows*, so the sentence the user reads is true of what they see.
+// Before this was pinned, the summary had no count at all and the response counted rows on
+// entries the user had already deleted.
+func TestMentionCountsCoverOnlyTheEntriesTheJournalShows(t *testing.T) {
+	db := setupSQLiteDB(t)
+	lucie := seedStack(t, db, 1, "Lucie", "2026-01-10", "2026-03-01")
+
+	visible := seedEntry(t, db, 1, kindCheckin, "2026-08-20", "2026-08-20T09:00:00Z", lucie.ID)
+	deleted := seedEntry(t, db, 1, kindCheckin, "2026-08-21", "2026-08-21T09:00:00Z", lucie.ID)
+	superseded := seedEntry(t, db, 1, kindCheckin, "2026-08-22", "2026-08-22T09:00:00Z", lucie.ID)
+
+	db.Delete(&models.JournalEntry{}, deleted.ID)
+	if err := db.Model(&models.JournalEntry{}).Where("id = ?", superseded.ID).
+		Update("superseded_at", time.Now().UTC()).Error; err != nil {
+		t.Fatalf("Failed to supersede the seeded entry: %v", err)
+	}
+
+	// The snapshot count is the reason both aggregates are DISTINCT: two snapshots joined
+	// against three mentions is six rows, and a plain COUNT would report six of each.
+	w := call(t, http.MethodGet, "/relationships", 1, "", relationshipRoutes)
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200 but got %d (body: %s)", w.Code, w.Body.String())
+	}
+	var summaries []RelationshipSummary
+	if err := json.Unmarshal(w.Body.Bytes(), &summaries); err != nil {
+		t.Fatalf("Failed to parse the relationship list: %v", err)
+	}
+	if len(summaries) != 1 {
+		t.Fatalf("Expected one relationship, got %d", len(summaries))
+	}
+	if summaries[0].SnapshotCount != 2 {
+		t.Errorf("Expected 2 snapshots and not a product of the journal joins, got %d",
+			summaries[0].SnapshotCount)
+	}
+	if summaries[0].MentionCount != 1 {
+		t.Errorf("Expected mention_count 1 — the deleted and superseded entries do not count — got %d",
+			summaries[0].MentionCount)
+	}
+
+	w = call(t, http.MethodDelete, fmt.Sprintf("/relationships/%d", lucie.ID), 1, "", relationshipRoutes)
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200 but got %d (body: %s)", w.Code, w.Body.String())
+	}
+	var body struct {
+		MentionsDetached int64 `json:"mentions_detached"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("Failed to parse the delete response: %v", err)
+	}
+	if body.MentionsDetached != 1 {
+		t.Errorf("Expected mentions_detached to agree with mention_count at 1, got %d",
+			body.MentionsDetached)
+	}
+	if visible.ID == 0 {
+		t.Error("Expected the visible entry to have been seeded")
+	}
 }

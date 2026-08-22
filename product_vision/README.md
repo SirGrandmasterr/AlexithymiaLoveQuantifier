@@ -1,9 +1,15 @@
 # Product Vision — Execution Roadmap
 
-This folder translates [`Product_Vision.md`](Product_Vision.md) into five sequentially ordered
+This folder translates [`Product_Vision.md`](Product_Vision.md) into sequentially ordered
 implementation phases. Each phase file is a self-contained specification that a developer or
 coding agent can execute step-by-step. **Read this file first**; it defines the order, the
 dependencies between phases, and the invariants that no phase may violate.
+
+*Phases 1–5 shipped, and their spec files — along with `Product_Vision.md` — are no longer on
+disk; they live in git history at commit `fcd28b4`. Phase 6 is in progress: its spec is
+[`06-emotional-journal.md`](06-emotional-journal.md), its execution plan is
+[`06-implementation-prompts.md`](06-implementation-prompts.md), and the true state of the
+branch is [`06-progress.md`](06-progress.md), which beats both where they disagree.*
 
 The specs assume familiarity with the reference documentation in [`docs/`](../docs/) —
 particularly [Concepts](../docs/01-concepts.md), [Frontend](../docs/06-frontend.md), and
@@ -11,7 +17,7 @@ particularly [Concepts](../docs/01-concepts.md), [Frontend](../docs/06-frontend.
 
 ---
 
-## The five phases
+## The phases
 
 | # | File | Theme | Depends on |
 | :- | :--- | :---- | :--------- |
@@ -20,6 +26,7 @@ particularly [Concepts](../docs/01-concepts.md), [Frontend](../docs/06-frontend.
 | 3 | [`03-visualizations-and-routing.md`](03-visualizations-and-routing.md) | Time-proportional timeline with context markers, Love Shape radar profiles, deep-linkable timeline routes, glanceable card summaries. | Phases 1–2 |
 | 4 | [`04-domain-model-evolution.md`](04-domain-model-evolution.md) | Promote the name-grouped "stack" into a first-class `Relationship` entity: rename, merge, referential integrity, server-side ordering. | Phases 1–3 |
 | 5 | [`05-retention-trust-and-portability.md`](05-retention-trust-and-portability.md) | Gentle cadence nudges, quick-pulse snapshots, full export/import vault, trust page, discretion mode. | Phases 1–4 |
+| 6 | [`06-emotional-journal.md`](06-emotional-journal.md) | An emotional journal underneath the snapshots: check-ins, triggers, a nightly ritual, a day graph, and — much later, opt-in and on-device — a small model that proposes labels for a spoken note. | Phases 1–5 |
 
 ## Dependency graph
 
@@ -30,12 +37,14 @@ graph TD
     P3["Phase 3<br/>Visualizations & routing<br/>(time axis, markers, radar, /timeline route)"]
     P4["Phase 4<br/>Domain model evolution<br/>(Relationship entity, rename/merge)"]
     P5["Phase 5<br/>Retention, trust & portability<br/>(cadence, pulse, vault, discretion)"]
+    P6["Phase 6<br/>Emotional journal<br/>(check-ins, triggers, ritual, day graph)"]
 
     P1 --> P2
     P1 --> P3
     P2 --> P3
     P3 --> P4
     P4 --> P5
+    P5 --> P6
 
     P1 -. "tags/notes feed timeline markers" .-> P3
     P2 -. "uncertainty flags feed chart rendering" .-> P3
@@ -67,9 +76,12 @@ graph TD
 
 ## Invariants — every phase must preserve these
 
-- **Self-scored, never computed.** No inference engine, no AI, no hidden math. Any arithmetic
+- **Self-authored, never computed.** No inference engine, no AI, no hidden math. Any arithmetic
   shown to the user (suggestion bands, deltas, volatility) must be transparent, explainable in
-  one sentence in the UI, and never overwrite a user-authored value.
+  one sentence in the UI, and never overwrite a user-authored value. *"Authored" rather than
+  "scored" since Phase 6:* a journal check-in has no score in it — the user picks words from a
+  closed vocabulary and a strength for each — and the rule is the same one. Nothing is written
+  that the user did not confirm with a tap, including a person, a trigger label, or a feeling.
 - **The user authors every number.** Suggestion bands never constrain the slider; deltas
   describe, never prescribe.
 - **Non-clinical posture.** Descriptive vocabulary only ("dominant," "most changed") — never
@@ -80,9 +92,13 @@ graph TD
   Phase 1 on) the server-side validation allowlist. Prose/taxonomy content stays frontend-only.
 - **Single-user, no social graph.** Nothing transmits anywhere. Sharing exists only as
   deliberate local export (Phase 5).
-- **Additive schema changes only, until Phase 4.** Phases 1–3 may only add nullable columns
-  compatible with `AutoMigrate` on both SQLite and Postgres. Phase 4 owns the one structural
-  migration and its backfill.
+- **Additive schema changes only, outside Phase 4.** A phase may only add nullable columns, or
+  whole new tables, compatible with `AutoMigrate` on both SQLite and Postgres. Phase 4 owns the
+  one structural migration and its backfill, and it is meant to stay the only one. *Restated
+  from "until Phase 4" in Phase 6:* the journal adds two tables and touches no existing column,
+  so `make migrate-check-local` against a Phase-5 database reports exactly `missing table
+  "journal_entries"` and `missing table "journal_mentions"` and nothing else. The rule was
+  never about a deadline; it was about which phase is allowed to move data.
 
 ## Working conventions for implementers
 

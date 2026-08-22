@@ -6,11 +6,8 @@ package domain
 var CategoryIDs = []string{"eros", "ludus", "storge", "pragma", "mania", "agape", "selflessness"}
 
 // IsCategoryID reports whether id is one of the seven known stats keys.
-func IsCategoryID(id string) bool {
-	for _, c := range CategoryIDs {
-		if c == id {
-			return true
-		}
-	}
-	return false
-}
+//
+// Through containsID (journal.go), which is the same loop this function used to spell out
+// and which now answers for four id vocabularies in this package. The comparison is exact
+// and case-sensitive on purpose — see that function.
+func IsCategoryID(id string) bool { return containsID(CategoryIDs, id) }

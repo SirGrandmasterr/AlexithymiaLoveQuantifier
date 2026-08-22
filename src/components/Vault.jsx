@@ -31,6 +31,21 @@ export const describeBackend = (backend) => {
     return backend ? `your ${backend} database` : 'your database';
 };
 
+/**
+ * "2026-08-22" → "August 2026", read as a civil day rather than an instant.
+ *
+ * `new Date('2026-08-22')` is UTC midnight, which renders as *July 2026* anywhere west of
+ * Greenwich on the first of a month. The journal's `day` is deliberately a text column for
+ * this reason (Data Model §3), and the client has to honour that rather than undo it.
+ */
+export const monthOf = (day) => {
+    const match = /^(\d{4})-(\d{2})/.exec(day || '');
+    if (!match) return null;
+
+    return new Date(Number(match[1]), Number(match[2]) - 1, 1)
+        .toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+};
+
 const escapeCSV = (value) => {
     const text = value == null ? '' : String(value);
     return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
@@ -65,6 +80,78 @@ export const buildCSV = (stacks) => {
             ])
     ));
 
+    return [header, ...rows].map(row => row.map(escapeCSV).join(',')).join('\n');
+};
+
+/**
+ * The journal as a second sheet: one row per feeling per check-in, which is the grain a
+ * pivot table wants and the one the snapshot sheet cannot express.
+ *
+ * The **transcript is deliberately not a column.** The JSON export carries what was said;
+ * a spreadsheet is the form of this data most likely to be opened on a shared screen, and
+ * a sentence about a named person does not belong in a cell for the sake of symmetry.
+ *
+ * Superseded rows are left out for the same reason `GET /api/journal/entries` leaves them
+ * out — a correction replaced them, and a sheet carrying both would count the day twice.
+ * The JSON keeps them. Returns an empty string when there is nothing to write, so the
+ * caller can decide not to hand over an empty file.
+ */
+export const buildJournalCSV = (journal) => {
+    const entries = journal?.entries || [];
+
+    // A feeling names a trigger by the id it was written with, and the label lives on the
+    // trigger's own row. Superseded trigger rows are read here too, on purpose: a check-in
+    // that named a trigger before it was renamed still resolves to the word it meant.
+    const triggerLabels = {};
+    entries.forEach(entry => {
+        if (entry.kind === 'trigger' && entry.payload?.label) {
+            triggerLabels[entry.client_id] = entry.payload.label;
+        }
+    });
+
+    const nameAbout = (about, mentions) => {
+        if (about.kind === 'person') {
+            const mention = mentions.find(candidate => candidate.ref === about.ref);
+            return mention?.label || mention?.relationship || '';
+        }
+        if (about.kind === 'tag') return about.tag || '';
+        if (about.kind === 'trigger') return triggerLabels[about.trigger] || about.trigger || '';
+        return '';
+    };
+
+    const rows = entries
+        .filter(entry => entry.kind === 'checkin' && !entry.superseded_at)
+        .flatMap(entry => {
+            const payload = entry.payload || {};
+            const mentions = entry.mentions || [];
+            const tags = (payload.tags || []).join(' ');
+
+            return (payload.feelings || []).map(feeling => {
+                const about = feeling.about || [];
+                return [
+                    entry.day,
+                    entry.at,
+                    payload.source || '',
+                    feeling.id,
+                    // Absent stays absent, the same rule the snapshot sheet follows for a
+                    // skipped category: an empty cell, never a zero and never a false.
+                    feeling.intensity ?? '',
+                    feeling.uncertain == null ? '' : String(feeling.uncertain),
+                    // A feeling can be about more than one thing. The two columns stay
+                    // singular and join with a space, the way `tags` and `uncertain`
+                    // already do above.
+                    about.map(item => item.kind).join(' '),
+                    about.map(item => nameAbout(item, mentions)).join(' '),
+                    tags
+                ];
+            });
+        });
+
+    if (rows.length === 0) return '';
+
+    const header = [
+        'day', 'at', 'source', 'feeling', 'intensity', 'uncertain', 'about_kind', 'about', 'tags'
+    ];
     return [header, ...rows].map(row => row.map(escapeCSV).join(',')).join('\n');
 };
 
@@ -141,11 +228,39 @@ export default function Vault() {
         }
     };
 
-    // Built from state already in the browser: the spreadsheet never round-trips anywhere.
-    const exportCSV = () => {
-        downloadFile(buildCSV(stacks), `alq-export-${today()}.csv`, 'text/csv');
-        rememberExport();
-        setNotice({ type: 'success', text: 'Downloaded a single sheet, one row per snapshot.' });
+    /**
+     * Two sheets, two downloads — the smallest thing that works. They have different
+     * columns, so one file cannot hold both, and a browser that asks before saving the
+     * second is asking about a file this app built locally.
+     *
+     * The snapshot sheet still comes from state already in the browser. The journal sheet
+     * comes from the same export endpoint the JSON button uses, because it needs rows the
+     * browser does not hold: trigger labels, and the entries a correction replaced. Same
+     * origin, same request — nothing new leaves the machine.
+     */
+    const exportCSV = async () => {
+        setBusy('csv');
+        setNotice(null);
+        try {
+            const response = await axios.get('/api/export');
+            const stamp = today();
+
+            downloadFile(buildCSV(stacks), `alq-export-${stamp}.csv`, 'text/csv');
+            const journal = buildJournalCSV(response.data?.journal);
+            if (journal) downloadFile(journal, `alq-journal-${stamp}.csv`, 'text/csv');
+
+            rememberExport();
+            setNotice({
+                type: 'success',
+                text: journal
+                    ? 'Downloaded two sheets: one row per snapshot, one row per feeling.'
+                    : 'Downloaded a single sheet, one row per snapshot.'
+            });
+        } catch {
+            setNotice({ type: 'error', text: 'Could not build the export. Is the server running?' });
+        } finally {
+            setBusy(null);
+        }
     };
 
     const chooseFile = async (event) => {
@@ -180,13 +295,24 @@ export default function Vault() {
         setNotice(null);
         try {
             const response = await axios.post('/api/import', pendingDocument);
-            const { relationships_created: created, snapshots_created: added, snapshots_skipped: skipped } = response.data;
+            const {
+                relationships_created: created,
+                snapshots_created: added,
+                snapshots_skipped: skipped,
+                journal_entries_created: entries = 0,
+                journal_entries_skipped: entriesHeld = 0
+            } = response.data;
             setPreview(null);
             setPendingDocument(null);
             await refresh();
+            // A version 1 file has no journal at all, so the second sentence only appears
+            // when there was something for it to say.
+            const journalSaid = entries || entriesHeld
+                ? ` And ${entries} journal ${entries === 1 ? 'entry' : 'entries'}; ${entriesHeld} already here.`
+                : '';
             setNotice({
                 type: 'success',
-                text: `Imported ${added} snapshot${added === 1 ? '' : 's'} into ${created} new relationship${created === 1 ? '' : 's'}. ${skipped} already here.`
+                text: `Imported ${added} snapshot${added === 1 ? '' : 's'} into ${created} new relationship${created === 1 ? '' : 's'}. ${skipped} already here.${journalSaid}`
             });
         } catch (error) {
             setNotice({ type: 'error', text: error?.response?.data?.error || 'Could not import that file.' });
@@ -219,6 +345,12 @@ export default function Vault() {
     const span = meta?.oldest_snapshot_date
         ? new Date(meta.oldest_snapshot_date).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
         : null;
+
+    // `oldest_journal_day` is a civil day — "2026-08-22", no zone — so it is built from its
+    // own parts rather than handed to `new Date`, which would read it as UTC midnight and
+    // render the month before it west of Greenwich. The snapshot span above can use the
+    // constructor because its value is a real timestamp.
+    const journalSpan = monthOf(meta?.oldest_journal_day);
 
     return (
         <div className="min-h-screen bg-slate-50 font-sans text-slate-800 selection:bg-slate-200">
@@ -260,8 +392,22 @@ export default function Vault() {
                                 relationship{meta.relationship_count === 1 ? '' : 's'} and{' '}
                                 <span className="font-medium text-slate-800">{meta.snapshot_count}</span>{' '}
                                 snapshot{meta.snapshot_count === 1 ? '' : 's'}
-                                {span && <> , going back to {span}</>}.
+                                {span && <>, going back to {span}</>}.
                             </p>
+                            {/* Left out entirely when there is nothing in the journal, rather
+                                than rendered as "0 journal entries": a category with nothing in
+                                it is not part of an inventory. The count is every stored row —
+                                superseded ones included — because that is what `journal_entry_count`
+                                counts and this paragraph answers "how much of my data is here". */}
+                            {meta.journal_entry_count > 0 && (
+                                <p className="text-sm text-slate-600 font-light leading-relaxed mt-2">
+                                    <span className="font-medium text-slate-800">{meta.journal_entry_count}</span>{' '}
+                                    journal entr{meta.journal_entry_count === 1 ? 'y' : 'ies'} — check-ins, evening
+                                    questions, the words you name things after, and anything you have since
+                                    corrected
+                                    {journalSpan && <>, going back to {journalSpan}</>}.
+                                </p>
+                            )}
                         </>
                     )}
                 </Section>
@@ -294,8 +440,10 @@ export default function Vault() {
                             <dt className="font-medium text-slate-800">Is it encrypted?</dt>
                             <dd className="text-slate-600 mt-1">
                                 No. The database is a plain file (or your Postgres instance); anyone with
-                                access to the server can read it. Passwords are hashed, but your notes and
-                                scores are not. Protecting the machine is the protection.
+                                access to the server can read it. Passwords are hashed, but your notes,
+                                scores, and everything in the journal — the words you tapped, what you typed,
+                                the people and things you named, and your answers to the evening questions —
+                                are not. Protecting the machine is the protection.
                             </dd>
                         </div>
                     </dl>
@@ -304,7 +452,8 @@ export default function Vault() {
                 <Section icon={Download} title="Take it with you">
                     <p className="text-sm text-slate-600 font-light leading-relaxed">
                         A complete copy — every relationship, every snapshot, notes, tags, uncertainty flags
-                        and guided answers included.
+                        and guided answers included, and every journal entry with the people it names, the
+                        triggers it leans on, and anything you have since corrected.
                     </p>
                     <div className="flex flex-wrap gap-3 mt-4">
                         <button
@@ -318,21 +467,25 @@ export default function Vault() {
                         <button
                             type="button"
                             onClick={exportCSV}
-                            className="px-5 py-2.5 bg-white border border-slate-200 text-slate-700 text-sm font-medium rounded-xl hover:border-slate-400 transition-all"
+                            disabled={busy === 'csv'}
+                            className="px-5 py-2.5 bg-white border border-slate-200 text-slate-700 text-sm font-medium rounded-xl hover:border-slate-400 disabled:opacity-50 transition-all"
                         >
-                            Download spreadsheet (CSV)
+                            {busy === 'csv' ? 'Preparing…' : 'Download spreadsheet (CSV)'}
                         </button>
                     </div>
                     <p className="text-[11px] text-slate-400 font-light mt-4">
                         Last export: {lastExport ? new Date(lastExport).toLocaleString() : 'never'}.
-                        {' '}The JSON file is the one that can be imported again; the CSV is for spreadsheets.
+                        {' '}The JSON file is the one that can be imported again; the CSV is for spreadsheets,
+                        and arrives as two sheets when there is a journal to write — one row per snapshot,
+                        one row per feeling. What was said stays in the JSON.
                     </p>
                 </Section>
 
                 <Section icon={Upload} title="Put it back">
                     <p className="text-sm text-slate-600 font-light leading-relaxed">
-                        Import a JSON export. Snapshots already here are skipped, so importing the same file
-                        twice changes nothing.
+                        Import a JSON export, from this version of the app or the one before it. Snapshots
+                        already here are skipped, and a journal entry is matched by the id it was written
+                        with, so importing the same file twice changes nothing.
                     </p>
 
                     <input
@@ -356,6 +509,13 @@ export default function Vault() {
                                 {preview.snapshots_created} snapshot{preview.snapshots_created === 1 ? '' : 's'};
                                 skip {preview.snapshots_skipped} already here.
                             </p>
+                            {(preview.journal_entries_created > 0 || preview.journal_entries_skipped > 0) && (
+                                <p className="text-sm text-slate-700 font-light mt-1">
+                                    And {preview.journal_entries_created} journal
+                                    {preview.journal_entries_created === 1 ? ' entry' : ' entries'}; skip{' '}
+                                    {preview.journal_entries_skipped} already here.
+                                </p>
+                            )}
                             <p className="text-[11px] text-slate-400 font-light mt-1">
                                 Nothing has been written yet.
                             </p>

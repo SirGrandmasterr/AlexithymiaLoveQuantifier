@@ -26,9 +26,36 @@ being, and they are all plaintext today:
 | `analysis_subjects` | `stats` | the seven category scores |
 | `analysis_subjects` | `tags`, `uncertain`, `guide_answers` | context and self-assessment |
 | `analysis_subjects` | `date`, `kind` | temporal pattern of attention |
+| `journal_entries` | `payload` | **the most sensitive text in the product** — feelings, notes, trigger labels, ritual answers, and later a verbatim transcript of speech about named third parties. It outranks `description` for the same reason a diary outranks a spreadsheet |
+| `journal_entries` | `day`, `at` | the same temporal pattern as `date`, at much higher resolution — a check-in is an instant, and several a day draw a shape a dated snapshot never could |
+| `journal_mentions` | `label` | a quotation of a name is a name |
+| `journal_mentions` | `relationship_id` | equality only — which person a row concerns — but that is the same fact `analysis_subjects.relationship_id` already carries |
 
 `email` stays plaintext: it is the login identifier and the server must index it. `created_at`,
 `updated_at`, `deleted_at`, `user_id` and row counts stay plaintext — they are structural.
+
+**The journal rows arrived in Phase 6 and they are plaintext today, like everything above
+them.** They were nonetheless given the shape this document needs, on the reasoning that the
+shape is cheap now and expensive later: every entry carries a client-generated `client_id`
+(§1.2's AAD binding, ready as `alq:v1:journal:<client_id>`), the sensitive text is a single
+opaque `payload` blob rather than a spread of typed columns, and mentions are an **ids-only**
+side table so a merge stays one `UPDATE` and a count stays one query without anything having
+to be decrypted. What would move under this design is stated per row above; `kind`,
+`schema_version` and the two time columns would stay plaintext as structural, because the
+server range-filters by `day` and orders by `at`.
+
+**This is a register, not a plan.** This whole document is an unconfirmed option (see the
+status line at the top), and Phase 6 does not wait on it: the Vault page states the plaintext
+position in the journal's own words instead, and **no copy anywhere in the product promises
+that the journal will be encrypted later.** If a change ever needs this document to be true in
+order to make a claim, the claim is wrong rather than early.
+
+Two notes for whoever does implement it. Person matching needs **no new blind index** — the
+match happens on the client against decrypted names and the server only ever receives ids; the
+one server-side resolution, a mention that arrives as `{"name": "Lucie"}`, becomes the same
+`name_hmac` lookup §1.4 already defines for the snapshot write path. And **embedding vectors
+must never reach the server at all** — they are invertible to text, so a vector column would
+be a transcript column under another name.
 
 **The residual metadata leak, stated up front.** After this change an administrator still
 learns: how many people you track, how many snapshots each has, when each row was written and

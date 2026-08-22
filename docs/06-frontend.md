@@ -16,6 +16,11 @@ graph TD
     APP --> LOCK["AppLock.jsx<br/>optional screen lock"]
     APP --> DISC["context/DiscretionContext.jsx<br/>initials + blur + Ctrl+."]
     APP --> SUBS["context/SubjectsContext.jsx<br/>the one subject list"]
+    SUBS --> JC["context/JournalContext.jsx<br/>the journal's entries · mounted inside SubjectsProvider"]
+    APP --> JRN["Journal.jsx<br/>/journal · /journal/:day<br/>+ the journal's shared chips and shell"]
+    APP --> JP["JournalPeople.jsx<br/>/journal/people · /journal/people/:id"]
+    APP --> JT["JournalTriggers.jsx<br/>/journal/triggers — rename · merge"]
+    APP --> RIT["RitualCards.jsx<br/>/journal/ritual — the nightly questions<br/>full-viewport · claims both touch axes"]
     APP --> VAULT["Vault.jsx<br/>/vault — export · import · trust"]
     APP --> NAV["Navbar.jsx"]
     APP --> LAND["Landing.jsx"]
@@ -43,6 +48,30 @@ graph TD
     CONST -.-> WC
     SUBS -.-> DASH
     SUBS -.-> TR
+    SUBS -.-> JC
+    JC -.-> JRN
+    CONSTJ["constants/journal.js<br/>FEELINGS · RITUAL_QUESTIONS · JOURNAL_COPY<br/>readers · day arithmetic"] -.-> JRN
+    CONSTJ -.-> JC
+    CONSTJ -.-> RIT
+    CONSTJ -.-> JP
+    CONSTJ -.-> JT
+    CONSTJ -.-> DG["components/dayGraph.js<br/>day curve · branch paths · projection<br/>pure geometry, no renderer"]
+    JRN --> DGC["DayGraph.jsx<br/>the day, drawn — hand-written SVG<br/>claims the horizontal axis"]
+    DG -.-> DGC
+    CONSTJ -.-> DGC
+    JC -.-> RIT
+    JC -.-> JP
+    JC -.-> JT
+    JRN -.->|"Frame · chips · AttachedFeelings"| JP
+    JRN -.->|"Frame · chips · AttachedFeelings"| JT
+    RD -.->|"Modal"| JP
+    RD -.->|"Modal"| JT
+    SUBS -.-> JP
+    RIT --> KF
+    JSET["constants/journalSettings.js<br/>the three §9.7 keys, per device"] -.-> RIT
+    JSET -.-> PROF
+    JSET -.-> JRN
+    RIT -.->|"RitualNudge · useRitualPrompt"| DASH
 ```
 
 | File | Lines | Responsibility |
@@ -54,12 +83,19 @@ graph TD
 | [`SessionExpiredDialog.jsx`](../src/components/SessionExpiredDialog.jsx) | 135 | Signing back in over the current screen, rather than being evicted to Landing. |
 | [`constants/categories.js`](../src/constants/categories.js) | 253 | **The taxonomy** plus the pure helpers that read it. |
 | [`constants/cadence.js`](../src/constants/cadence.js) | 107 | Due-date arithmetic and the nudge vocabulary. Pure, so the no-guilt rules are testable. |
+| [`constants/journal.js`](../src/constants/journal.js) | 1570 | **The journal's vocabulary, copy and arithmetic**: `FEELINGS`, `RITUAL_QUESTIONS`, `ENTRY_KINDS` (id-for-id with `domain/journal.go`), every string it can render in `JOURNAL_COPY`, the payload readers, civil-day arithmetic, `ritualDeck`, `ritualTimeReached`, candidate matching, the two vocabulary summaries (`summarizePerson`, `summarizeTrigger`, `topFeelings`) and the two correction builders (`renameTriggerRequest`, `mergeTriggerRequest`). Pure — no React, no network, **no `window`**. |
+| [`constants/journalSettings.js`](../src/constants/journalSettings.js) | 107 | The three §9.7 settings 6-A ships, over `localStorage`: the ritual and its time, the optional questions, *Ask who I was with*. Tolerant readers — a value it did not write costs a preference, never a screen. |
 | [`context/DiscretionContext.jsx`](../src/context/DiscretionContext.jsx) | 96 | Discretion mode: initials, blur class, `Ctrl+.`, tab title. |
 | [`context/SubjectsContext.jsx`](../src/context/SubjectsContext.jsx) | 225 | Shared subject **and relationship** lists, the derived stacks, load state, and six mutations. |
-| [`Navbar.jsx`](../src/components/Navbar.jsx) | 76 | Sticky nav; brand link; discretion toggle, Vault, Profile/Logout or Sign In. |
+| [`context/JournalContext.jsx`](../src/context/JournalContext.jsx) | 314 | The journal's loaded day range, its entries and day counts, the trigger vocabulary, `createEntry`/`deleteEntry`/`removePersonFromJournal`, and F1's outbox seam. Mounted **inside** `SubjectsProvider` and reads relationships from it. |
+| [`Journal.jsx`](../src/components/Journal.jsx) | 644 | `/journal` and `/journal/:day` — the month strip, the day header, the day's check-ins, and the ritual as its footer. Also the journal's shared shell and chips, exported for the two vocabulary views. |
+| [`JournalPeople.jsx`](../src/components/JournalPeople.jsx) | 480 | `/journal/people` and `/journal/people/:id` — every person the journal knows, snapshot or none, and §10.6's *remove this person from the journal*. |
+| [`JournalTriggers.jsx`](../src/components/JournalTriggers.jsx) | 467 | `/journal/triggers` — the user-grown vocabulary, and the two corrections (rename, merge) that are `POST`s rather than endpoints. |
+| [`RitualCards.jsx`](../src/components/RitualCards.jsx) | 748 | `/journal/ritual` — the nightly questions as swipe cards, the closing day word, and the dashboard's ritual prompt line. The one screen in the app that claims **both** touch axes. |
+| [`Navbar.jsx`](../src/components/Navbar.jsx) | 76 | Sticky nav; brand link; discretion toggle, Journal, Vault, Profile/Logout or Sign In. |
 | [`Landing.jsx`](../src/components/Landing.jsx) | 65 | Anonymous marketing screen; "Learn the Theory" opens `AboutModal`. |
 | [`Auth.jsx`](../src/components/Auth.jsx) | 103 | Login *and* signup in one toggling form. |
-| [`Dashboard.jsx`](../src/components/Dashboard.jsx) | 1346 | Six sub-components and the grid screen. |
+| [`Dashboard.jsx`](../src/components/Dashboard.jsx) | 1403 | Six sub-components and the grid screen. |
 | [`VaultKnob.jsx`](../src/components/VaultKnob.jsx) | 276 | The vault dial: scoring with a thumb without covering what you are reading. |
 | [`mobile/knobFeedback.js`](../src/mobile/knobFeedback.js) | 172 | The dial's detent — a synthesised metallic click and an Android selection haptic. |
 | [`TimelineRoute.jsx`](../src/components/TimelineRoute.jsx) | 100 | The id-keyed timeline route and the legacy name redirect: loading, empty and error states. |
@@ -70,19 +106,23 @@ graph TD
 | [`RelationshipDialogs.jsx`](../src/components/RelationshipDialogs.jsx) | 411 | `Modal` shell plus the four stack-level dialogs (rename, cadence, merge, delete). |
 | [`AnalysisTimeline.jsx`](../src/components/AnalysisTimeline.jsx) | 317 | Time-axis history chart with milestone markers. |
 | [`LoveShape.jsx`](../src/components/LoveShape.jsx) | 126 | The seven-axis radar polygon. |
+| [`dayGraph.js`](../src/components/dayGraph.js) | 750 | **The day graph's geometry.** `buildDayCurve`, `branchPaths`, `project`, `dayGraphLegend` — a day of check-ins as samples, paths and a 2.5-D camera. Pure, like `buildShapeData`: no React, no SVG, no charting library. |
+| [`DayGraph.jsx`](../src/components/DayGraph.jsx) | 736 | **The day graph, drawn.** Hand-written SVG over the geometry above: one `<path>` per branch, a camera with a flat/tilt toggle and two rotate buttons, `touch-action: pan-y`. Note the case: `DayGraph.jsx` draws, `dayGraph.js` decides. |
 | [`WhatChanged.jsx`](../src/components/WhatChanged.jsx) | 253 | Post-snapshot delta screen + its note follow-up. |
 | [`ContextCapsule.jsx`](../src/components/ContextCapsule.jsx) | 137 | The notes + tags editor, shared by `PersonForm` and `WhatChanged`. |
-| [`Profile.jsx`](../src/components/Profile.jsx) | 256 | User settings + avatar upload. |
+| [`Profile.jsx`](../src/components/Profile.jsx) | 495 | User settings, avatar upload, check-in reminders, and the journal's three per-device settings. |
 
 > `Landing.jsx` importing `AboutModal` from `Dashboard.jsx` is the one import that runs
 > against the grain of the graph. It is deliberate — the category copy is the teaching
 > surface and should be reachable before signup — and it is not circular, since `Dashboard`
 > never imports `Landing`.
 
-**One shared store, one context.** `token` lives in `App.jsx` (its storage and renewal in
-`auth/session.js`); the subject list lives in `SubjectsContext`. Everything else is local
-`useState` in the screen that renders it. There is still no state library, and two consumers
-do not justify one.
+**Two shared stores, two contexts.** `token` lives in `App.jsx` (its storage and renewal in
+`auth/session.js`); the subject list lives in `SubjectsContext`; the journal's entries live in
+`JournalContext`, which is mounted inside it and **reads** the subject list rather than
+fetching a second copy. Everything else is local `useState` in the screen that renders it.
+There is still no state library: two contexts with a handful of consumers each do not justify
+one, and the day the answer changes will be the day a third one appears.
 
 ---
 
@@ -134,11 +174,17 @@ const handleLogin = (session) => {           // and synchronously on every trans
 <Route path="/login"         element={!token ? <Auth onLogin={handleLogin} /> : <Navigate to="/" />} />
 <Route path="/profile"       element={token ? <Profile /> : <Navigate to="/login" />} />
 <Route path="/vault"         element={token ? <Vault /> : <Navigate to="/login" />} />
+<Route path="/journal"       element={token ? <Journal /> : <Navigate to="/login" />} />
+<Route path="/journal/ritual"      element={token ? <JournalRitual /> : <Navigate to="/login" />} />
+<Route path="/journal/people"      element={token ? <JournalPeople /> : <Navigate to="/login" />} />
+<Route path="/journal/people/:id"  element={token ? <JournalPerson /> : <Navigate to="/login" />} />
+<Route path="/journal/triggers"    element={token ? <JournalTriggers /> : <Navigate to="/login" />} />
+<Route path="/journal/:day"  element={token ? <Journal /> : <Navigate to="/login" />} />
 <Route path="/relationships/:id/timeline" element={token ? <TimelineRoute /> : <Navigate to="/login" />} />
 <Route path="/timeline/:name" element={token ? <LegacyTimelineRedirect /> : <Navigate to="/login" />} />
 ```
 
-Three characteristics:
+Four characteristics:
 
 - **`/` swaps components rather than redirecting** — one URL, two screens, no flash of
   redirect.
@@ -146,6 +192,10 @@ Three characteristics:
   client-side. An expired token still renders the dashboard, and the 401 that comes back is
   now *renewed through* rather than fatal — see §2a.
 - **No catch-all route.** An unknown path renders the Navbar and nothing else.
+- **A static segment outranks a dynamic one**, which is what keeps `/journal/ritual` the
+  ritual rather than a day called *ritual*. The order above is for reading; React Router
+  ranks the routes itself. `/journal/:day` also checks the parameter with `isDayString` and
+  redirects a path that is not a day to `/journal`, rather than drawing an invalid date.
 
 ---
 
@@ -267,6 +317,376 @@ and the timeline route both need, in one place.
 
 ---
 
+## 2c. `context/JournalContext.jsx` — the journal's entries
+
+A **second context beside `SubjectsContext`, not a second store.** The two hold different
+things and neither derives from the other: subjects and relationships are the people, journal
+entries are what was said about them. `JournalProvider` is mounted **inside** `SubjectsProvider`
+in `App.jsx` and calls `useSubjects()` for the names — it never fetches `/api/relationships`
+itself, which is invariant 17 applied to the newer half of the app.
+
+| Value | Meaning |
+| :---- | :------ |
+| `range` | The loaded day window, `{ from, to }`. Defaults to the month the current civil day falls in. |
+| `entries` | Every current entry in that window, in the server's order (`day`, `at`, `id`). Superseded and deleted rows never arrive. |
+| `days` | `GET /api/journal/days` — per-day counts for the month strip. |
+| `markedDays` | The `Set` of days with something on them, from `days` **and** from entries written since the last fetch. |
+| `triggers` / `resolveTrigger` | The live trigger vocabulary, and the walk from an id a check-in stored to the label it means now. |
+| `personName(mention)` | The relationship's current name, falling back to the label the entry quoted. |
+| `outbox` | Empty, and F1's. It is in the value now so a screen can be written against a shape that will not change under it. |
+| `loading` / `loadError` / `dismissLoadError` | The screen renders the error in its own slot and keeps drawing (Recipe 5). |
+| `triggerEntries` | The raw `kind: "trigger"` rows. The Triggers view needs them and `triggers` is not enough: a correction carries `supersedes_id`, which is the **row** id and only exists here. |
+| `loadRange` / `loadAll` / `refresh` | Move the window, widen it to the whole history, or fetch it again. |
+| `createEntry` / `deleteEntry` | Write and soft-delete. Both reject on failure, like `createSubject`. |
+| `removePersonFromJournal(id)` | §10.6 — one `DELETE /api/journal/people/:id`, then a refetch. |
+
+Decisions worth knowing before changing it:
+
+- **Both endpoints load in one `Promise.all`**, as `SubjectsProvider` does, and a failure in
+  either becomes one `loadError`.
+- **`createEntry` mints the `client_id`** with `clientId()` when the caller did not bring one.
+  That is what makes every writer in the app idempotent by construction — the same entry
+  posted twice is one row — and it is the property F1's outbox needs to retry safely.
+- **`createEntry` refetches when, and only when, the request minted a trigger.** A new
+  trigger is created as its own row inside the entry's transaction (§7.2) and the response
+  echoes only the entry that named it, so the row is in no list this provider holds. Without
+  the refetch the next composer offers *new trigger: work?* a second time — one label, two
+  rows, and every question asked afterwards grouped on the wrong key. The refetch is
+  deliberately **not awaited**: the write has landed, and a composer sitting on *Saving…* for
+  two more round trips is worse than a vocabulary that catches up a moment later.
+- **`loadRange` replaces the window rather than widening it.** A window that only ever grew
+  would refetch a year to draw a week. **`loadAll` is the same call with a wider range**, and
+  the two vocabulary views are its only callers: they render counts rather than marks, and a
+  count of whichever month the day view last loaded would change when you walk to March.
+- **`removePersonFromJournal` refetches rather than splicing.** The change is spread across
+  entries of three kinds and a mention column this client does not hold; the range is the one
+  the screen already asked for, so asking for it again is the honest answer.
+- **There is no offline cache here.** `SubjectsContext` has one because a read-through cache
+  is safe; the journal's answer to no connectivity is the outbox in §9.5 of the design, and
+  half of one now would be a promise the code cannot keep.
+- **A day is marked from two sources.** `days` is the cheap grouped count the strip is built
+  on; the entries in state carry a check-in saved a moment ago, so its day marks itself
+  without waiting for a refetch.
+
+---
+
+## 2d. `Journal.jsx` — `/journal` and `/journal/:day`
+
+The day view. It reads and does not write. It is also where the journal's **shared pieces**
+live and are exported from —
+`Frame`, `Loading`, `LoadFailed`, `FeelingChip`, `PersonChip`, `WordChip`, `chipClass` and
+`AttachedFeelings` — because the People and Triggers views draw the same chips over different
+subjects and a second copy of a chip is a second place its colours can drift.
+
+- **The header** is a month strip for orientation, the date, prev/next, and a way back to
+  today when the day being read is not today. Prev/next walk with `shiftDay` and link through
+  `journalDayPath`, both in [`constants/journal.js`](../src/constants/journal.js); the strip
+  is `dayRange(monthBounds(day))`, and a day with something on it gets a dot.
+- **The body** is the day's check-ins newest-first — the opposite of the server's order, which
+  is oldest-first because the day graph will read it left to right. Each renders its feelings
+  as chips in the feeling's own colour, what each was about (a person, a trigger, or a context
+  tag), the time, and the transcript when there is one.
+- **The ritual is the day's footer**, not an item in the list: a check-in is a moment inside
+  the day and the ritual is about the whole of it. A question in `asked` with no key in
+  `answers` renders as *Unanswered* — never as a *no* (invariant 14).
+- **The day graph sits between the header and the list** — see §4be. A tap on a branch
+  scrolls the check-in it was drawn from into view and rings it, which is why the rows take an
+  `opened` prop; the state is cleared whenever the day changes, because a row id from
+  yesterday is not on this screen. On a day with no check-in in it the graph renders **nothing
+  at all**, so §9.4's empty state is the only thing that answers for the day.
+- **No bare strings.** Every word the screen says comes from `JOURNAL_COPY`, which is what
+  lets the forbidden-word walk in `journal.test.js` see the whole surface of the feature. The
+  colours are inline `style` from the complete literal hexes in `FEELINGS`, never composed
+  class names (invariant 4).
+- **Discretion** masks names to initials and blurs transcripts, notes, trigger labels and
+  context tags. Feelings and their colours are untouched — a chip carries no name, and neither
+  does the graph: it is fed feeling ids and coordinates, so it keeps drawing without a
+  `useDiscretion` anywhere in it.
+
+- **A check-in can be withdrawn, and never edited.** Each card carries a delete affordance
+  whose dialog names the time, lists the words, and says what survives: *the people and
+  triggers it named stay where they are*. There is no edit beside it, by design — a journal
+  row is a statement made at a moment, so a correction is a **new** entry with
+  `supersedes_id` and never a `PUT` (§7.1). The dialog reuses `Modal` from
+  [`RelationshipDialogs.jsx`](../src/components/RelationshipDialogs.jsx), and a failed delete
+  keeps it open with its message (trap 4 applied to a dialog).
+- **The composer's two launchers live here**: `CheckinButton` shares the month strip's row so
+  it lands where the dashboard puts *New Analysis*, and `CheckinFab` floats over the bottom
+  bar. See §2e.
+- **The two vocabulary links are in the header**, under the day nav: *People* and *Triggers*.
+  The bottom bar has one journal slot and the day is what it opens (§9.2), so this is the
+  only way in to either screen.
+
+The **navigation** gained a slot for it in both directions: `Journal` (lucide `NotebookPen`)
+sits beside Vault and Profile in the `md`-and-up `Navbar`, and is the second of
+`MobileBottomNav`'s five slots below that — see [Android §3.1](12-android-app.md#31-navigation)
+for the width arithmetic. `isActive`'s prefix rule lights it for every `/journal*` path.
+
+---
+
+## 2e. `CheckinComposer.jsx` — recording a check-in
+
+Chips and typed text, which §4.1 of the design calls **the definition of a check-in rather
+than a fallback for one**. Voice and the model arrive in 6-C and 6-D and land on this same
+record; nothing here waits for them.
+
+### The two ways in (§9.2)
+
+| Export | Where | Notes |
+| :----- | :---- | :---- |
+| `CheckinButton` | `hidden md:flex`, sharing the day header's top row | The corner the dashboard puts *New Analysis* in, so the app's two primary screens share one grammar |
+| `CheckinFab` | `md:hidden fixed`, 64 px, 16 px from the right, `bottom: calc(var(--alq-nav-height) + env(safe-area-inset-bottom) + 1rem)` | Inside the thumb's arc and clear of the bar and the gesture pill. Carries `alq-hide-on-keyboard`, so it goes away with the bar when the soft keyboard is up |
+| `CheckinComposer` (default) | The sheet: bottom on a handset, centred dialog from `sm` | `role="dialog"`, `aria-modal`, Escape closes |
+
+The button is a **keyboard/chips** button in 6-A. The microphone takes its place in 6-C where
+a device can run the transcriber — and stays a keyboard under discretion for good, because
+speaking a note aloud defeats the mode (§4.4).
+
+### The sheet
+
+- **Feelings** are the whole of `activeFeelings()` as one grid of coloured buttons, narrowed
+  by a filter field. A picked one gets its own card carrying three controls: a strength that
+  cycles `·` → `··` → `···` and **never renders a digit** (the word is in the `aria-label`;
+  `data-intensity` is a test hook, not a rendering), an `≈` toggle writing `uncertain: true`
+  — the same mark the snapshot sliders use — and a `×`.
+- **`MAX_FEELINGS_PER_CHECKIN` is stated before it is reached.** The sentence sits under the
+  grid from the first render; at the cap the unpicked chips disable. A limit the user was
+  told is not the same thing as one they ran into.
+- **`unclear` is exclusive**, and the sentence beside the cap says so. *Can't tell* beside
+  *joy* is not a record of two things, it is a contradiction, and the record should not be
+  able to hold one. Picking it puts the others down; picking another puts it down.
+- **About, per feeling**: a person, a trigger, or a context tag from `CONTEXT_TAGS`. A chip
+  moves between feelings by tapping it and then *Move here* on the other, and comes off with
+  its `×`.
+- **Optional**: the check-in's own context `tags` (the same seven presets and the same
+  `MAX_TAGS` / `MAX_TAG_LENGTH` as [`ContextCapsule.jsx`](../src/components/ContextCapsule.jsx))
+  and a free-text `note`. A note is what makes the record `source: "typed"` rather than
+  `"chips"` — §4.1's two paths, told apart by the only thing that distinguishes them here.
+
+### Invariant 15, structurally
+
+Nothing is written that the user did not tap.
+
+- `personCandidates` and `triggerCandidates` return **suggestions**, and this component never
+  selects one. An exact match resolves and is offered **alone**, with no *new person: X?*
+  beside it — that comparison is the one `FindOrCreateRelationship` makes, so the offer would
+  invite a duplicate the server cannot make.
+- A new person or a new trigger reaches the request only from the dashed button that names
+  it. **A label typed and then abandoned mints nothing**, because the request is built from
+  the component's state at save time and never from a picker's transient text.
+- A trigger minted earlier in the same sheet is offered to every later feeling, so two
+  feelings about one word send one `triggers[]` entry rather than two rows sharing a label.
+
+### The request
+
+`buildCheckinRequest` is exported and pure. It builds §7.2's body with two dedupe passes that
+both matter: two feelings about one person produce **one** mention and two `about`s pointing
+at its `ref` (the index into `mentions`, which is what the server validates against), and two
+feelings about one new trigger produce **one** `triggers[]` entry. `at` is `rfc3339Local(now)`
+and `day` is `civilDay(now, DAY_ROLLOVER_HOUR)` — **a check-in records now, whatever day is
+on screen**, and the day view follows the saved entry to the day it landed on rather than
+writing into a day the reader cannot see. `uncertain` is written only when `true`; an empty
+`tags` or `note` is absent rather than empty (invariant 14).
+
+### Trap 4
+
+`onClose()` sits **inside `try`, after the awaits**. A failed save leaves the sheet open with
+every chip, strength and attachment intact, puts the server's own message in a `role="alert"`
+slot, and re-enables *Save*.
+
+---
+
+## 2f. `RitualCards.jsx` — `/journal/ritual`, the nightly questions
+
+Five to nine binary questions, one card at a time, a closing word, and **no trace at all of a
+night nobody answered**. The last of those is the feature: nothing here counts, and there is
+no data structure that could — a missed night writes no row, so the next morning has nothing
+to say about it (§3.6).
+
+### The deck
+
+`ritualDeck(readOptionalQuestions())` is the five core questions in their fixed §3.2 order
+followed by the optional ones this device turned on, **ordered by `RITUAL_QUESTIONS` rather
+than by the order they were switched on** and capped at `MAX_OPTIONAL_QUESTIONS`. The set does
+not rotate and does not adapt: its value is its sameness, and an eyes-closed swipe is muscle
+memory of a sequence (§3.3). A *Who?* card is spliced in behind a yes to `with_people`, and
+only when *Ask who I was with* is on. The closing card is always last, so the binary rhythm is
+never interrupted.
+
+### The gesture, and the axis it is allowed to take
+
+| Gesture | Meaning | Also reachable by |
+| :------ | :------ | :---------------- |
+| Swipe right | Yes | a **Yes** button; `→` |
+| Swipe left | No | a **No** button; `←` |
+| Swipe up | Skip — not answering tonight | a smaller **skip** link; `↑` |
+| Tap the card | **Nothing** | — |
+
+**The card claims both axes — `touch-action: none`, and only on the card.** This is the
+exception to the rule the card stack follows ([§3.4](#34-cardstack--the-version-pile-and-the-axis-it-is-allowed-to-use)),
+and it is granted by the same reasoning rather than in spite of it. The stack lives on a
+scrolling page, so vertical belongs to the page and the stack takes horizontal; two gestures
+on one axis cannot be fixed with a better threshold, only by moving one of them. This route
+has no second gesture to move: it is `fixed inset-0`, over the header and the bottom bar, and
+**it does not scroll**. Invariant 2g lets a control take everything only where nothing else
+wants it, and here nothing else does.
+
+**The claim is conditional, and the condition is written on the line that makes it.** If the
+ritual ever grows a scrollable region — a longer word grid, a settings panel, anything — the
+card gives up the vertical axis (`touch-action: pan-y`) and skip becomes a button only. A
+swipe-up that fights the page is worse than no swipe-up. `RitualCards.test.jsx` asserts that
+`touch-action: none` is present on the card and **absent from every one of its ancestors**,
+in inline styles and in class names both.
+
+A tilt follows the finger; the commit threshold is `max(48px, 30% of the card's width)`. The
+floor matters: an unmeasured layout reports a width of zero, and 30 % of zero would commit on
+the first pixel of a tap — which is exactly the half-asleep tap that must record nothing. Each
+commit gives **one** selection tick through `knobFeedback`'s existing `detent`, and **none in
+discretion mode** (§3.4) — a phone buzzing on a bedside table is the thing that mode is for.
+
+### The record
+
+`buildRitualRequest` and `buildDayWordRequest` are exported and pure.
+
+- **A skipped question is absent from `answers`, never `false`** (invariant 14), and every
+  question the deck showed is in `question_set.asked`. Only the row can tell "not answered"
+  from "not asked", which is the whole reason `asked` is stored.
+- **The day word is written twice.** Once as `day_word` on the ritual, and once as its own
+  `checkin` at the ritual's `at` with `source: "ritual_word"` — so the day graph and the
+  mention logic never have to know that rituals exist (§6.3). Both rows share one `at`, one
+  `day` and one pair of `client_id`s minted at the first save attempt, so a retry replays
+  rather than duplicates.
+- **That check-in carries no `intensity`.** The closing card is one tap on one word; there is
+  no strength in it to record, and a middle number invented here would be the application
+  authoring a value the user did not (invariant 15). The server accepts an absent intensity
+  for exactly this writer — see [API §5a](04-api-reference.md#5a-journal-endpoints).
+- `day_word` carries no `uncertain` either. There is no affordance for "I am unsure of this
+  word", so there is no statement to record.
+
+### The prompt line (§3.6, invariant 2c)
+
+`useRitualPrompt()` and `RitualNudge` live in this file and are mounted by the dashboard.
+After the chosen hour the ritual line takes **the cadence banner's slot** — one sentence,
+*Start* and *Not tonight* — and the two are never on screen together. Ownership of the slot
+is one decision, held for the session in `sessionStorage` under `alq:journal-ritual-seen`
+(the same mechanism as `CadenceNudge`'s `SEEN_KEY`, with the civil day as its value): once
+the ritual has claimed it, the cadence banner waits for the next session. Two calm sentences
+stacked are a to-do list.
+
+"After the hour" is measured in `minutesIntoCivilDay`, from the rollover rather than from
+midnight, so a ritual started at 01:00 is still tonight's (§3.6).
+
+### The settings this route reads
+
+`src/constants/journalSettings.js` owns the three §9.7 keys 6-A ships —
+`alq:journal-ritual` (on, and its time), `alq:journal-questions`, `alq:journal-ask-who` — as
+tolerant readers and writers over `localStorage`. They live beside `journal.js` rather than
+inside it because that module's freedom from `window` is what lets the forbidden-word walk and
+the id-parity test hold it. **The other five keys have no reader**, deliberately: a key with
+no reader is a feature that does not exist yet, and rendering its toggle would make a Vault
+claim false (invariant 2e). The section itself is in [`Profile.jsx`](#6-profilejsx).
+
+---
+
+## 2g. `JournalPeople.jsx` — `/journal/people` and `/journal/people/:id`
+
+Everyone the journal has heard about, which is a **larger set than the dashboard draws**. The
+dashboard is snapshot-driven; a person first met in a check-in is a relationship with
+`snapshot_count: 0`, which the grid will not draw and `GET /api/relationships` returns anyway
+([§2.2](../product_vision/06-emotional-journal.md)). This is the screen where they exist.
+
+### The list
+
+One row per relationship from `useSubjects().relationships` — invariant 17, never a second
+fetch. Each row carries:
+
+| Part | From |
+| :--- | :--- |
+| The name, masked to initials under discretion | `relationship.name` through `maskName` |
+| *n entries name this person.* | `summarizePerson(entries, id).count` — every live entry with a mention of them, check-in, ritual or fact |
+| The two feelings most often attached, with a ⓘ stating the arithmetic | `topFeelings`, sorted by count and tied on `FEELINGS` order |
+| A link to the stack's timeline — **or** *No snapshot yet* | `snapshot_count > 0` |
+
+Ordered most-named first, then by name: the count is what the screen is about and the name
+keeps two equal rows still.
+
+### One person
+
+Keyed by `relationship_id`, so it survives a rename — the heading follows the new name and
+the entries below it do not move (invariant 2a). It shows the mentions newest first with the
+feelings that were attached *to them* and the transcript line that named them, and the
+person's confirmed facts with their dates. Nothing in the app writes a `person_fact` yet, so
+that section is only ever filled by an import; it is drawn empty rather than hidden, because a
+section that appeared only when full would make its absence unreadable.
+
+**Rename, merge and delete are not duplicated here.** They act on the relationship and the
+dashboard's stack menu already owns them (§3.7); one line says so, so the gap reads as a
+decision rather than as something missing.
+
+### *Remove this person from the journal*
+
+§10.6's action, and the only destructive one this screen owns. It is the journal's rather
+than the relationship's: it soft-deletes their `person_fact` entries and detaches every
+mention of them, and leaves the relationship, its snapshots and the check-ins alone.
+
+- **The dialog states the exact count of what goes**, as **two clauses each carrying its own
+  verb** — *2 facts kept about Lucie go.* / *1 entry stops being linked to Lucie.* One
+  template with two numbers dropped into it cannot agree with both, which is how *"1 entry
+  stop being linked"* reached a running screen past a green suite. A clause with nothing to
+  count is left out rather than stated as a zero, and the button is not rendered at all when
+  there is nothing to take.
+- **What stays is stated too**: the entries survive with the name as it was said on the day.
+  Deleting a person should not rewrite the user's own record of a day, which is the rule
+  [`DeleteRelationship`](05-backend.md) already follows for its own mentions.
+- One call, `DELETE /api/journal/people/:id` — both halves in one transaction, because a run
+  that removed the facts and then failed to detach would give the user half of what they
+  asked for with no way to tell.
+
+### Why both views load the whole history
+
+Both call `loadAll()` on mount, which replaces the provider's range with
+`JOURNAL_HISTORY_FROM … today`. These are the first journal screens that render a **number**
+rather than a mark, and a count over whichever month the day view last loaded would change
+when you walk to March — and would make the remove dialog's sentence untrue. The counts come
+from `entries`, never from `/api/journal/days`, which is a grouped count a write since the
+last fetch has not reached.
+
+---
+
+## 2h. `JournalTriggers.jsx` — `/journal/triggers`
+
+The vocabulary the user grew, and the two corrections it needs. One row per **live** trigger
+— `activeTriggers` resolved through `readTrigger`, so a merged-away id is never a row — with
+its label, *n entries name this.*, and the two feelings most often attached. The detail is a
+disclosure inside the row rather than a route of its own: §9.1 gives the vocabulary one
+screen, and the entries that name a trigger are what that screen is for.
+
+### The two corrections
+
+Both are `POST /api/journal/entries` with `supersedes_id`, built by the pure
+`renameTriggerRequest` and `mergeTriggerRequest` in `constants/journal.js`:
+
+| Action | Payload | Dialog |
+| :----- | :------ | :----- |
+| **Rename** | a new `label`, `merged_into: null` | states that the new name shows everywhere it appears now, and that everything already written keeps pointing at the same trigger |
+| **Merge into…** | `merged_into` naming the survivor's **live** id | states the count *and* that it is one-way and cannot be split apart again — the same shape `MergeRelationshipDialog` uses, and it appears only once a target is chosen |
+
+Both carry `corrects`: the predecessor's list plus the predecessor's own id, so a check-in
+written before the correction still resolves (§6.3). The row it replaces leaves the provider's
+list from the echoed response alone — no refetch of `/api/subjects`, which could only return
+the same thing.
+
+**There is no delete**, and that is not an oversight. A trigger a check-in still references
+cannot be removed without stranding the reference: the export would omit the row and the
+import would refuse the file for naming a trigger it does not contain. Rename covers *this is
+called the wrong thing* and merge covers *this is the same as that*, which is every reason a
+user has to reach for one here.
+
+**Discretion** blurs labels and transcripts. A trigger label is a word about the user's life
+and is treated as one.
+
+---
+
 ## 3. `Dashboard.jsx` — the core screen
 
 888 lines containing, in order: five presentational sub-components, two modals, the scoring
@@ -274,8 +694,8 @@ row, the form, and the default-exported screen. **The taxonomy no longer lives h
 moved to [`src/constants/categories.js`](../src/constants/categories.js) (§3.1) and is
 re-exported for compatibility.
 
-Named exports: `CATEGORIES` / `CATEGORIES_EXPORT` and the helpers `anchorFor`, `guideBand`,
-`isScored` (all re-exports), plus `AboutModal` (for `Landing`), `PersonForm` and
+Named exports: `CATEGORIES` / `CATEGORIES_EXPORT` and the helpers `anchorFor`,
+`anchorPhrase`, `guideBand`, `isScored` (all re-exports), plus `AboutModal` (for `Landing`), `PersonForm` and
 `CategorySliderRow` (so the form can be unit-tested without mounting the whole dashboard).
 
 ### 3.1 `CATEGORIES` — now in `src/constants/categories.js`
@@ -295,7 +715,7 @@ content. Structurally, each entry is:
     extendedDescription: '…',      // AboutModal detail paragraph
     coreMotivation: '…',
     metrics: [{ title, description }, …],
-    anchors: [{ min: 0, max: 20, phrase: '…' }, …]   // 3-4 contiguous bands covering 0-100
+    anchors: [{ min: 0, max: 16, phrases: ['…', …] }, …]  // 5-6 bands, five phrasings each
 }
 ```
 
@@ -304,14 +724,42 @@ content. Structurally, each entry is:
 > two places or shipping an invisible line. There is now one entry per category and one
 > place to edit. `CATEGORY_COLORS` is gone — read `cat.hex`.
 
-The module also exports the pure helpers every screen shares: `anchorFor`, `guideBand`,
-`isScored`, `byDateDesc`, and `summarizeStack`. They live beside the taxonomy because they
-are all knowledge *about* categories and stats, and none of them touch React.
+The module also exports the pure helpers every screen shares: `anchorFor`, `anchorPhrase`,
+`nextPhraseSeed`, `guideBand`, `isScored`, `byDateDesc`, and `summarizeStack`. They live
+beside the taxonomy because they are all knowledge *about* categories and stats, and none of
+them touch React.
 
-`anchors` is the Phase 2 addition: the phrase for the band containing the current slider
-value is shown live under the slider. Bands must start at 0, end at 100, and leave no gap —
-`Dashboard.test.jsx` asserts exactly that for all seven categories, so a malformed band is a
-test failure rather than a blank line in the UI.
+**`anchors` and the five phrasings.** A phrase from the band containing the current slider
+value is shown live under the slider. Bands must start at 0, end at 100, and leave no gap;
+each must carry exactly `PHRASES_PER_BAND` (five) distinct phrasings, and no phrasing may
+repeat across the bands of one category. `Dashboard.test.jsx` asserts all of that for all
+seven categories, so a malformed band is a test failure rather than a blank line in the UI.
+
+Each band used to hold one sentence, which meant a category's whole scale was four sentences
+and re-reading them taught nothing. The five are written through five deliberate lenses —
+attention, behaviour, a concrete scene, absence, and the felt quality — so they describe one
+position from five directions rather than paraphrasing it. **When adding or editing a
+category, write all five**; four of five is the failure mode the test exists to catch.
+
+```js
+export const anchorPhrase = (category, value, seed = 0) => …   // one of the band's five
+export const nextPhraseSeed = () => …                          // one per form opened
+```
+
+`anchorPhrase` is bound by two rules that pull against each other:
+
+1. **It must not change while the thumb is moving.** It keys off the *band*, never the value,
+   so dragging from 51 to 67 leaves the sentence still. A phrase reshuffling under a moving
+   dial is unreadable, and reads as a bug.
+2. **It must not be the same sentence forever.** The seed comes from the form and changes
+   each time one is opened, so the second scoring session says something the first did not.
+
+The seed is a **rotating counter with a random start**, not a fresh `Math.random()` per
+render: a counter guarantees five openings walk the whole set, where random selection would
+happily show the same phrasing three times running. The band index and a per-category offset
+are added in, so one pass down the form shows five different lenses rather than the same one
+seven times. `PersonForm` draws its seed once, in a `useState` initialiser — drawing it
+during render would reshuffle every sentence on every keystroke.
 
 Re-exported as `CATEGORIES_EXPORT` (line 147) purely so `AnalysisTimeline` can receive it
 as a prop. The odd name exists because the local `const CATEGORIES` already occupies the
@@ -335,8 +783,9 @@ const GUIDE_SCALE = [{ label: 'Never', value: 0 }, { label: 'Sometimes', value: 
                      { label: 'Often', value: 70 }, { label: 'Constantly', value: 100 }];
 const GUIDE_BAND_RADIUS = 8;
 
-export const anchorFor = (category, value) => …   // the band containing value
-export const guideBand = (answers) => …           // { count, midpoint, min, max } | null
+export const anchorFor = (category, value) => …          // the band containing value
+export const anchorPhrase = (category, value, seed) => … // one of that band's five phrasings
+export const guideBand = (answers) => …                  // { count, midpoint, min, max } | null
 ```
 
 **The two-number trap:** an answer is stored as its **index** (`0..3`) and averaged as its
@@ -435,6 +884,13 @@ So the stack takes the horizontal axis, which nothing else on this screen wants:
 compositor, which both removes the ~300 ms the WebView spends deciding and keeps scrolling
 smooth while the JS handler is still making up its mind.
 
+> **The one screen that is allowed the other answer** is the nightly ritual
+> ([§2f](#2f-ritualcardsjsx--journalritual-the-nightly-questions)), whose card claims *both*
+> axes with `touch-action: none`. It is the same rule, not an exception to it: a control may
+> take an axis only where nothing else on the screen wants it, and that route is
+> full-viewport and does not scroll, so nothing else does. The claim is conditional on it
+> staying that way, and the comment on the line says so.
+
 **The pager** — below the stack, `sm:hidden`: two chevrons and an `n / N` count. A swipe
 nobody is told about is a feature nobody has, and there is no hover state on a phone to hint
 with (the "Scroll ↓ for history" line inside the card is `hidden sm:block` for exactly that
@@ -529,7 +985,9 @@ What it renders, top to bottom:
    covering it.
 4. **Tick marks** at every anchor boundary, plus — on a new version — a mark showing where
    this category stood last time.
-5. **The live anchor phrase** for the current value, and beside it a `Last time 62` button
+5. **A live anchor phrase** for the current value — one of the band's five, held steady
+   while the dial turns and re-drawn from a different lens the next time the form is opened
+   — and beside it a `Last time 62` button
    when `previousValue` is set and differs from the current one. Since a new version now
    starts at zero (§3.6), this is how last time's number stays one tap away without being
    assumed. It disappears once taken, because an offer already accepted is noise.
@@ -613,6 +1071,16 @@ One form serving three modes, distinguished by two props:
   new-version, the stored date when editing.
 - **Name is `disabled` in new-version mode** (plus `opacity-50 cursor-not-allowed`) so the
   grouping key cannot drift.
+- **Name suggestions**, from a `suggestions` prop the dashboard fills with
+  `useSubjects().relationships` — **every** relationship, `snapshot_count: 0` included. A
+  person the journal met in a check-in is not on the dashboard grid, so without this the only
+  way to give them a first snapshot is to type the name back exactly; typing it back *almost*
+  exactly is how a near-duplicate is born, because resolution is exact after trim (invariant
+  2b). It is a `datalist` rather than a picker: it suggests without choosing, so what is
+  submitted is still a string the user confirmed (invariant 15) and the server's
+  `FindOrCreateRelationship` still decides which relationship that string means. The list id
+  comes from `useId`, and nothing is rendered in new-version or pulse mode, where the field is
+  disabled and the person is already decided.
 - **Sliders** — one `CategorySliderRow` per category. Initial stats are the all-zero
   baseline, merged with `initialData?.stats` **only when editing or pulsing** — see the
   seeding table below for why a new version no longer inherits.
@@ -801,6 +1269,13 @@ mount** (`useState(readSnoozes)`), so the banner cannot re-evaluate itself into 
 mid-interaction; and both readers swallow parse errors, because a corrupt preference must
 never take the dashboard down with it.
 
+**The slot is shared, and the sharing is exclusive.** Since the journal's nightly ritual
+exists there are two nudges, and the dashboard renders **at most one** (§3.6, invariant 2c):
+after the ritual's chosen hour `useRitualPrompt()` claims this place and the cadence banner
+waits for the next session, whether or not the ritual line is still on screen. Two calm
+sentences stacked are a to-do list. `CadenceNudge` is unchanged and knows nothing about it —
+the decision is one ternary in `Dashboard.jsx`, beside the comment that says why.
+
 ## 3b. Quick Pulse
 
 A pulse is `PersonForm` with `isPulse`, which implies everything `isNewVersion` implies —
@@ -827,13 +1302,32 @@ to be true of the code as written:
 | Claim | Why it holds |
 | :---- | :----------- |
 | "Every request goes to this app's own origin" | There is no third-party script, no analytics, no CDN anywhere in the bundle |
-| "There are no AI features, by design" | Nothing in this codebase infers or scores |
-| "The database is not encrypted" | It is not, and saying so is the point |
+| "There are no AI features, by design" | Nothing in this codebase infers or scores. **Re-read and re-confirmed on 2026-08-22, after the journal shipped:** 6-A contains no model and no microphone. Its candidate matching is exact-then-case-and-diacritic string comparison that never auto-selects, its "most often" lines are counts of the user's own rows, and `duration_ms` is a measurement of a stopwatch. This sentence changes at **6-C**, when the transcriber ships — not at 6-A, and not at 6-B ([Phase 6 §10.1](../product_vision/06-emotional-journal.md)) |
+| "The database is not encrypted" | It is not, and saying so is the point. Since Phase 6 the sentence **names the journal in the journal's own words** — "the words you tapped, what you typed, the people and things you named, and your answers to the evening questions" — because a reader would not otherwise know that "your notes and scores" covered it. It promises nothing about later: `docs/13` is an unconfirmed option, and a Vault sentence implying a schedule would be the claim, not the schedule, that was wrong |
 | "This locks the screen, it does not encrypt the database" | The app lock is a passphrase hash in `localStorage` and nothing else |
+
+The **"Your data"** paragraph is not a privacy claim but is held to the same standard, because
+the sentence above it says *everything* you have written is stored here: it counts journal
+entries alongside relationships and snapshots, from `journal_entry_count` and
+`oldest_journal_day` on `GET /api/meta`. The count is every stored row — superseded ones
+included — which is what that field counts and what "how much of my data is here" means; the
+sentence names the kinds so the number is readable. It is **omitted entirely** when the
+journal is empty rather than rendered as "0 journal entries", and its month comes from
+`monthOf`, which reads the civil-day string by its parts — `new Date('2026-08-01')` is UTC
+midnight and renders as *July* west of Greenwich.
 
 `buildCSV` is exported and unit-tested because its one rule is easy to break: **a skipped
 category is an empty cell, never a zero.** The distinction the whole app is built on has to
 survive the export too.
+
+`buildJournalCSV` is the second sheet, at one row per feeling per check-in, and follows the
+same rule for the same reason: an unanswered intensity or uncertainty is an empty cell, not
+a zero and not a `false`. It reads the `journal` block of `GET /api/export` rather than
+anything in browser state, because it needs rows no screen holds — trigger labels, and the
+entries a correction replaced. **The transcript is not a column**, deliberately: the JSON
+carries what was said, and the spreadsheet is the form most likely to be opened on a shared
+screen. The CSV button downloads both files; the journal one is skipped entirely when there
+is no feeling to write.
 
 The import flow is always dry-run → show → confirm. The preview posts `?dry_run=true`, which
 the server runs down the identical code path and then rolls back, so the numbers on screen
@@ -1004,6 +1498,211 @@ reads as noise — the vertices carry the category colours instead.
 Placements: the card flip (bars ⇄ shape, bars default), the timeline header with its compare
 selector, and above the delta list in `WhatChanged`.
 
+`buildShapeData` and `ShapeDot` being exported and unit-tested is the pattern the day graph
+follows wholesale — see [4bd](#4bd-daygraphjs--the-day-graphs-geometry), which is that idea
+with the component still to come.
+
+---
+
+## 4bd. `dayGraph.js` — the day graph's geometry
+
+**Pure geometry, beside `LoveShape`'s.** `buildShapeData` is where every honesty rule of the
+radar polygon lives and the component is a `map` over what it returns; `dayGraph.js` is the
+same arrangement for the day graph, and rather more of it. It exports four functions and no
+component:
+
+| Function | Returns | What it decides |
+| :------- | :------ | :-------------- |
+| `buildDayCurve(entries, options)` | `{ samples, branches, bounds }` | The whole day: where every branch is born, how it moves between check-ins, when it merges back into the trunk, and which stretches are guesses. |
+| `branchPaths(curve)` | one path per branch lifetime | Birth and merge at trunk valence, stroke width from strength, dashed for uncertainty, and the split where the opacity changes. |
+| `project(point, camera)` | `{ x, y, depth, width, opacity }` | The 2.5-D oblique camera. `{ yaw, pitch }`, in degrees. |
+| `dayGraphLegend(samples)` | the day's feelings, in first-appearance order | The key beside the drawing. |
+
+`paintersOrder(items)` is a fifth and small: the depth sort has to be **stable** for equal
+depths, and it decorates with the index rather than trusting the engine's sort, so two
+feelings at one energy cannot swap places between renders.
+
+**There is no React import in the file, and there will not be one.** That is invariant 19
+made structural rather than remembered: Recharts draws nothing under jsdom, so a test that
+asserts on a chart's rendered SVG proves nothing — and the answer this repo takes is to put
+every decision about where a line goes in a function a test can call with a fixture and check
+to the minute. `dayGraph.test.js` does exactly that, including a case that reads the source
+file back and fails if a renderer import ever appears.
+
+**The eight construction rules** ([§8.2](../product_vision/06-emotional-journal.md#82-from-discrete-check-ins-to-a-continuous-branching-curve))
+are the specification, and three of them are the honesty rules:
+
+- **Nothing is drawn before the first check-in.** The trunk runs first check-in → last, not
+  00:00 → 24:00. A line back to midnight would claim the user was level all morning, when what
+  is true is that they had not said anything yet — the same rule that keeps an undated
+  snapshot off the timeline's axis.
+- **A later check-in without the feeling does not end its branch.** Absence is not a report
+  that the feeling stopped; that is invariant 14 applied to time. Only decay ends a branch,
+  and only a check-in carrying it sustains one. The single exception is an explicit `level`
+  check-in — *and only when `level` is the whole of it*, because "level, and also anxious" is
+  not a report that nothing in particular is present.
+- **A guess is marked as a guess.** Anything further than `CONFIDENT_MIN` from a check-in
+  actually carrying the feeling is emitted with `extrapolated: true` and drawn faint. The
+  graph never pretends to know what happened at 15:00 because something was said at 11:00.
+
+**`t` is elapsed minutes, not clock minutes.** Samples carry minutes since the day's first
+check-in, computed from instants, and `bounds.startAt + t * 60000` is the instant of any
+sample. A civil day that contains a clock change is 23 or 25 hours long, and an x axis in
+local clock time would run backwards through the hour that happens twice; elapsed minutes are
+monotone by construction, which is the property the DST case in the suite pins.
+
+**Every tunable is a named, exported constant** — `FEELING_HALF_LIFE_MIN`,
+`BRANCH_END_THRESHOLD`, `CONFIDENT_MIN`, `NEUTRAL_SETTLE_MIN`, `STEP_MIN`,
+`UNSTATED_INTENSITY` — and the `options` argument overrides each one, which is how the tests
+prove the arithmetic follows the constant rather than a number written into it. They are
+**drawing choices about a record, not claims about the user**, and the ⓘ says so in
+`JOURNAL_COPY.dayGraph`: the half-life sentence fills from the constant through
+`humanMinutes`, so tuning it cannot leave the sentence saying something untrue.
+
+`UNSTATED_INTENSITY` is the one worth naming here. The ritual's day word is one tap on one
+word and carries no `intensity` at all (§6.5) — the server accepts the absence rather than let
+the client invent a number. The graph still has to put the line somewhere, so it puts it at
+the lightest of the three steps and says which, in `JOURNAL_COPY.dayGraph.unstated`. A silent
+2 would have drawn a word tapped at bedtime as strongly as a feeling deliberately marked
+strong.
+
+**Sampling.** Every `STEP_MIN` from the first check-in to the last, capped at `MAX_SAMPLES`
+(288) — a 25-hour day widens the step to hold the cap, and `bounds.stepMin` reports what was
+used. The five-feeling limit is the *composer's*, per check-in; branches outlive the check-in
+that reported them, so ten can be alive at once and none of them is truncated (see
+`bounds.maxBranches`).
+
+**Renderer-agnostic on purpose.** Everything above is (x, y, z) and minutes.
+[§8.3](../product_vision/06-emotional-journal.md#83-rendering-technology) picks hand-drawn SVG
+for this slice and names three.js as the upgrade path rather than a fork; `project` at
+`pitch = 0` is the exact 2-D ribbon, so the flat fallback and the tilted drawing are one
+geometry with a camera setting between them, not two code paths.
+
+---
+
+## 4be. `DayGraph.jsx` — the day, drawn
+
+**Read `dayGraph.js` (§4bd) first.** Everything about *where a line goes* is decided there, in
+pure functions with 62 tests and no DOM. This file is the `map` over what they return, plus a
+camera and a gesture — the same division `buildShapeData`/`LoveShape` uses, with rather more
+arithmetic on the other side of it.
+
+**Mind the case.** `DayGraph.jsx` draws; `dayGraph.js` decides. They differ only in the case of
+one letter, and this filesystem does not — so **every import of either must spell the
+extension out**. Vite resolves `.js` before `.jsx`, so a bare `import DayGraph from './DayGraph'`
+silently returns the *geometry* module, whose default export does not exist; what you get is
+`Element type is invalid: … got: undefined`, pointing at the JSX rather than at the import. It
+cost session B2 a confused ten minutes. `Journal.jsx`, `DayGraph.jsx` and `DayGraph.test.jsx`
+all carry the extension and a comment saying why.
+
+### What it draws
+
+One `<path>` per branch lifetime, a `<line>` for the trunk, a `<line>` per six-hourly time
+mark, and a faint `<line>` per depth the day holds. Nothing else is a `<path>`, which is what
+lets `DayGraph.test.jsx` assert that the number of paths in the drawing **equals**
+`branchPaths(curve).length` — a branch that stopped being drawn, or one drawn twice, fails
+rather than looking fine.
+
+| Channel | Drawn as | Note |
+| :------ | :------- | :--- |
+| **x** — time of day | Position along the **civil day**, 04:00 → 04:00 | Proportional: a six-hour gap is six hours of pixels. |
+| **y** — valence × strength | Distance from the branch's own neutral line | Up is pleasant, the one thing the vertical axis is for. |
+| **z** — energy | Depth: the branch's neutral line, and how far the turn moves it sideways | Fixed per feeling, so a feeling is always at the same depth. |
+| Colour | `stroke`, a complete literal hex from `FEELINGS` | Never a composed class name (invariant 4). |
+| Strength | `stroke-width`, from `strokeWidthFor` | The branch's **peak**: SVG strokes one width per element, and the moment-to-moment strength is already in y. |
+| Uncertain, or `unclear` | `stroke-dasharray="4 3"` | The radar's ghost dash — one `≈` convention across the app. |
+| Extrapolated | Reduced `stroke-opacity`, or a gradient along the stroke | See below. |
+
+**The axis is the day, not the record.** §8.1 asks for time of day, proportional, so two
+check-ins ten minutes apart draw ten minutes of line on a whole day. It is the **civil** day —
+04:00 to 04:00, `DAY_ROLLOVER_HOUR` — and not midnight to midnight, because a 02:00 check-in
+belongs to the day before (§6.3) and a midnight axis would have nowhere to put one. Both ends
+are built as local dates rather than as `from + 24 h`, so the axis is genuinely 23 or 25 hours
+long on the two days a year that are, and the six-hourly labels still read `06:00` and `12:00`
+through a clock change.
+
+**The trunk is the record, not the day.** It runs first check-in → last (§8.2 rule 1); a line
+running back to 04:00 would claim the user was level all morning when what is true is that
+they had not said anything yet. On a day with one check-in in it the trunk is a *point*, drawn
+with a round cap so the branch still has a baseline to be read against.
+
+**The receding floor.** One faint neutral line per energy the day holds, spanning the record.
+Without it the tilt is not subtle but unreadable: a branch above the trunk is either a
+pleasant feeling or a low-energy one seen from above, and nothing else on screen says which.
+With it, a branch is born exactly on its own line and its distance from that line is its
+valence — which is the reading §8.1 asks for. Flat has no depth to show and so has no floor.
+
+**Opacity along a stroke, without a second path.** A branch is routinely part measured and
+part guess — §8.2 rule 6 marks anything further than `CONFIDENT_MIN` from a check-in that
+carried the feeling, which for a branch reported twice is the *middle* of it as well as the
+tail. SVG strokes one opacity per element, so drawing that faithfully normally means an
+element per run — and that would break the one-path-per-branch property the suite holds. A
+`userSpaceOnUse` gradient along the stroke keeps both, and it is exact rather than
+approximate: screen x is `x·cos(yaw) + z·sin(yaw)` and z is constant along a branch, so screen
+x is affine in time and strictly increasing for every angle inside `MAX_YAW`. Pairs of stops
+at one offset make it a step, because the geometry's answer is a step. A branch that is all
+one thing skips the gradient and carries a plain `stroke-opacity`.
+
+### The camera
+
+`{ yaw, pitch, depthScale }`, straight into `project`. `pitch = 0` is the exact identity on x
+and y, so **the flat ribbon is a camera setting and not a second implementation** — the *Show
+it flat* button is the whole of §8.3's "honest fallback", which is what makes §12.4's open
+question ("is the tilt legible, or is the ribbon enough?") cheap to keep asking.
+
+- **`DEFAULT_PITCH = 26°`**, tuned against real days rather than chosen. At 30° with the depth
+  axis at full reach, a low-energy feeling was lifted further by the tilt than a strong
+  pleasant one was by its own valence — *up* stopped meaning *pleasant*, which is the one
+  thing §8.1 says the vertical axis is for. At 26° the deepest a feeling can be pushed is
+  about a fifth of the valence axis: enough to see the floor recede, not enough to outvote it.
+- **`MAX_YAW = 45°`, in 15° steps.** Turning spreads the energy axis sideways and foreshortens
+  time; that is what an oblique turn *is*, and it is why the graph opens at `yaw = 0`, where
+  the time axis is undistorted.
+- **The scale follows the camera.** A fixed scale would either waste two thirds of the canvas
+  at `yaw = 0` or push the drawing off it at full turn, so the extent is fitted per angle. It
+  costs nothing in honesty — within one view and along one branch, screen x stays affine in
+  time. The **vertical** scale is fixed by the vocabulary, not by the day: `Y_EXTENT` is the
+  largest `|valence|` in `FEELINGS`, read from the constant, so a quiet day is never drawn as
+  dramatically as a loud one and a feeling added at a stronger valence rescales the drawing
+  instead of overflowing it.
+
+### The gesture, and the axis it is allowed to take
+
+`touch-action: pan-y` on the plot, and the card stack's contract in JavaScript beside it: 45 px
+of horizontal travel turns the drawing, 12 px of vertical travel hands the gesture back
+*permanently* so a scroll cannot become a turn halfway through, and a drag that pushes past the
+last angle is released to the page rather than swallowed. The listener is registered by hand
+with `{ passive: false }`, because a passive listener cannot `preventDefault` and claiming the
+gesture is the whole point. Two rotate buttons do the same job for anyone who does not drag —
+and they are also what a mouse has, since this is a touch-only gesture.
+
+### Two things it deliberately does not do
+
+- **It holds no names.** There is no `useDiscretion` in the file and nothing for it to do: its
+  input is feeling ids, strengths and coordinates, so it keeps drawing under discretion because
+  it never had a name to hide (§9.6). The legend is feeling labels and nothing else. That also
+  means the graph answers *when* and *what feeling* but never *about what* — that is the
+  check-in row underneath, which is why a tap on a branch opens it.
+- **It draws nothing for an empty day** — not a frame, not an axis with no record on it. §9.4's
+  empty state is the day's answer, and a second, emptier one above it would be noise.
+
+### Accessibility
+
+Each branch has a `<polyline>` tap target 16 px wide (a 1–3 px line is not something a thumb
+can land on) carrying `role="button"`, a tab stop and a label — *"Open the stress check-in from
+09:00"*. It is a `<polyline>` and not a `<path>` on purpose: the path count is one per branch,
+and a second path per branch would quietly break the assertion that says so. The browser's own
+focus ring is turned off and replaced by the branch **thickening**, because a UA ring is drawn
+around the element's bounding box and a branch that crosses the day has a bounding box the size
+of the picture.
+
+### Printing
+
+It prints because it is inline SVG in the normal flow: no `<canvas>`, no WebGL, no image, and
+the app defines **no `@media print` rules at all**, so what prints is what is on screen. That
+is one of the three reasons §8.3 chose hand-drawn SVG over three.js, which needs a WebGL
+context and would print blank.
+
 ---
 
 ## 4c. `ContextCapsule.jsx` — the shared notes + tags editor
@@ -1089,6 +1788,34 @@ Two mismatches to be aware of:
   jpeg/png/webp allowlist, so a GIF passes the picker and is rejected by the API.
 - Selecting the same file twice in a row does not re-fire `onChange` (the input's value is
   never reset) — a known browser behaviour, unhandled here.
+
+### The Journal section (§9.7)
+
+Three per-device settings, in the same toggle shape as *Check-in reminders* above them and
+written to `localStorage` on change rather than by the form's *Save* — they are device
+preferences, not profile fields, and `PUT /api/me` never sees them.
+
+| Control | Key | Default |
+| :------ | :-- | :------ |
+| Nightly ritual, and its time | `alq:journal-ritual` (one key holds both — the time is meaningless without the switch) | Off; 22:30 |
+| Optional questions, at most `MAX_OPTIONAL_QUESTIONS` | `alq:journal-questions` | none |
+| *Ask who I was with* | `alq:journal-ask-who` | Off |
+
+Each optional question is offered with the `note` from `RITUAL_QUESTIONS` that says why it is
+there — including `water`'s, which says out loud that its own evidence is weak. At three
+chosen, the unchosen ones disable and a sentence says so: **stated, then enforced**, the same
+rule the check-in's word cap follows.
+
+**The other five §9.7 settings are described in `JOURNAL_COPY.settings` and are deliberately
+not rendered here.** Voice, suggestions, embeddings, transcripts and language arrive with 6-C,
+6-D and 6-G; a toggle for a feature the app does not have would make a Vault claim false
+(invariant 2e). `Profile.test.jsx` asserts their absence, which is what keeps one from
+arriving by accident. Reading and writing all three live in
+[`constants/journalSettings.js`](../src/constants/journalSettings.js), not here — the ritual
+route and the journal's first-run card read the same keys.
+
+Unlike the reminders block, this section has no availability gate: the ritual is a screen and
+works everywhere. What is native-only is the *notification* for it, which is F2's.
 
 ### Dead controls
 

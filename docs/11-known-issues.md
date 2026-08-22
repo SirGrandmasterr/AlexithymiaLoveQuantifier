@@ -62,6 +62,12 @@ self-hosted personal tool. Severity assumes eventual public exposure.
 > pager, and scoring by thumb happens on a dial that sits clear of everything it affects —
 > [Android §3.3](12-android-app.md#33-inputs-and-touch).
 >
+> Also closed: each anchor band carried a single sentence, so a category's whole 0-100 scale
+> was explained by four of them and a user who had read them once learned nothing on the
+> second pass. There are now five or six bands per category, each with five phrasings written
+> through five different lenses, and the one shown rotates between form openings
+> ([Concepts §3a](01-concepts.md#anchored-sliders)).
+>
 > Also closed: a new version opened on the previous snapshot's scores, so an untouched row
 > recorded a fresh dated score the user never made. New versions start at zero, with last
 > time's value marked on the track and one tap away
@@ -140,19 +146,30 @@ carries `COPY … FROM PROGRAM` and the ability to disable row-level security. C
 requires an initdb script and therefore a fresh volume, which is why it is a register entry
 and not a fix.
 
-### The development SQLite database is committed to git
+### The development SQLite database is no longer committed, but is still not ignored
 
-`backend/alexithymia.db` (28 KB) is tracked and is not covered by
-[`.gitignore`](../.gitignore). It contains dev users and their bcrypt hashes. Every local
-signup dirties the working tree, and it is copied into the Docker build context (no
-`.dockerignore`).
+**Half fixed, and this entry used to be wrong.** `backend/alexithymia.db` *was* tracked; it
+was last committed at `2e4d71c` and has since been removed. Verified untracked on
+2026-08-22 — `git ls-files backend/ | grep '\.db$'` is empty at HEAD.
 
-Sharper since Phase 4: booting this version against that file **rewrites it** — the
-migration recreates `analysis_subjects` and the backfill populates `relationship_id` on
-every row. That is a schema change landing in a tracked binary as an unreviewable diff.
+What is still true is the other half: it is **not** covered by
+[`.gitignore`](../.gitignore), and it is not in a `.dockerignore` either (there is none). So
+a developer who runs the backend locally creates one, it appears as an untracked file in
+`git status`, and a `git add .` puts dev users and their bcrypt hashes back into history.
+Booting a newer version against an old file also **rewrites it in place** — since Phase 4 the
+migration recreates `analysis_subjects` and the backfill populates `relationship_id` on every
+row — so if it ever were tracked again, a schema change would land in a binary as an
+unreviewable diff.
 
-*Fix:* add `*.db` and `backend/uploads/` to `.gitignore`, `git rm --cached
-backend/alexithymia.db`, and purge history if it ever held real credentials.
+*Fix:* add `*.db` to `.gitignore`. (`backend/**/uploads/` is already there.) Purge history if
+that file ever held real credentials.
+
+*Consequence for anyone testing a migration:* there is no dev database in the tree to migrate
+against, so `make migrate-check-local` on a clean checkout **creates an empty one** and
+reports every table missing, which proves nothing. Build a real one first — check out the
+models as they stood before your change, `cd backend && go run ./cmd/migrate`, put some rows
+in it, then add your models — and delete the file again afterwards so the working tree is as
+you found it.
 
 ### Upload validation trusts the client
 
@@ -325,14 +342,13 @@ nothing.
 - "Change Password" — [`Profile.jsx:247`](../src/components/Profile.jsx#L247), no `onClick`.
   The last one: "Learn the Theory" on the Landing page now opens `AboutModal`.
 
-### The development SQLite database is missing from the working tree
+### ~~The development SQLite database is missing from the working tree~~ — resolved
 
-**Severity: low — recoverable.**
-
-`backend/alexithymia.db` currently shows as deleted (` D`, unstaged). It is still tracked, so
-`git checkout -- backend/alexithymia.db` restores the committed copy. If the removal was
-deliberate, finish the job — `git rm --cached backend/alexithymia.db` and add `*.db` to
-`.gitignore` — so it stops reappearing on the next checkout.
+**Closed 2026-08-22.** This described the file mid-removal: deleted in the working tree but
+still tracked. The removal was finished — it is untracked at HEAD — so there is nothing to
+restore and nothing to check out. What remains of it is the `.gitignore` half, which is
+recorded above under
+[the SQLite database entry](#the-development-sqlite-database-is-no-longer-committed-but-is-still-not-ignored).
 
 ### Two axios conventions coexist
 

@@ -47,7 +47,7 @@ Breaking any of these produces a silent or confusing failure rather than a clean
 | 2c | **The cadence nudge never guilt-trips.** No streaks, no badges, no counts of missed check-ins, no red, no urgency vocabulary. | It is a product rule, not a style preference — a missed month must not read as a failure. `nudgeSentence` is tested against a forbidden-word list; keep it that way. |
 | 2d | **Reminders are computed in the browser, never scheduled on the server.** | "Nothing leaves this machine" is a claim the Vault page makes in writing. A scheduler or an email digest would make it false. |
 | 2e | **Every claim on the Vault page must be true of the code as written.** | It says nothing is sent anywhere, there are no AI features, and the database is not encrypted. If you add a network call or a background service, that page is the first thing to fix. |
-| 3 | **Category `id`s are permanent, and now live in two languages.** | They are the stored `stats` keys, the `uncertain` entries, the `guide_answers` outer keys, *and* the server's validation allowlist ([`domain.CategoryIDs`](../backend/internal/domain/categories.go)). Renaming one orphans every historical value and starts 400-ing the new one. |
+| 3 | **Category `id`s are permanent, and now live in two languages — and they are no longer the only vocabulary that does.** | They are the stored `stats` keys, the `uncertain` entries, the `guide_answers` outer keys, *and* the server's validation allowlist ([`domain.CategoryIDs`](../backend/internal/domain/categories.go)). Renaming one orphans every historical value and starts 400-ing the new one. **Feeling ids and ritual-question ids are the third and fourth permanent id vocabulary** ([`domain.FeelingIDs` and `domain.RitualQuestionIDs`](../backend/internal/domain/journal.go), mirrored by `FEELINGS` and `RITUAL_QUESTIONS` in [`src/constants/journal.js`](../src/constants/journal.js)), with `domain.JournalKinds` under the same rule. The Go side holds **ids only** — labels, glosses and colours are the frontend's, exactly as `domain/categories.go` splits them; the parity between the two languages is asserted by a test that reads `domain/journal.go` from disk (`journal.test.js`). Adding one is two edits in two languages and no schema change; **removing one is forbidden** — retire it with `retired: true` in the frontend constant, so the UI stops offering it while the server keeps accepting it for the rows already written and for an import of them. |
 | 4 | **Tailwind colour classes must be complete literal strings.** | The JIT scanner cannot see `` `bg-${x}-400` ``; interpolated classes are purged and render colourless. |
 | 5 | **Register protected routes inside the `protected` group** in `main.go`. | Outside it, the route is public with no warning — that is how `/uploads` became unauthenticated. |
 | 6 | **Read the user id from `c.Get("userID")`, never from the request body.** | It is the only trusted identity source. |
@@ -58,12 +58,12 @@ Breaking any of these produces a silent or confusing failure rather than a clean
 | 11 | **Do not change the `Auth.jsx` placeholders or button labels casually.** | `name@example.com`, `••••••••`, "Sign In", "Create Account", "Analyze & Save", "Account created! Please log in." are all test selectors in the unit and/or E2E suites. The same now applies to `PersonForm`'s note placeholder and the "Add a custom tag" label. |
 | 12 | **`PUT /api/subjects/:id` is a partial merge.** | Absent field = unchanged; present field = written, including `""`/`[]`. Keep `UpdateSubjectInput`'s fields pointers — turning one back into a value type silently reinstates the description-wipe bug. |
 | 13 | **Never silently discard bad input.** | Validation failures return a 400 naming the field. A handler that "just ignores" a malformed value is how the old date bug survived. |
-| 14 | **Absent ≠ zero, in `stats`.** | A missing key means the category was skipped. Read it with a presence check (`isScored`), never `stats[id] \|\| 0`. |
+| 14 | **Absent ≠ zero, and absent ≠ false** — in `stats`, and now in every journal payload. | A missing `stats` key means the category was skipped. Read it with a presence check (`isScored`), never `stats[id] \|\| 0`. The journal extends the rule to booleans and to whole keys: a skipped ritual question is **absent from `answers`**, never `false`; a check-in with no strength in it omits `intensity` rather than writing a middle number; `uncertain` is written only when it is `true`. The Go validators mirror this with pointer fields (`Intensity *int`, `Uncertain *bool`), so nil and zero stay distinguishable — see trap 13. |
 | 15 | **The user authors every number.** | The guided-scoring band is a suggestion drawn on the track; only an explicit "Use N" click moves the slider. No code path may write a score the user did not confirm. |
 | 16 | **Guide answers store the scale *index* (0-3), not its value (0/35/70/100).** | The band arithmetic maps index → value through `GUIDE_SCALE`. Confusing them yields a band that looks reasonable and is wrong. |
-| 17 | **The subject list lives in `SubjectsContext`.** | Fetching it again in a screen re-introduces the stale-copy bug the context exists to kill. Use `useSubjects()`. |
+| 17 | **The subject list lives in `SubjectsContext`.** | Fetching it again in a screen re-introduces the stale-copy bug the context exists to kill. Use `useSubjects()`. `JournalContext` is the second context, not a second store: it holds journal entries and **reads** the people from `useSubjects()`, which is why it is mounted inside `SubjectsProvider`. |
 | 18 | **Radar axis order is `CATEGORIES` order, always.** | A Love Shape is only recognisable if a given category sits at the same angle every time. Do not sort the shape data. |
-| 19 | **Recharts renders nothing under jsdom.** | Chart logic must live in exported pure functions; a test asserting on rendered SVG proves nothing. |
+| 19 | **Recharts renders nothing under jsdom.** | Chart logic must live in exported pure functions; a test asserting on a *Recharts* chart's output proves nothing. **Hand-drawn SVG is the exception, and it is the reason to prefer it**: `DayGraph.jsx` is a `map` over [`dayGraph.js`](../src/components/dayGraph.js)'s geometry, and `DayGraph.test.jsx` counts its `<path>`s and reads its `stroke-dasharray` for real. The rule is unchanged — the decisions live in pure functions either way. |
 
 ---
 
@@ -103,9 +103,13 @@ Ranked by how much time they waste.
     be exercised by `database_test.go`'s drop-and-re-add trick. It has its own test.
 10c. **Mock `axios.get` per URL in frontend tests.** The provider loads `/api/subjects` and
     `/api/relationships` together; one blanket `mockResolvedValue` feeds snapshots to both.
-    Copy the `mockFetch` helper. `Vault` adds `/api/meta` to the list.
+    Copy the `mockFetch` helper. `Vault` adds `/api/meta` to the list, and anything under
+    `JournalProvider` adds `/api/journal/entries` and `/api/journal/days` — four URLs, so
+    copy `Journal.test.jsx`'s version of the helper rather than the two-URL one.
 10d. **`Dashboard` and `TimelineRoute` need `DiscretionProvider` as well as
     `SubjectsProvider`.** `useDiscretion()` throws without it; copy `renderDashboard`.
+    `Journal` needs a third, `JournalProvider`, **inside** `SubjectsProvider` — it calls
+    `useSubjects()` for the names, so the nesting is not interchangeable. Copy `renderAt`.
 10e. **A JSON `null` is indistinguishable from an absent key through a pointer field**, at
     any pointer depth — `**int` does not help. `cadence_days` needs all three states, which is
     why `UpdateRelationship` decodes into `map[string]json.RawMessage` and reads presence from
@@ -117,6 +121,33 @@ Ranked by how much time they waste.
     instance and so sat outside the 401 auto-logout in `App.jsx`; it no longer does. Do not
     reintroduce a private instance — an interceptor on the global default never reaches one.
 12. **Port 8080 is the backend in dev but the frontend under Docker.** They collide.
+13. **A skipped ritual question is *absent*, and `question_set.asked` is the only thing that
+    says it was shown.** `answers` holds answers, so `answers.alcohol === undefined` covers
+    two different nights: one where the question was on screen and swiped past, and one where
+    the user had never turned that optional question on. Only `asked` separates them, which is
+    why it is recorded even though it looks derivable from today's settings — tomorrow's
+    settings are not yesterday's. Anything that renders, exports, counts or graphs a ritual
+    reads **both**: `asked.includes(id)` first, then `answers[id]`. Reading `answers` alone
+    silently turns "never asked" into "answered no", which is the invariant-14 mistake wearing
+    a different hat, and it is invisible in a test whose fixture happens to ask everything.
+14. **A journal row's `client_id` is not the same key as its row `ID`, and the API takes
+    different ones in different places.** `DELETE /api/journal/entries/:id` takes the **row
+    id**; `supersedes_id` is a **row id**; everything inside a payload — `about.trigger`,
+    `merged_into`, `corrects`, the `triggers[]` list — is a **`client_id`**. The two are both
+    opaque and one is a UUID, so a mix-up returns a clean 404 rather than an error that
+    explains itself. The rule behind it: ids that travel in an export are client ids, because
+    row ids are not portable; ids that only ever address a row on this server are row ids.
+15. **Two files in `src/components/` differ only in the case of one letter, and this
+    filesystem does not.** `dayGraph.js` is the day graph's geometry; `DayGraph.jsx` is the
+    component that draws it. Vite resolves `.js` before `.jsx`, so `import X from './DayGraph'`
+    returns the **geometry** module — no default export, and an error reading
+    `Element type is invalid: … got: undefined` that points at the JSX rather than at the
+    import. It would resolve correctly on a Linux CI and wrongly on Windows and macOS.
+    **Spell the extension out** in every import of either.
+16. **A feeling's label appears twice on the day view** — once on the check-in's chip, once in
+    the graph's legend — so `screen.getByText('connectedness')` throws *"Found multiple
+    elements"*. Both are correct; the test has to say which it means.
+    `Journal.test.jsx`'s `rows()` helper is the scoped-query pattern to copy.
 
 ---
 
@@ -131,7 +162,8 @@ server's validation allowlist — skip step 3 and every save carrying the new ke
    [`src/constants/categories.js`](../src/constants/categories.js), matching the
    existing shape exactly: `id`, `label`, `description`, `color`, `hex`, `textColor`,
    `borderColor`, `extendedDescription`, `coreMotivation`, `metrics[{title, description}]`,
-   `anchors[{min, max, phrase}]`. Use **literal** Tailwind class strings. The anchor bands
+   `anchors[{min, max, phrases}]` — **five** phrasings per band, five or six bands covering
+   0-100. Use **literal** Tailwind class strings. The anchor bands
    must start at 0, end at 100 and be contiguous — a unit test enforces it. `hex` must match
    `color`; it is what the SVG charts stroke with.
 2. Add the `id` to `CategoryIDs` in
@@ -275,6 +307,45 @@ Three rules when adding to it:
   tests must use real ids.
 
 `binding:"dive"` tags cannot express any of this — map *keys* are not covered.
+
+[`journal.go`](../backend/internal/handlers/journal.go) is the same pattern at scale, and it
+is the one to copy from now: `validateClientID`, `parseDayString`, `validateDay`,
+`validateMentions`, `validateTriggerRefs` and one `validate<Kind>Payload` per entry kind, all
+above the handler, all returning a message that names the field. Two things it adds worth
+carrying forward. It normalizes **in place** — `validateTriggerPayload` writes the trimmed
+label back into the payload map before the row is stored, so the value checked is the value
+written. And it splits a rule that needs a database from the rule that does not: the same
+check on `merged_into` is a pure function for "is this well-formed and not self-referential"
+and a query inside the transaction for "is this trigger still the caller's", so the cheap half
+rejects before a transaction is opened and the expensive half cannot race.
+
+### Recipe 9: Add a journal entry kind
+
+A new `kind` is how the journal extends. It brings its own payload shape and needs **no schema
+change** — the row is `kind` plus an opaque `payload`, and a payload that lacks a key already
+means "not present" ([Data Model §journal](03-data-model.md#journalentry)).
+
+1. **The id** — add it to `JournalKinds` in
+   [`domain/journal.go`](../backend/internal/domain/journal.go). Never remove one: a kind that
+   stops validating orphans every row that used it, and an import of those rows too.
+2. **The payload struct and its validator** — in
+   [`handlers/journal.go`](../backend/internal/handlers/journal.go), beside
+   `checkinPayload`/`validateCheckinPayload`. Name only the keys the server checks; everything
+   else in the map travels through untouched, which is what lets a newer client write a field
+   this server has never heard of. Use pointer fields for anything where absent and zero
+   differ (invariant 14).
+3. **The dispatch** — one `case` in `validateJournalPayload`.
+4. **The reader** — a `read<Kind>` in [`src/constants/journal.js`](../src/constants/journal.js)
+   beside `readCheckin`/`readRitual`/`readTrigger`, returning `null` for absent rather than a
+   default, and tolerant of unknown keys.
+5. **The copy** — every string it puts on screen goes in `JOURNAL_COPY`, or the forbidden-word
+   walk in `journal.test.js` cannot see it.
+6. **Does it put something on a day?** If yes, add it to `DAY_KINDS` in
+   [`JournalContext.jsx`](../src/context/JournalContext.jsx) and to the counted kinds in
+   `GetJournalDays`; if it is vocabulary rather than an event — the way `trigger` is — do
+   neither, or it will mark days in the month strip that have nothing on them.
+7. **Export** — nothing to do. The export walks entries of every kind, so a new one is carried
+   and re-imported for free; that is the point of the shape.
 
 ---
 
