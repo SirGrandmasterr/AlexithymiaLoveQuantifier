@@ -7,12 +7,17 @@ import Dashboard from './components/Dashboard';
 import Auth from './components/Auth';
 import Profile from './components/Profile';
 import TimelineRoute, { LegacyTimelineRedirect } from './components/TimelineRoute';
+import Journal from './components/Journal';
+import JournalPeople, { JournalPerson } from './components/JournalPeople';
+import JournalTriggers from './components/JournalTriggers';
+import RitualCards from './components/RitualCards';
 import Vault from './components/Vault';
 import AppLock from './components/AppLock';
 import MobileBottomNav from './components/MobileBottomNav';
 import ServerSettingsModal from './components/ServerSettingsModal';
 import SessionExpiredDialog from './components/SessionExpiredDialog';
 import { SubjectsProvider } from './context/SubjectsContext';
+import { JournalProvider } from './context/JournalContext';
 import { DiscretionProvider, useDiscretion } from './context/DiscretionContext';
 import { isNative } from './mobile/platform';
 // Imported for its side effect as much as its exports: the module sets
@@ -92,13 +97,18 @@ export default function App() {
                     {/* One subject list for every screen: the dashboard and the timeline route
                         read the same state, so an edit in one is never stale in the other. */}
                     <SubjectsProvider enabled={!!token} reloadKey={sessionEpoch}>
-                        <Shell token={token} onLogout={handleLogout} onLogin={handleLogin} />
-                        {sessionLost && (
-                            <SessionExpiredDialog
-                                onSignedIn={handleSessionRestored}
-                                onSignOut={handleSessionAbandoned}
-                            />
-                        )}
+                        {/* Inside the subject list, not beside it: the journal names people
+                            and reads them from `useSubjects()` rather than fetching a second
+                            copy of the list (invariant 17). */}
+                        <JournalProvider enabled={!!token} reloadKey={sessionEpoch}>
+                            <Shell token={token} onLogout={handleLogout} onLogin={handleLogin} />
+                            {sessionLost && (
+                                <SessionExpiredDialog
+                                    onSignedIn={handleSessionRestored}
+                                    onSignOut={handleSessionAbandoned}
+                                />
+                            )}
+                        </JournalProvider>
                     </SubjectsProvider>
                 </DiscretionProvider>
             </AppLock>
@@ -146,6 +156,33 @@ function Shell({ token, onLogin, onLogout }) {
                 <Route
                     path="/vault"
                     element={token ? <Vault /> : <Navigate to="/login" />}
+                />
+                {/* The journal. `/journal/:day` is last only for reading order — a static
+                    segment outranks a dynamic one, so `/journal/ritual` is the ritual and
+                    never a day called "ritual". */}
+                <Route
+                    path="/journal"
+                    element={token ? <Journal /> : <Navigate to="/login" />}
+                />
+                <Route
+                    path="/journal/ritual"
+                    element={token ? <RitualCards /> : <Navigate to="/login" />}
+                />
+                <Route
+                    path="/journal/people"
+                    element={token ? <JournalPeople /> : <Navigate to="/login" />}
+                />
+                <Route
+                    path="/journal/people/:id"
+                    element={token ? <JournalPerson /> : <Navigate to="/login" />}
+                />
+                <Route
+                    path="/journal/triggers"
+                    element={token ? <JournalTriggers /> : <Navigate to="/login" />}
+                />
+                <Route
+                    path="/journal/:day"
+                    element={token ? <Journal /> : <Navigate to="/login" />}
                 />
                 <Route
                     path="/relationships/:id/timeline"

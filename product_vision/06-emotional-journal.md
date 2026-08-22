@@ -1,11 +1,23 @@
 # Phase 6 — The Emotional Journal
 
-**Status: plan, not yet implemented.** Written against the code on branch `app-improvements`
-as of 2026-08-21, and revised the same day after review: the voice path is built on one
-audio-native on-device model (Gemma 4 E2B) rather than a transcriber plus a text model,
-triggers are first-class records, and an on-device embedding index is the phase's last slice
-(§5.5, §5.8, §6.3, §11). Nothing in this document has been built; every file path it names is
-either an existing file it hangs off or a proposed one, and the two are labelled as such.
+**Status: 6-A implemented; 6-B…6-G planned.** As of **2026-08-22**. Written against the code
+on branch `app-improvements` as of 2026-08-21, and revised the same day after review: the
+voice path is built on one audio-native on-device model (Gemma 4 E2B) rather than a
+transcriber plus a text model, triggers are first-class records, and an on-device embedding
+index is the phase's last slice (§5.5, §5.8, §6.3, §11).
+
+**Slice 6-A shipped on 2026-08-22** — the two tables, the five endpoints, export/import v2,
+`src/constants/journal.js` and every screen it names (the day view, the check-in composer, the
+nightly ritual, People and Triggers), with the documentation sweep, the manual QA run and the
+review pass that close it. It contains **no model and no microphone**, which is why the Vault
+page's *"There are none, by design"* is still true of the code as written; that sentence
+changes at 6-C, when the transcriber ships, and not before (§10.1).
+[`06-progress.md`](06-progress.md) is the record of exactly what has shipped, session by
+session, and of what 6-A deliberately does not do.
+The execution plan for building it is
+[`06-implementation-prompts.md`](06-implementation-prompts.md) — twenty-eight sessions in
+dependency order, one per commit — and [`06-progress.md`](06-progress.md) is its ledger, which
+records what has actually shipped and beats both documents where they disagree.
 
 Companion reading, in the order this document assumes it: [Concepts](../docs/01-concepts.md),
 [Architecture §7](../docs/02-architecture.md#7-extension-seams),
@@ -276,8 +288,10 @@ stored under its own permanent id so turning it on later never reinterprets old 
 | `water` | *Drank enough water?* | The brief's example. Included because it is cheap and commonly asked for, with the honest note that its evidence as a mood predictor is weak — the setting's description says so. |
 
 **One closing card, optional, answered differently:** *And today, in a word?* — the feeling
-vocabulary (§5.3) as a grid of chips, a single tap, with *can't say* as a first-class chip
-(`unclear`) and swipe-up to skip. It is the only non-binary card and it comes last, so the
+vocabulary (§5.3) as a grid of chips, a single tap, with `unclear` as a first-class chip and
+swipe-up to skip. The chip carries **the vocabulary's own label** — *can't tell*, the same
+word the check-in composer puts on it — because a feeling with two labels on two screens is
+exactly the drift §5.3 forbids. Declining is `skip`, and the two are different records. It is the only non-binary card and it comes last, so the
 binary rhythm of the rest is never interrupted. Its answer is stored as a check-in sample at
 the ritual's time (§6.3), which is what lets the day graph end on something the user said
 rather than on a guess (§8.3).
@@ -294,8 +308,20 @@ user-editable optional tail**.
 | Fully user-composed (free-text questions) | Free text defeats the closed-id contract that makes the data analysable later, and it moves copy discipline from a tested constant into whatever the user typed at midnight. |
 
 How many is too many: five core plus at most three optional plus the closing card is **nine
-interactions**, which a user test (§12.4) should confirm lands under a minute with a thumb.
-If it does not, the optional tail shrinks before the core does.
+interactions** — eleven in the worst case, once a *yes* to "with someone" splices in the *Who?*
+card and its Done. A user test (§12.4) has still to confirm what that costs a real thumb at
+bedtime; what has been measured is the floor.
+
+**Measured on 2026-08-22, the full worst-case deck at 360 × 800:** eleven interactions,
+**17.2 s** wall clock from the first card to *Recorded.*, driving real pointer events at a
+deliberate 1.5 s per interaction. The mechanism's own share is about **90 ms per card** — the
+rest is the pace, which was chosen rather than observed. A minute allows **5.4 s per
+interaction** on that deck, so there is roughly 3.5× headroom and **the optional tail does not
+need to shrink.** The screen also confirmed the condition invariant 2g's exception rests on:
+`scrollHeight === clientHeight` and `scrollWidth === clientWidth` throughout, so nothing under
+the card wanted either axis. What this does *not* establish is how long a person takes to
+*decide* — that is exactly the number §12.4 asks U1 for, and this figure is the floor to
+compare it against.
 
 ### 3.4 The swipe interaction
 
@@ -475,6 +501,14 @@ state it. Its anatomy, top to bottom:
    three-step strength (`·`, `··`, `···` — shown as dots, never numbers) defaulting to what
    the model proposed, and an *unsure* toggle that writes `uncertain: true`, mirroring the
    snapshot's `?` chip.
+
+   **`unclear` is exclusive**, decided in A7 because the composer had to answer it and this
+   section did not say. *Can't tell* beside *joy* is not a record of two things, it is a
+   contradiction, and the record should not be able to hold one — so picking `unclear` puts
+   every other word down and picking any other word puts `unclear` down. It is still a
+   first-class answer that saves on its own, which is the whole reason it is in the
+   vocabulary (§5.3); it is simply the only one that cannot share a check-in. The composer
+   states the rule beside the cap rather than leaving the user to discover it by tapping.
 3. **About** — under each feeling, what it is attached to: a person chip (resolved or to be
    resolved, §4.5), a **trigger** chip (a known one, or *new trigger: work?* when the model's
    label matches nothing the user has named before — §4.5b), or a context tag from
@@ -981,7 +1015,9 @@ speech-emotion model, not a language model, is the right tool for it.
 // walking a chain.
 type JournalEntry struct {
 	gorm.Model
-	UserID uint `gorm:"index;not null" json:"user_id"`
+	// UserID leads both composite indexes below: uniqueness of ClientID is per user, and
+	// every read of the table is scoped to one user.
+	UserID uint `gorm:"index;not null;uniqueIndex:idx_journal_user_client,priority:1;index:idx_journal_user_day,priority:1" json:"user_id"`
 	// ClientID is minted by the client before the first write. It makes a retried POST
 	// idempotent (the outbox in §9.5 depends on it) and it is the AAD identity docs/13
 	// needs once this row is encrypted. Unique per user, not globally.
@@ -1025,7 +1061,12 @@ type JournalMention struct {
 Notes against the traps register:
 
 - The `uniqueIndex` on `(user_id, client_id)` uses GORM's composite-index tags, which both
-  engines accept; it is the one constraint the server relies on (idempotent retry). Unlike
+  engines accept; it is the one constraint the server relies on (idempotent retry). Both
+  halves of a composite index have to declare it — a `priority:2` with no `priority:1` beside
+  it yields a unique index on `client_id` alone, which would reserve every client id across
+  every user and still satisfy `HasIndex`. (Corrected in A1, 2026-08-22: the code block above
+  previously left `user_id` out of both composite indexes. The same applies to
+  `idx_journal_user_day`.) Unlike
   relationship names it needs no partial index because a soft-deleted entry keeps its
   `client_id` reserved on purpose — a retried POST after a delete should 409, not resurrect.
 - `Day` as `varchar(10)` avoids `aggregateTime`'s problem entirely; `MIN(day)`/`MAX(day)` are
@@ -1088,6 +1129,14 @@ that was skipped, and only the row can say which. The `day_word` is duplicated a
 `checkin` row at the ritual's `at` so the day graph and the mention logic never have to know
 rituals exist — the ritual row keeps the copy for completeness.
 
+Two notes on that pair, both from A8 building it. **`day_word.uncertain` is written only if
+it is `true`**, and the ritual has no affordance that could make it so — the closing card is
+one tap, with no `≈` beside it — so in practice the key is absent. The example above shows
+`false` for readability; writing it would be recording a statement nobody made, which is
+invariant 14 in the same form as a skipped question. And the duplicated `checkin` carries
+**no `intensity`** on its one feeling, for the same reason; §6.5 says what that cost the
+server and what it hands to §8.2.
+
 **`kind: "person_fact"`**
 
 ```jsonc
@@ -1101,7 +1150,7 @@ they are governed by the same retention, export and encryption rules.
 **`kind: "trigger"`**
 
 ```jsonc
-{ "v": 1, "label": "work", "merged_into": null, "created_from": "6f1c3a0e-…" }
+{ "v": 1, "label": "work", "merged_into": null, "corrects": [], "created_from": "6f1c3a0e-…" }
 ```
 
 A trigger's identity is its `client_id`; check-ins reference it by that id in `about`, never
@@ -1109,6 +1158,30 @@ by label. Its `day`/`at` are the moment it was first confirmed. A rename is a co
 (`supersedes_id`) with the new `label`; a merge is a correction whose `merged_into` names the
 surviving trigger's `client_id`, after which `readTrigger` resolves the old id to the new one
 for every reader — one-way, like a relationship merge, and the dialog says so.
+
+**`corrects` — added in A5, and the reason it had to be.** A correction row needs a
+`client_id` of its own (they are unique per user, so it cannot reuse the one it replaces),
+and the row-level link back is `supersedes_id`, **a database row id the client never sees**:
+`GET /api/journal/entries` returns only rows with `superseded_at IS NULL`, so the row a
+correction replaced is not in any list the frontend holds. Without a client-visible link,
+a check-in written before a rename points at an id no reader can resolve. `corrects` is that
+link: **every `client_id` this trigger has been referenced by before this row**, as a list.
+
+It is a list rather than a single predecessor because rename twice and the middle row is
+superseded too, so it is in no list the client holds — a reader walking one hop at a time
+would find the second id and then hit a gap, and every check-in written before the first
+rename would resolve to nothing. Each correction carries its predecessor's list plus the
+predecessor's own id. That is one map lookup at read time and a handful of ids on a row that
+changes about as often as a person gets renamed; a bare string is read as a one-element list.
+`corrects` needs no version bump, because its absence already reads as "this row speaks only
+for itself" (§6.4). The decision it completes, which A2 and A3 both deferred:
+
+- **The writer never resolves.** A new check-in must reference a *live* trigger id, and the
+  server's check stays exactly as A2 wrote it. Nothing can trip it, because the client is
+  only ever offered live triggers — `triggerCandidates` sees no dead ids and `readTrigger`
+  hands back `live` for the one a new entry should use.
+- **Readers resolve.** `readTrigger(entry, allTriggerEntries)` walks `corrects` back and
+  `merged_into` forward, to the end of the chain, cycle-safe.
 
 ### 6.4 Versioning and the extension seam
 
@@ -1139,12 +1212,24 @@ Reusing the helper style of [`subjects.go`](../backend/internal/handlers/subject
 | :----- | :--- |
 | `validateJournalKind` | one of `domain.JournalKinds` |
 | `validateDay` | `YYYY-MM-DD`, strictly; consistent with `at` to within ±36 h (a rollover hour and a time zone, not a typo) |
-| `validateCheckin(payload)` | `v == 1`; ≤ 5 feelings, each id in `domain.FeelingIDs`, intensity 1–3; every `about.ref` indexes an existing mention; `tag` and `label` under the tag limits; `transcript` ≤ 4 000 characters; `proposal.proposed/accepted` ids valid |
+| `validateCheckin(payload)` | `v == 1`; ≤ 5 feelings, each id in `domain.FeelingIDs`, intensity 1–3 **when present** (see below); every `about.ref` indexes an existing mention; `tag` and `label` under the tag limits; `transcript` ≤ 4 000 characters; `proposal.proposed/accepted` ids valid |
 | `validateRitual(payload)` | every key of `answers` and `asked` in `domain.RitualQuestionIDs`; values boolean; `day_word.id` a feeling id |
 | `validatePersonFact(payload)` | exactly one mention; `text` ≤ 120 |
 | `validateTrigger(payload)` | `label` trimmed, non-blank, ≤ 40 characters (the tag limit); `merged_into`, if present, names one of the caller's live trigger entries and not the entry itself |
 | `validateMentions` | each has `relationship_id` **or** a non-blank `name`; never both |
 | `validateTriggerRefs` | every `about` of kind `trigger` names a `client_id` listed in the request's `triggers[]`, and each of those is either one of the caller's existing trigger entries or a new one carrying `label` + `client_id` |
+
+**`intensity` is optional, and A8 is why.** A2 required one on every feeling, which is right
+for the composer — a check-in's strength step is not skippable. The ritual's closing card is
+the writer that cannot supply one: it is a single tap on a single word (§3.2), there is no
+strength in it to record, and a middle number invented by the client would be the application
+authoring a value the user did not (invariant 15). So the rule is a **range for a value that
+is present**, which is what this table always said; absence is not zero, and `readCheckin` has
+read it as `null` since A5. `TestCreateJournalEntryAcceptsAFeelingWithNoIntensity` pins the
+absence surviving the round trip and `Intensity Of Zero` pins that a zero is still refused.
+**§8.2's geometry must therefore decide what an intensity-free sample draws at**, as a stated
+constant rather than a silent 2 — that is B1's, and it is the one thing this change hands
+forward.
 
 Unknown keys inside a payload are **kept** — a newer client may write a field an older server
 does not know, and dropping it silently is the description-wipe mistake in a new form. Only
@@ -1188,23 +1273,37 @@ one artefact the product has no later use for.
   "entries": [
     { "client_id": "…", "kind": "checkin", "day": "2026-08-21", "at": "2026-08-21T16:42:10Z",
       "schema_version": 1, "payload": { … },
-      "mentions": [{ "relationship": "Lucie", "ref": 0, "label": "Lucie" }] }
+      "mentions": [{ "relationship": "Lucie", "ref": 0, "label": "Lucie" }],
+      "superseded_at": "2026-08-21T17:05:00Z" },      // present only when a correction replaced it
+    { "client_id": "…", "kind": "checkin", "day": "2026-08-21", "at": "2026-08-21T17:05:00Z",
+      "schema_version": 1, "payload": { … },
+      "supersedes": "…" }                             // the *client id* of the row it replaced
   ]
 }
 ```
 
 - Mentions reference the relationship **by name**, consistent with the rest of the
   document's id-free shape; import resolves them through find-or-create like everything else.
+  A mention whose person has since been deleted exports with **no** `relationship` and keeps
+  its `label`, and import writes it detached rather than bringing the person back.
 - **Duplicate detection is `client_id`**, not content — the journal has a stable identity the
-  snapshot lacks, so re-import is exact.
+  snapshot lacks, so re-import is exact. The check ignores the soft-delete scope: a deleted
+  row still holds its client id, so a re-import cannot resurrect an entry the user deleted.
 - **Triggers export as entries like any other**, and a check-in's `about` keeps the trigger's
   `client_id`, which is stable across export and import — triggers need no name-based
-  resolution on the way back in.
+  resolution on the way back in. Import is order-independent for the same reason: a trigger
+  reference lives inside an opaque payload and needs no row written before it. A reference to
+  a trigger the file does not carry is a `400` naming the id.
+- **Superseded rows export with their link**, because an export is the whole record: the
+  replaced row carries `superseded_at`, the replacing one carries `supersedes` — the client
+  id, never the row id. Import maps it back through the client ids it wrote.
 - Version 1 files stay importable; a version 2 file into a pre-Phase-6 server is refused by
   the existing version check, which is the right answer.
 - The CSV gains a second file, `alq-journal-YYYY-MM-DD.csv`: one row per feeling per
   check-in (`day, at, source, feeling, intensity, uncertain, about_kind, about, tags`), with the
   transcript deliberately **absent** from the spreadsheet form and present only in the JSON.
+  Both sheets download from the one CSV button; the journal sheet is skipped when there is
+  no feeling to write.
 
 ---
 
@@ -1224,6 +1323,7 @@ live in `backend/internal/handlers/journal.go`, their input structs directly abo
 | `POST` | `/api/journal/entries` | Create one entry (and its mentions) in one transaction. Optional `supersedes_id` marks a correction. |
 | `DELETE` | `/api/journal/entries/:id` | Soft delete. `RowsAffected == 0` → `404`, as `DeleteSubject` does. |
 | `GET` | `/api/journal/days?from=&to=` | One row per day with counts (`checkins`, `ritual: true/false`, `people: n`) for the month view — `COUNT`/`GROUP BY day` over strings, portable to both engines. |
+| `DELETE` | `/api/journal/people/:id` | Everything the journal holds **about** one person, in one transaction: their `person_fact` entries soft-deleted, every mention of them detached (`relationship_id → NULL`, `label` kept). Added in A9 for §10.6 — the check-ins survive, and this touches neither the relationship nor its snapshots. Reports `facts_deleted` and `mentions_detached`, disjoint, so the dialog can state both. |
 
 There is deliberately **no `PUT`**. A journal row is a statement made at a moment; changing
 it is a new statement. A correction is `POST` with `supersedes_id`, and the server, in the same
@@ -1275,6 +1375,18 @@ relationship merge does.
 | `400` | Any validation message, naming the field: `unknown feeling id: bliss`, `unknown ritual question: hydrated`, `day must be within 36 hours of at`, `mention 1 needs relationship_id or name`. |
 | `404` | A `relationship_id` or `supersedes_id` that is not the caller's. |
 | `409` | `supersedes_id` already superseded. |
+
+**The response echoes the entry, and not the trigger rows created beside it** — noticed in A7
+against a running server, and written down here because it is invisible from the shapes above.
+A new trigger becomes its own `kind: "trigger"` row inside the same transaction, and the body
+that comes back is the check-in that named it. So a client that has just minted *work* holds
+no row for it, and the next composer would offer *new trigger: work?* a second time: one
+label, two rows, and every question asked afterwards grouped on the wrong key. The client's
+answer is to **refetch the range after a request that minted a trigger** — which is what
+`createEntry` does, deliberately without awaiting it, since the write has already landed.
+Echoing the created triggers in the response would remove the round trip and is the better
+fix if the write path is ever revisited; it is not worth a change to a shipped endpoint on
+its own.
 
 ### 7.3 Changes to existing endpoints
 
@@ -1360,6 +1472,11 @@ component only draws what it returns.
    ends on something the user said. Between the last afternoon check-in and that sample the
    rules above apply: decay, marked as extrapolated past 90 minutes, then the day word's
    branch rises at the ritual time. A day with no ritual ends at its last check-in.
+   **That sample carries no `intensity`** — the closing card is one tap on one word, and A8
+   made the server accept the absence rather than let the client invent a number (§6.5). So
+   `buildDayCurve` has to decide what an unstated strength draws at, and that decision is a
+   **constant named in the ℹ sentence** like the half-life and the thresholds, never a silent
+   2. It is a rendering choice about a record, and the ℹ has to be able to say so.
 8. **Sampling.** Samples every `STEP_MIN` (5 min) from the first to the last check-in, each
    `{ t, branches: [{ feeling, intensity, y, z, uncertain, extrapolated }] }`; ≤ 288 samples,
    ≤ 5 branches each — a few hundred path segments, trivial for SVG.
@@ -1461,6 +1578,17 @@ itself.
 | A past day with nothing | *Nothing recorded for this day.* — never "you didn't check in". |
 | Voice unavailable on this device | *Voice isn't available here — this device can't run the transcriber on its own, and the app won't send audio anywhere. Typing works the same way.* |
 | Model downloading | A progress line with the size and *cancel*; the chips path works meanwhile. |
+
+**What "first ever visit" is, decided in A6** because the row above does not say and the
+answer has to be computable from what the screen holds. The card shows when **all three** are
+true: today has nothing on it, the loaded range holds no entry at all, and the ritual setting
+(`alq:journal-ritual`) has never been written on this device. Not a one-shot "seen" flag: the
+card's whole content is an offer, so it belongs on a screen where the offer has never been
+answered, and the moment the setting is touched — on *or* off — it stops. It also stops the
+moment the journal holds anything, so it can never reappear beside a day's work. The one
+imprecision is deliberate and worth naming: the range is a month, so a user whose only entries
+are older than the month they are looking at and who has never opened the ritual setting would
+see it again. Both halves have to be true, which makes that rare rather than possible.
 
 ### 9.5 Offline: the one deliberate exception to "no offline writes"
 
@@ -1653,7 +1781,8 @@ Triggers views, export/import v2. The Vault page is untouched and still true.
 **Depends on:** nothing new. Phase 5's cadence helpers and `ContextCapsule` are reused.
 
 **Scope:** `JournalEntry`, `JournalMention`, `domain/journal.go`, `handlers/journal.go`, the
-four routes, the `triggers[]` find-or-create path (§7.2), merge/delete changes (§7.3), export
+routes — four when this was written, five once A9 added `DELETE /api/journal/people/:id` for
+§10.6, which is the only way to detach a mention without deleting the entry that carries it — the `triggers[]` find-or-create path (§7.2), merge/delete changes (§7.3), export
 v2; `src/constants/journal.js` (vocabularies, readers including `readTrigger`, copy, the
 forbidden-word list), `JournalProvider`, `/journal`, `/journal/:day`, `/journal/ritual`,
 `/journal/people*`, `/journal/triggers`, the Navbar/bottom-nav slots, the Profile settings
@@ -1777,17 +1906,22 @@ the hint it produces; *This isn't it* from every state, including the spoken cor
 misheard name corrected in the transcript resolving to the right relationship; the tier
 override in both directions; removing the downloaded files from Settings.
 
-### 6-E — Encryption alignment
+### 6-E — Encryption alignment · **conditional, and may never run**
 
-**Outcome:** when docs/13 P0–P2 land, journal rows migrate in the same batch loop with no
+> **Read §12.3 first.** `docs/13` is an **unconfirmed option**, not a scheduled feature. This
+> slice exists for the case where it is later confirmed; nothing else in Phase 6 waits on it,
+> 6-A shipped plaintext on 2026-08-22, and no copy anywhere in the product promises that the
+> journal will be encrypted later. It was too late for the better order — that ship sailed
+> when 6-A shipped — so what follows is the migration, not the birth.
+
+**Outcome:** *if* docs/13 P0–P2 land, journal rows migrate in the same batch loop with no
 design change: `payload` into the blob under `alq:v1:journal:<client_id>`, `label` emptied
 into the blob, `day`/`at`/`kind` and mention ids plaintext as §6.6 states; the outbox, the
 offline cache and the embedding index hold or derive from ciphertext only; export/import of
-journal content moves client-side with the rest.
+journal content moves client-side with the rest. The register of what moves and what stays is
+in [`docs/13` §0](../docs/13-zero-knowledge-encryption.md), where A10 added the journal rows.
 
-**Depends on:** 6-A, and docs/13 reaching P0. If docs/13 is implemented *before* 6-A, the
-journal is born encrypted and this slice disappears into 6-A — which is the better order, and
-§12.3 says so.
+**Depends on:** 6-A, and docs/13 reaching P0 — which requires it being confirmed at all.
 
 **Verification:** the docs/13 round-trip and tamper tests extended to journal rows; a migrated
 journal day graph identical before and after; `GET /api/journal/entries` serving `blob` for
@@ -1913,15 +2047,31 @@ names EmbeddingGemma and its terms.
 
 ### 12.3 On ordering relative to docs/13
 
-The journal would rather be born encrypted than migrated. If the encryption work is at all
-close, **implement docs/13 P0–P1 before 6-A**, and 6-E vanishes. If it is not, 6-A still
-ships with the row shape docs/13 needs (`client_id`, opaque payload, ids-only mention table),
-and the honest cost is stated on the Vault page: higher-resolution plaintext about the user's
-days and the people in them, until the envelope lands. The temporal metadata that stays
-plaintext even afterwards — when entries were written, how many per day — is a finer-grained
-version of the leak docs/13 §0 already accepts for snapshot dates, and it should be added to
-that paragraph when 6-E is written. The embedding index (6-G) is built only from decrypted
-rows on the device and is never a server-side artefact, so it adds nothing to that leak.
+**Decided 2026-08-22, and this section has been rewritten to say so.** It previously read as
+though docs/13 were a matter of *when* — "if the encryption work is at all close, implement
+docs/13 P0–P1 before 6-A, and 6-E vanishes". It is neither close nor scheduled: **docs/13 was
+explored as an option and has never been confirmed as a future feature.** The consequence,
+stated plainly so no later session has to infer it:
+
+- **6-A shipped plaintext**, and did not wait. It carries the row shape docs/13 would need —
+  `client_id`, an opaque `payload`, an ids-only mention table — because that shape is cheap,
+  is good design on its own merits, and is the only thing that keeps the door open.
+- **The honest cost is stated on the Vault page**, in the journal's own words: higher-resolution
+  plaintext about the user's days and the people in them. That sentence is the product's whole
+  position on this, and it must **not** be softened into a promise. If a change ever needs
+  docs/13 to be true in order to make a claim, the claim is wrong, not early.
+- **6-E is conditional and may never run.** It exists in §11 and in the session map for the
+  case where docs/13 is later confirmed. Do not design around a future envelope, and do not
+  add "TODO: encrypt this" seams beyond the row shape §6.2 already specifies.
+- **The journal rows are nonetheless in docs/13 §0's register** (added by A10), with what
+  would move, what would stay plaintext, and a note that they are plaintext today.
+
+The temporal metadata that would stay plaintext even under docs/13 — when entries were
+written, how many per day — is a finer-grained version of the leak docs/13 §0 already accepts
+for snapshot dates; it is recorded there now rather than waiting for a 6-E that may not come.
+The embedding index (6-G) is built only from decrypted rows on the device and is never a
+server-side artefact, so it adds nothing to that leak — and must not be allowed to, because a
+vector column would be a transcript column under another name.
 
 ### 12.4 What a user test should answer before building the expensive parts
 

@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import axios from 'axios';
-import Vault, { buildCSV, describeBackend } from './Vault';
+import Vault, { buildCSV, buildJournalCSV, describeBackend } from './Vault';
 import { SubjectsProvider } from '../context/SubjectsContext';
 
 vi.mock('axios');
@@ -12,7 +12,9 @@ const meta = {
     db_backend: 'sqlite',
     relationship_count: 2,
     snapshot_count: 5,
-    oldest_snapshot_date: '2025-03-04T00:00:00Z'
+    oldest_snapshot_date: '2025-03-04T00:00:00Z',
+    journal_entry_count: 11,
+    oldest_journal_day: '2026-08-01'
 };
 
 const subjects = [
@@ -28,10 +30,10 @@ const subjects = [
 
 const relationships = [{ ID: 1, name: 'Alex', snapshot_count: 2, cadence_days: 30 }];
 
-const mockFetch = () => {
+const mockFetch = (metaResponse = meta) => {
     axios.get.mockImplementation((url) => {
         if (url === '/api/relationships') return Promise.resolve({ data: relationships });
-        if (url === '/api/meta') return Promise.resolve({ data: meta });
+        if (url === '/api/meta') return Promise.resolve({ data: metaResponse });
         return Promise.resolve({ data: subjects });
     });
 };
@@ -87,6 +89,84 @@ describe('buildCSV', () => {
     });
 });
 
+describe('buildJournalCSV', () => {
+    // The journal half of an export document, in the shape GET /api/export returns it.
+    const journal = {
+        entries: [
+            {
+                client_id: 'aaaa-1', kind: 'trigger', day: '2026-08-19',
+                at: '2026-08-19T09:00:00Z', payload: { v: 1, label: 'deadline, again' }
+            },
+            {
+                client_id: 'bbbb-1', kind: 'checkin', day: '2026-08-21',
+                at: '2026-08-21T16:42:10Z',
+                payload: {
+                    v: 1, source: 'typed', tags: ['work'],
+                    transcript: 'A long day, and Lucie made it better.',
+                    feelings: [
+                        { id: 'rapport', intensity: 3, uncertain: false, about: [{ kind: 'person', ref: 0 }] },
+                        {
+                            id: 'stress', intensity: 2, uncertain: true,
+                            about: [{ kind: 'trigger', trigger: 'aaaa-1' }, { kind: 'tag', tag: 'conflict' }]
+                        }
+                    ]
+                },
+                mentions: [{ relationship: 'Lucie', ref: 0, label: 'Lucie' }]
+            },
+            {
+                // Superseded: replaced by a correction, so it is in the JSON and not the sheet.
+                client_id: 'bbbb-0', kind: 'checkin', day: '2026-08-20',
+                at: '2026-08-20T10:00:00Z', superseded_at: '2026-08-20T11:00:00Z',
+                payload: { v: 1, source: 'chips', feelings: [{ id: 'calm', intensity: 1, uncertain: false }] }
+            },
+            {
+                // A ritual is not a check-in, and has no feelings of its own to write.
+                client_id: 'cccc-1', kind: 'ritual', day: '2026-08-21',
+                at: '2026-08-21T22:30:00Z', payload: { v: 1, answers: { slept_well: true } }
+            }
+        ]
+    };
+
+    it('writes one row per feeling, and no transcript column', () => {
+        const lines = buildJournalCSV(journal).split('\n');
+
+        expect(lines[0]).toBe('day,at,source,feeling,intensity,uncertain,about_kind,about,tags');
+        // Two feelings on the one current check-in — the superseded row and the ritual
+        // contribute nothing.
+        expect(lines).toHaveLength(3);
+        expect(buildJournalCSV(journal)).not.toContain('transcript');
+        expect(buildJournalCSV(journal)).not.toContain('Lucie made it better');
+    });
+
+    it('names the person and resolves the trigger to its label', () => {
+        const [, first, second] = buildJournalCSV(journal).split('\n');
+
+        expect(first).toBe('2026-08-21,2026-08-21T16:42:10Z,typed,rapport,3,false,person,Lucie,work');
+        // A label with a comma in it is quoted, like any other field.
+        expect(second).toBe(
+            '2026-08-21,2026-08-21T16:42:10Z,typed,stress,2,true,trigger tag,"deadline, again conflict",work'
+        );
+    });
+
+    it('leaves an unanswered intensity or uncertainty empty rather than inventing one', () => {
+        const rows = buildJournalCSV({
+            entries: [{
+                client_id: 'bbbb-2', kind: 'checkin', day: '2026-08-22', at: '2026-08-22T08:00:00Z',
+                payload: { v: 1, source: 'chips', feelings: [{ id: 'unclear' }] }
+            }]
+        }).split('\n');
+
+        expect(rows[1]).toBe('2026-08-22,2026-08-22T08:00:00Z,chips,unclear,,,,,');
+    });
+
+    it('writes nothing at all when there is no journal to write', () => {
+        expect(buildJournalCSV(undefined)).toBe('');
+        expect(buildJournalCSV({ entries: [] })).toBe('');
+        // A journal of triggers and rituals has no feelings, and so no sheet.
+        expect(buildJournalCSV({ entries: [journal.entries[3]] })).toBe('');
+    });
+});
+
 describe('describeBackend', () => {
     it('says where the data is in plain words', () => {
         expect(describeBackend('sqlite')).toMatch(/SQLite file on the machine/);
@@ -106,7 +186,32 @@ describe('Vault page', () => {
         renderVault();
 
         expect(await screen.findByText(/SQLite file on the machine running this app/)).toBeInTheDocument();
-        expect(screen.getByText(/going back to/)).toBeInTheDocument();
+        expect(screen.getByText(/relationships and/)).toHaveTextContent(
+            '2 relationships and 5 snapshots, going back to March 2025.'
+        );
+    });
+
+    it('counts the journal alongside the snapshots, and dates it from its own day column', async () => {
+        renderVault();
+        await screen.findByText(/SQLite file/);
+
+        // "Everything you have written is stored in…" is only true if the count under it
+        // includes the journal. The number is every stored row, superseded ones included.
+        expect(screen.getByText(/journal entries/)).toHaveTextContent(
+            '11 journal entries — check-ins, evening questions, the words you name things after, '
+            + 'and anything you have since corrected, going back to August 2026.'
+        );
+    });
+
+    it('says nothing about a journal that has nothing in it', async () => {
+        mockFetch({ ...meta, journal_entry_count: 0, oldest_journal_day: null });
+        renderVault();
+        await screen.findByText(/SQLite file/);
+
+        // A clause whose count is zero is left out rather than rendered as "0 journal entries".
+        // Anchored on the digit: the "Put it back" section says "a journal entry is matched by
+        // the id it was written with" and must keep saying it.
+        expect(screen.queryByText(/\d+ journal entr/)).not.toBeInTheDocument();
     });
 
     it('states plainly that nothing is sent anywhere and nothing is encrypted', async () => {
@@ -117,6 +222,15 @@ describe('Vault page', () => {
         expect(screen.getByText(/Every request goes to this app's own origin/)).toBeInTheDocument();
         expect(screen.getByText(/anyone with\s+access to the server can read it/)).toBeInTheDocument();
         expect(screen.getByText(/There are none, by design/)).toBeInTheDocument();
+
+        // 6-A stores the journal in the clear like everything else, and the sentence names it
+        // in the journal's own words rather than leaving it under "notes" (Phase 6 §6.6). This
+        // must not promise encryption later: docs/13 is an unconfirmed option, not a schedule.
+        expect(screen.getByText(/Passwords are hashed/)).toHaveTextContent(
+            'Passwords are hashed, but your notes, scores, and everything in the journal — the words '
+            + 'you tapped, what you typed, the people and things you named, and your answers to the '
+            + 'evening questions — are not.'
+        );
     });
 
     it('says "never" until an export has happened', async () => {

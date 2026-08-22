@@ -19,16 +19,21 @@ backend/
 │   │   ├── backfill.go             find-or-create + the Phase 4 relationship backfill
 │   │   ├── database_test.go        SQLite integration + migration tests
 │   │   └── backfill_test.go        backfill grouping, idempotency, soft deletes
-│   ├── domain/categories.go        the seven stats-key ids (validation allowlist)
+│   ├── domain/
+│   │   ├── categories.go           the seven stats-key ids (validation allowlist)
+│   │   ├── journal.go              feeling ids, ritual question ids, entry kinds
+│   │   └── journal_test.go         allowlist membership and case sensitivity
 │   ├── handlers/
 │   │   ├── middleware.go           AuthMiddleware
 │   │   ├── auth.go                 Signup, Login, GetUserProfile, UpdateUserProfile
 │   │   ├── subjects.go             CRUD for AnalysisSubject (one snapshot)
 │   │   ├── relationships.go        list, update, merge, delete (a whole stack)
+│   │   ├── journal.go              the emotional journal: write, read, days, delete, remove-person
 │   │   ├── vault.go                export, import, meta
 │   │   ├── upload.go               UploadProfilePicture
 │   │   ├── subjects_test.go        sqlmock table-driven handler tests
 │   │   ├── relationships_test.go   real-SQLite behaviour tests
+│   │   ├── journal_test.go         real-SQLite transaction tests + sqlmock statement shape
 │   │   ├── vault_test.go           export/import round-trip tests
 │   │   └── upload_test.go          multipart handler tests
 │   └── models/models.go            GORM schema
@@ -164,8 +169,12 @@ relied upon by every protected handler.
 
 ### 4.2 The universal handler skeleton
 
-Six of the seven protected handlers follow the identical shape. Match it exactly when
-adding one:
+There are **twenty** protected handlers as of Phase 6 (the sentence here used to say "six of
+the seven", and predates Phase 4). Nearly all of them follow the identical shape below; match
+it exactly when adding one. The exceptions are the ones whose work is genuinely multi-step and
+therefore lives in a transaction — `MergeRelationship`, `DeleteRelationship`,
+`CreateJournalEntry`, `DeleteJournalPerson` and `ImportVault` — and they still open with the
+same two steps, identity then binding, before the closure starts:
 
 ```go
 func Something(c *gin.Context) {
@@ -326,11 +335,23 @@ an edit, so a database whose backfill has not run cannot save a row back still u
 
 Four handlers, all sharing one grouped query and one ownership rule.
 
-`summaryQuery(userID)` is the single source of the `{ID, name, snapshot_count, latest_date}`
-shape — the list endpoint orders it, rename and merge re-read one row through it, so every
-response has the same shape. The join is `LEFT` with `deleted_at IS NULL` **in the join
-condition** rather than a `WHERE`, so soft-deleted snapshots drop out of the count without
-dropping their relationship from the result.
+`summaryQuery(userID)` is the single source of the
+`{ID, name, snapshot_count, mention_count, latest_date}` shape — the list endpoint orders it,
+rename and merge re-read one row through it, so every response has the same shape. The join is
+`LEFT` with `deleted_at IS NULL` **in the join condition** rather than a `WHERE`, so
+soft-deleted snapshots drop out of the count without dropping their relationship from the
+result.
+
+**`mention_count` comes from a pre-aggregated subquery, and that is the load-bearing part.**
+Joining `journal_mentions` here directly would multiply rows — a person with 40 snapshots and
+2,000 mentions produces 80,000 before any `COUNT` collapses them — on the one query every
+screen issues on load and after every mutation, growing in both dimensions for the life of the
+account. `COUNT(DISTINCT …)` would make the answer right and the work quadratic anyway.
+Grouped first, the journal side contributes one row per relationship, so `snapshot_count`
+stays a plain `COUNT` and the repeated mention count folds back with `MAX`, which is exact
+because every repetition is the same number. The count covers the entries the journal *shows*
+— neither soft-deleted nor superseded — so it matches `DeleteRelationship`'s
+`mentions_detached` and the sentence the delete dialog builds from it.
 
 ```go
 func findOwnedRelationship(tx *gorm.DB, relationshipID uint, userID uint) (*models.Relationship, error)
@@ -347,11 +368,113 @@ Two details that are easy to get wrong:
 - **`errNameTaken` and `errSameRelationship` are sentinel errors** returned *out* of the
   transaction closure, so the 409 and the 400 are decided outside it. Writing the response
   inside the closure would leave the transaction to commit around an already-sent error.
+- **Merge moves journal mentions in the same transaction** and reports `mentions_moved`;
+  delete counts them and leaves them alone, reporting `mentions_detached`. The asymmetry is
+  deliberate and is explained in [Data Model](03-data-model.md#journalmention): a merge would
+  otherwise strand a mention on a retired relationship, while a delete rewriting one would be
+  rewriting the user's own record of a day. Merge needs no `Unscoped()` for the mentions
+  because a mention has no soft delete of its own.
 
 `aggregateTime` handles `MAX(date)`: SQLite returns a string (the aggregate drops the
 column's declared type) where Postgres returns a `time.Time`. It also implements `Value()`,
 unused, because GORM refuses to scan into a struct field that implements only half of the
 `Valuer`/`Scanner` pair.
+
+### 4.4b `journal.go` — the emotional journal
+
+Five handlers behind `/api/journal` ([API §5a](04-api-reference.md#5a-journal-endpoints)):
+`CreateJournalEntry` writes, `GetJournalEntries` and `GetJournalDays` read,
+`DeleteJournalEntry` soft-deletes one row, and `DeleteJournalPerson` removes everything the
+journal holds about one person. There is no update handler by design — a correction is
+a `POST` carrying `supersedes_id`, and that is also how the trigger vocabulary is renamed and
+merged, so those need no handler either. The file borrows both of the styles above: the small
+pure validators of `subjects.go`, and the single-transaction,
+sentinel-out-of-the-closure shape of `relationships.go`.
+
+**The reads never resolve a chain.** Both filter `superseded_at IS NULL` and see only what
+is current, which is the entire point of stamping that column on the write. Both share
+`parseJournalRange`, and both compare `day` as a **string** — lexical order on
+`YYYY-MM-DD` is chronological order on either engine, with no aggregate to mistype, which
+is why the column is text (trap 10a). `GetJournalDays` groups over it directly, and
+`GetMeta`'s `MIN(day)` is the one aggregate in the codebase that needs no `aggregateTime`.
+
+**The day counts are `COUNT(DISTINCT id)` per kind, not `COUNT(*)`.** `GetJournalDays`
+joins mentions to count people, and that join makes an entry appear once per person it
+names; a plain count would report an entry naming two people as two check-ins. The
+`CASE` yields NULL for the other kinds and `COUNT` skips NULLs. `GetJournalEntries` avoids
+the same fan-out differently, by filtering `relationship_id` through a subquery rather
+than a join.
+
+**`DeleteJournalPerson` is the journal's half of a delete, and only the journal's.** It
+soft-deletes the caller's `person_fact` entries that name the relationship and nulls the
+`relationship_id` on every mention of them, in one transaction, and touches nothing else —
+not the relationship, not its snapshots, not the check-ins. Three things it does on purpose:
+
+- **Two steps rather than a join** to find the entries: the mention table answers *which
+  entries*, and the entry table answers *which of those are the caller's*. The user scope
+  then lives in a `Where` rather than inside a join condition, where it is easy to lose.
+- **What it acts on and what it counts are two different sets.** Every fact goes and every
+  mention is detached, *including on superseded rows* — those are still statements about this
+  person and still in the export, so leaving them would make "removed from the journal"
+  narrower than it sounds. But `facts_deleted` and `mentions_detached` count only the entries
+  the journal **shows** — not deleted, not superseded — because those are the numbers the
+  dialog stated before it acted, and it got them from `GET /api/journal/entries`, which
+  excludes superseded rows. Counting a different set here told a user who had renamed
+  anything that two facts would go and then took four. `mentions_detached` is also counted
+  *before* the update and only over the entries that stay, so it never overlaps
+  `facts_deleted`.
+- **Both halves in one transaction**, because a run that removed the facts and then failed to
+  detach would give the user half of what they asked for with no way to tell.
+
+**The validators are pure and separately testable.** `validateJournalKind`, `validateDay`,
+`validateCheckinPayload`, `validateRitualPayload`, `validatePersonFactPayload`,
+`validateTriggerPayload`, `validateMentions` and `validateTriggerRefs` each take plain
+values, return an error written for a human, and never touch a database. The two rules that
+genuinely need one — is this relationship the caller's, does this trigger exist — run inside
+the transaction instead, and answer `404`.
+
+**Payload validation reads the known keys and stores the map.** Each validator marshals the
+`map[string]interface{}` into a struct naming only the keys this server knows, checks those,
+and leaves the map itself as the thing that gets stored. That is how "unknown keys are kept"
+is implemented structurally rather than by care: a field no struct mentions is never seen,
+so it can never be dropped. The two keys that are *normalized* — a check-in's `tags` and a
+trigger's `label` — are written back into the map, so the value checked is the value stored.
+
+```go
+type journalError struct {
+    status  int
+    message string
+}
+```
+
+`relationships.go` uses sentinel errors for its two failure modes; this handler has seven, each
+naming a different field, so it carries the status and the message out of the closure in a
+type. Nothing writes a response from inside the transaction — a response sent from in there
+would leave the transaction to commit around an error the caller has already been told about.
+
+Five details that are easy to get wrong:
+
+- **A duplicate `client_id` is `200`, not `409`.** The first thing the transaction does is
+  look the pair `(user_id, client_id)` up and, if it is there, return that row and stop. This
+  is what lets an offline queue retry blindly. The `409` case is narrower: the id is held by a
+  *soft-deleted* entry, which the lookup does not see under GORM's default scope, so the
+  insert conflicts — `isDuplicateClientID` translates that, because a retry after a delete
+  should conflict rather than resurrect the row.
+- **`day` is checked against the day's midpoint.** A day is an interval and `at` is an
+  instant, so ±36 h needs an anchor. Measured from midnight, a legitimate 03:59 rollover
+  check-in at UTC−9 lands 37 h out and is rejected; measured from noon, every
+  rollover-plus-offset combination fits with hours to spare and a day three days off still
+  fails.
+- **`superseded_at` is stamped with the new entry's `at`,** not the wall clock, so an export
+  reads consistently: the old row stopped being current at the moment the replacing statement
+  was made.
+- **Triggers are created before the entry that references them,** and minting is
+  find-or-create — the same shape person resolution takes, applied to something that is not a
+  person. A trigger reference resolves only to a **live** entry: neither soft-deleted nor
+  superseded.
+- **Names go through `database.FindOrCreateRelationship`,** the same function
+  `CreateSubject` and the backfill use. Two resolution rules would put one person in two
+  places.
 
 ### 4.5 `upload.go`
 
@@ -395,7 +518,8 @@ Import is three phases, and the split is the point:
 ```go
 prepared, err := prepareImport(document)   // validate everything, touch nothing
 err = database.DB.Transaction(func(tx *gorm.DB) error {
-    if err := applyImport(tx, userID, prepared, &result); err != nil { return err }
+    if err := applyImport(tx, userID, prepared.Relationships, &result); err != nil { return err }
+    if err := applyJournal(tx, userID, prepared.Journal, &result); err != nil { return err }
     if dryRun { return errDryRun }         // same path, then roll back
     return nil
 })
@@ -403,14 +527,37 @@ err = database.DB.Transaction(func(tx *gorm.DB) error {
 
 - **Validation before any write** means one bad value rejects the file whole. `prepareImport`
   reuses `validateStats`, `validateTags`, `validateUncertain`, `validateGuideAnswers`,
-  `normalizeKind` and `parseSubjectDate` — an import must never be a way around the rules the
-  create endpoint enforces.
+  `normalizeKind` and `parseSubjectDate` for the snapshots, and `validateClientID`,
+  `validateJournalKind`, `validateDay` and `validateJournalPayload` for the journal — an
+  import must never be a way around the rules the create endpoints enforce.
 - **`errDryRun` rolls back after doing the work**, so the preview and the real run cannot
   disagree. Reporting what a *different* code path would have done is how preview features
   start lying.
 - **Duplicate detection is date + stats together** (`isDuplicateSnapshot`). Date alone would
   reject two genuine readings from one day; stats alone would reject an unchanged
   relationship snapshotted months apart, which is the signal the app exists to record.
+
+#### The journal half, version 2
+
+`exportVersion` is **2**; `minImportVersion` is 1, so the pre-journal files every earlier
+release wrote are still readable. Four things about it are worth knowing before touching it:
+
+- **`exportJournal` does not filter `superseded_at`.** The reads do, because they answer
+  "what is true now"; an export answers "what is there". A superseded row travels with its
+  `superseded_at` and the correcting row travels with `supersedes`, the *client id* of the
+  row it replaced — the only id vocabulary this document has.
+- **Duplicate detection is the client id**, not the content, and the lookup is `Unscoped`. A
+  soft-deleted row still holds its `(user_id, client_id)` slot, so an import that could not
+  see it would collide with the unique index instead of skipping — and re-importing must not
+  resurrect an entry the user deleted.
+- **`prepareJournal` reads the file twice.** A check-in may name a trigger the file lists
+  after it, so which client ids are triggers is only known once every row has been read. A
+  reference to a trigger the file does not carry is a `400` naming the id.
+- **`applyJournal` is order-independent, deliberately.** A trigger reference lives inside an
+  opaque payload, so no database link needs the trigger row first; `supersedes` is resolved
+  in a second pass over the client ids the import can see. Sorting triggers to the front
+  would have been the other answer — it would have worked only for triggers, and would have
+  broken quietly the day a second reference of this kind appeared.
 
 `GetMeta` returns counts and `database.DB.Dialector.Name()`. Deliberately no DSN, no paths,
 no configuration — the Vault page needs to say *where* the data is, not how to reach it.

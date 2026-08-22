@@ -1,8 +1,23 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Mail, Shield, Save, Upload, Loader2, Info, Bell } from 'lucide-react';
+import { User, Mail, Shield, Save, Upload, Loader2, Info, Bell, NotebookPen } from 'lucide-react';
 import axios from 'axios';
 import { resolveAssetUrl } from '../mobile/serverUrl';
 import { remindersAvailable, remindersEnabled, setRemindersEnabled } from '../mobile/cadenceReminders';
+import {
+    DEFAULT_RITUAL_TIME,
+    JOURNAL_COPY,
+    MAX_OPTIONAL_QUESTIONS,
+    fillCopy,
+    optionalQuestions
+} from '../constants/journal';
+import {
+    readAskWho,
+    readOptionalQuestions,
+    readRitualSetting,
+    writeAskWho,
+    writeOptionalQuestions,
+    writeRitualSetting
+} from '../constants/journalSettings';
 
 // This screen used to call through its own `axios.create()` instance, which carried the
 // token but not App.jsx's response interceptor — interceptors on the global default do not
@@ -11,6 +26,168 @@ import { remindersAvailable, remindersEnabled, setRemindersEnabled } from '../mo
 // The global default already carries the Authorization header (App.jsx sets it
 // synchronously at import time and on every token transition), so using it directly loses
 // nothing and gains the 401 handling. See docs/10-agent-guide.md Recipe 6.
+
+/**
+ * The journal's per-device settings (§9.7), beside *Check-in reminders* and in the same
+ * shape, because they are the same kind of thing: a preference this device holds and nothing
+ * else ever sees.
+ *
+ * **Three of the eight, deliberately.** Voice, suggestions, embeddings, transcripts and
+ * language are described in `JOURNAL_COPY.settings` and are *not* rendered here — those
+ * features arrive in 6-C, 6-D and 6-G, and a toggle for something the app cannot do would
+ * make the Vault's claims false (invariant 2e). A description is not permission to render a
+ * control.
+ *
+ * Unlike the reminders block above it there is no `available()` gate: the ritual is a screen,
+ * not a notification, so it works everywhere. What is native-only is the *reminder* for it,
+ * and that is F2's.
+ */
+const JournalSettings = () => {
+    const [ritual, setRitual] = useState(readRitualSetting);
+    const [questions, setQuestions] = useState(readOptionalQuestions);
+    const [askWho, setAskWho] = useState(readAskWho);
+
+    // Written on change rather than on a Save button, like the reminders toggle: these are
+    // device preferences, not profile fields, and the form's Save posts to the server.
+    const saveRitual = (next) => {
+        setRitual(next);
+        writeRitualSetting(next);
+    };
+
+    // Read through a ref rather than through the render's copy. Two chips toggled inside one
+    // task — which a thumb cannot do and a script can — would otherwise both compute their
+    // "next" from the same stale list and the first one would be lost. The ref costs three
+    // lines and removes the whole class; the write stays here rather than in an effect,
+    // because an effect firing on mount would write the key before the user touched it.
+    const questionsRef = useRef(questions);
+
+    const toggleQuestion = (id) => {
+        const current = questionsRef.current;
+        const next = current.includes(id)
+            ? current.filter(other => other !== id)
+            : [...current, id];
+
+        questionsRef.current = next;
+        setQuestions(next);
+        writeOptionalQuestions(next);
+    };
+
+    const toggleAskWho = () => {
+        const next = !askWho;
+        setAskWho(next);
+        writeAskWho(next);
+    };
+
+    const atLimit = questions.length >= MAX_OPTIONAL_QUESTIONS;
+
+    return (
+        <div className="pt-8 border-t border-slate-50" data-journal-settings>
+            <div className="flex items-center gap-2 text-slate-800 font-medium mb-1">
+                <NotebookPen size={18} />
+                <h3>{JOURNAL_COPY.settings.heading}</h3>
+            </div>
+            <p className="text-xs text-slate-400 font-light mb-4">{JOURNAL_COPY.settings.subheading}</p>
+
+            <button
+                type="button"
+                data-setting="ritual"
+                onClick={() => saveRitual({ ...ritual, on: !ritual.on })}
+                aria-pressed={ritual.on}
+                className={`w-full sm:w-auto flex items-center justify-between gap-4 px-5 py-3 min-h-[48px] border rounded-xl font-medium transition-all text-sm ${ritual.on
+                    ? 'bg-slate-800 text-white border-slate-800'
+                    : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
+            >
+                <span>{JOURNAL_COPY.settings.ritual.label}</span>
+                <span className={`text-xs ${ritual.on ? 'text-slate-300' : 'text-slate-400'}`}>
+                    {ritual.on ? ritual.time : JOURNAL_COPY.settings.off}
+                </span>
+            </button>
+
+            {ritual.on && (
+                <label className="mt-3 flex items-center gap-3 text-sm text-slate-600">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                        {JOURNAL_COPY.settings.ritual.time}
+                    </span>
+                    <input
+                        type="time"
+                        data-setting="ritual-time"
+                        value={ritual.time}
+                        onChange={(event) => saveRitual({ ...ritual, time: event.target.value })}
+                        className="p-2 bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                </label>
+            )}
+
+            <p className="mt-3 text-xs text-slate-400 font-light leading-relaxed max-w-md">
+                {fillCopy(JOURNAL_COPY.settings.ritual.description, { time: DEFAULT_RITUAL_TIME })}
+            </p>
+
+            <div className="mt-6">
+                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                    {JOURNAL_COPY.settings.questions.label}
+                </h4>
+                <p className="text-xs text-slate-400 font-light leading-relaxed max-w-md mb-3">
+                    {fillCopy(JOURNAL_COPY.settings.questions.description, { max: MAX_OPTIONAL_QUESTIONS })}
+                </p>
+
+                <div className="space-y-2 max-w-md">
+                    {optionalQuestions().map(question => {
+                        const chosen = questions.includes(question.id);
+                        return (
+                            <button
+                                key={question.id}
+                                type="button"
+                                data-question={question.id}
+                                aria-pressed={chosen}
+                                // Stated, then enforced: the cap sentence is on screen before
+                                // the ninth card is reachable, so nothing is refused silently.
+                                disabled={!chosen && atLimit}
+                                onClick={() => toggleQuestion(question.id)}
+                                className={`w-full text-left px-4 py-3 min-h-[48px] border rounded-xl transition-all ${chosen
+                                    ? 'bg-slate-800 text-white border-slate-800'
+                                    : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 disabled:opacity-40 disabled:hover:border-slate-200'
+                                    }`}
+                            >
+                                <span className="text-sm font-medium">{question.text}</span>
+                                <span className={`block mt-1 text-xs font-light leading-relaxed ${chosen ? 'text-slate-300' : 'text-slate-400'}`}>
+                                    {question.note}
+                                </span>
+                            </button>
+                        );
+                    })}
+                </div>
+
+                {atLimit && (
+                    <p className="mt-3 text-xs text-slate-400 font-light">
+                        {fillCopy(JOURNAL_COPY.settings.questions.atLimit, { max: MAX_OPTIONAL_QUESTIONS })}
+                    </p>
+                )}
+            </div>
+
+            <div className="mt-6">
+                <button
+                    type="button"
+                    data-setting="ask-who"
+                    onClick={toggleAskWho}
+                    aria-pressed={askWho}
+                    className={`w-full sm:w-auto flex items-center justify-between gap-4 px-5 py-3 min-h-[48px] border rounded-xl font-medium transition-all text-sm ${askWho
+                        ? 'bg-slate-800 text-white border-slate-800'
+                        : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                        }`}
+                >
+                    <span>{JOURNAL_COPY.settings.askWho.label}</span>
+                    <span className={`text-xs ${askWho ? 'text-slate-300' : 'text-slate-400'}`}>
+                        {askWho ? JOURNAL_COPY.settings.on : JOURNAL_COPY.settings.off}
+                    </span>
+                </button>
+                <p className="mt-3 text-xs text-slate-400 font-light leading-relaxed max-w-md">
+                    {JOURNAL_COPY.settings.askWho.description}
+                </p>
+            </div>
+        </div>
+    );
+};
 
 export default function Profile() {
     const [loading, setLoading] = useState(true);
@@ -299,6 +476,8 @@ export default function Profile() {
                             )}
                         </div>
                     )}
+
+                    <JournalSettings />
 
                     <div className="pt-8 border-t border-slate-50">
                         <div className="flex items-center gap-2 text-slate-800 font-medium mb-4">

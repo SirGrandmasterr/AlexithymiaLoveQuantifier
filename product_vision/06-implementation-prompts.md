@@ -118,9 +118,22 @@ are going to modify.
 
 ### 2.4 Local environment facts, verified 2026-08-22
 
-- **Baseline is green.** `npm test` → 14 files, 201 tests, passing (~70 s).
-  `cd backend && go test ./...` → passing. If either is red *before* you change anything, stop
-  and report it; do not build on a red baseline.
+- **Baseline is green.** `npm test` → **22 files, 511 tests**, passing in ~20 s on this
+  machine (as of the 6-A closeout, 2026-08-22; it was 14 files / 201 tests before Phase 6, and
+  the "~70 s" this line used to claim was never right here).
+  `cd backend && go test ./...` → passing, handlers ~10 s. If either is red *before* you change
+  anything, stop and report it; do not build on a red baseline.
+- **`gofmt -l .` is never empty, and that is not a formatting problem.** Every CRLF file in the
+  tree is listed, because `gofmt` normalises to LF. **Do not run `gofmt -w .`** — it rewrites
+  those files end to end and buries your real diff. Use this instead, which ignores line
+  endings and printed empty on 2026-08-22:
+
+  ```bash
+  for f in $(git ls-files '*.go'); do diff -q <(gofmt < "$f" | tr -d '\r') <(tr -d '\r' < "$f") >/dev/null || echo "$f"; done
+  ```
+
+  Add any untracked `.go` files you have created to that list — `git ls-files` will not see
+  them.
 - **`npm run lint` is broken** — `eslint-plugin-react-hooks` fails to load from a bad local
   install. This is an environment fault, not a code fault. **Do not try to fix it, and do not
   use it as a signal.** Verify with `npm test` and `npx vite build`.
@@ -132,8 +145,10 @@ are going to modify.
 - **Large quoted heredocs (~9 KB+) break in this shell.** Write long files with the Write tool,
   or in sections, rather than one giant `cat <<'EOF'`.
 - **Run the backend from `backend/`** — `alexithymia.db` and `uploads/` are CWD-relative.
-- **`go test ./...` leaves files behind** in `backend/internal/handlers/uploads/`. Four such
-  files are *tracked*; delete only the untracked ones before committing.
+- **`go test ./...` leaves files behind** in `backend/internal/handlers/uploads/`. **Six** such
+  files are *tracked* (the ledger and this line both said four until 2026-08-22); do not delete
+  those. The ~20 untracked ones need no attention either: `backend/**/uploads/` is in
+  `.gitignore`, so they never appear in `git status` and cannot be committed by accident.
 - **The Playwright E2E suite cannot pass** (`docs/11-known-issues.md`). Never use it for
   sign-off. The manual QA checklists in each prompt are the sign-off.
 
@@ -2740,7 +2755,7 @@ entry. The most recent state is the truth; this document beats the plan where th
 | `gofmt -l .` / `go vet ./...` | empty / clean |
 | `npx vite build` | success, bundle <size> |
 | `npm run lint` | **broken** — `eslint-plugin-react-hooks` fails to load. Environment fault; do not fix, do not use as a signal |
-| `git status` | clean (four tracked files under `backend/internal/handlers/uploads/` are expected) |
+| `git status` | clean. The six tracked files under `backend/internal/handlers/uploads/` are expected and are not leftovers; a stray `backend/alexithymia.db` **is** one — it is untracked *and* un-ignored, so delete it when you are done |
 
 ## Sessions
 
@@ -2815,8 +2830,10 @@ Every code session. Copy this into your final check.
    change touched.
 8. **`git diff --stat` shows no whole-file churn.** If a file you barely edited shows hundreds of
    changed lines, you changed its line endings — revert and redo.
-9. **Only untracked leftovers deleted** from `backend/internal/handlers/uploads/`; the four
-   tracked files stay.
+9. **Nothing left in the working tree that was not there before.** The six tracked files under
+   `backend/internal/handlers/uploads/` stay; the untracked ones there are gitignored and need
+   no action. A `backend/alexithymia.db` created while testing is untracked *and* un-ignored —
+   delete it, or it is one `git add .` away from committing seeded data.
 10. **`product_vision/06-progress.md` appended** with your session entry. A session is not done
     without its hand-off.
 11. **A one-paragraph report** to the user: shipped, verified, deferred, and what the next session

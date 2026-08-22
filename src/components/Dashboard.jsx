@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useId, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, X, Trash2, Edit2, Info, Activity, Calendar, ChevronLeft, ChevronRight, TrendingUp, StickyNote, HelpCircle, MinusCircle, Radar as RadarIcon, BarChart3, Zap, Check, Volume2, VolumeX } from 'lucide-react';
 import WhatChanged, { findPreviousVersion } from './WhatChanged';
@@ -7,6 +7,7 @@ import ContextCapsuleFields from './ContextCapsule';
 import LoveShape from './LoveShape';
 import StackActions from './StackActions';
 import CadenceNudge from './CadenceNudge';
+import { RitualNudge, useRitualPrompt } from './RitualCards';
 import { RenameRelationshipDialog, MergeRelationshipDialog, DeleteRelationshipDialog, CadenceDialog } from './RelationshipDialogs';
 import { timelinePath } from './TimelineRoute';
 import { useSubjects } from '../context/SubjectsContext';
@@ -755,7 +756,20 @@ export const CategorySliderRow = ({
     );
 };
 
-export const PersonForm = ({ onClose, onSave, initialData, isNewVersion, isPulse }) => {
+/**
+ * The names the *Identity* field offers (§2.2).
+ *
+ * Every relationship, **including the ones with no snapshot**: a person the journal met in a
+ * check-in is a relationship the dashboard does not draw, so without this the only way to
+ * put a first snapshot on them is to type the name back exactly. Typing it back *almost*
+ * exactly is how a near-duplicate is born — and the resolution rule is exact after trim
+ * (invariant 2b), so "Lucie M" and "Lucie" would be two people from then on.
+ *
+ * A `datalist` rather than a picker: it suggests without choosing, so what is submitted is
+ * still a string the user confirmed (invariant 15), and `FindOrCreateRelationship` on the
+ * server is still the one thing that decides which relationship that string means.
+ */
+export const PersonForm = ({ onClose, onSave, initialData, isNewVersion, isPulse, suggestions = [] }) => {
     // A pulse is a new version taken the fast way: same name, today's date, context
     // cleared. Everything that was true of "new version" is true of it.
     const isNewSnapshot = isNewVersion || isPulse;
@@ -799,6 +813,10 @@ export const PersonForm = ({ onClose, onSave, initialData, isNewVersion, isPulse
     // What the snapshot being built on read, for the mark on each track. Not applicable when
     // editing (the values *are* these) or in a pulse (they are already carried).
     const previousStats = isNewVersion && !isPulse ? (initialData?.stats || {}) : null;
+
+    // The datalist's id, from React rather than a literal: two of these forms on one page
+    // would otherwise share an id and the browser would resolve the wrong one.
+    const nameSuggestionsId = useId();
 
     // Sound is a per-device preference rather than a per-form one, so it is read once and
     // written straight through. See `src/mobile/knobFeedback.js` for the default.
@@ -897,10 +915,20 @@ export const PersonForm = ({ onClose, onSave, initialData, isNewVersion, isPulse
                                 placeholder="Enter name..."
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
+                                list={nameSuggestionsId}
                                 className={`w-full text-lg border-b-2 border-slate-200 py-2 focus:border-slate-800 focus:outline-none bg-transparent transition-colors placeholder:text-slate-300 text-slate-700 ${isNewSnapshot ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 autoFocus={!initialData}
                                 disabled={isNewSnapshot}
                             />
+                            {/* Only when a name is being chosen. A new version and a pulse
+                                already have their person, and the field is disabled. */}
+                            {!isNewSnapshot && suggestions.length > 0 && (
+                                <datalist id={nameSuggestionsId} data-name-suggestions>
+                                    {suggestions.map(person => (
+                                        <option key={person.ID} value={person.name} />
+                                    ))}
+                                </datalist>
+                            )}
                         </div>
                         <div>
                             <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Date of State</label>
@@ -1003,6 +1031,7 @@ const errorText = (error, fallback) => error?.response?.data?.error || fallback;
 export default function Dashboard() {
     const {
         people,
+        relationships,
         stacks,
         loadError,
         staleSince,
@@ -1018,6 +1047,8 @@ export default function Dashboard() {
     } = useSubjects();
     const { maskName, blurClass } = useDiscretion();
     const navigate = useNavigate();
+    // The journal's own nudge, and the arbiter of which of the two this screen shows.
+    const ritualPrompt = useRitualPrompt();
 
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingPerson, setEditingPerson] = useState(null);
@@ -1239,13 +1270,26 @@ export default function Dashboard() {
                     </div>
                 )}
 
-                <CadenceNudge
-                    stacks={stacks}
-                    maskName={maskName}
-                    onPulse={(stack) => startPulse(newestOf(stack))}
-                    onSnapshot={(stack) => startNewVersion(newestOf(stack))}
-                    onSettings={(stack) => setStackDialog({ kind: 'cadence', relationshipId: stack.relationship.ID })}
-                />
+                {/* One slot, one nudge, never two (§3.6, invariant 2c). After the ritual's
+                    hour the ritual line owns this place for the rest of the session and the
+                    cadence banner waits for the next one — two calm sentences stacked are a
+                    to-do list, which is the thing this app refuses to become. */}
+                {ritualPrompt.owns ? (
+                    ritualPrompt.visible && (
+                        <RitualNudge
+                            onStart={() => { ritualPrompt.retire(); navigate(ritualPrompt.path); }}
+                            onDismiss={ritualPrompt.retire}
+                        />
+                    )
+                ) : (
+                    <CadenceNudge
+                        stacks={stacks}
+                        maskName={maskName}
+                        onPulse={(stack) => startPulse(newestOf(stack))}
+                        onSnapshot={(stack) => startNewVersion(newestOf(stack))}
+                        onSettings={(stack) => setStackDialog({ kind: 'cadence', relationshipId: stack.relationship.ID })}
+                    />
+                )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {people.length === 0 && (
@@ -1302,6 +1346,7 @@ export default function Dashboard() {
                     initialData={editingPerson}
                     isNewVersion={isNewVersionMode}
                     isPulse={isPulseMode}
+                    suggestions={relationships}
                 />
             )
             }

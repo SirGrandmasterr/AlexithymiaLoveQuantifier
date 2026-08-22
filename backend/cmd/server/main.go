@@ -55,6 +55,16 @@ func main() {
 		protected.POST("/relationships/:id/merge", handlers.MergeRelationship)
 		protected.DELETE("/relationships/:id", handlers.DeleteRelationship)
 
+		// The emotional journal: one append-only write path. A correction is a POST
+		// carrying supersedes_id, which is why there is no PUT here.
+		protected.POST("/journal/entries", handlers.CreateJournalEntry)
+		protected.GET("/journal/entries", handlers.GetJournalEntries)
+		protected.DELETE("/journal/entries/:id", handlers.DeleteJournalEntry)
+		protected.GET("/journal/days", handlers.GetJournalDays)
+		// Everything the journal holds *about* one person, removed in one action (§10.6).
+		// Not a relationship route: it leaves the relationship and its snapshots alone.
+		protected.DELETE("/journal/people/:id", handlers.DeleteJournalPerson)
+
 		// The vault: take everything out, put everything back, and see what is stored.
 		protected.GET("/export", handlers.ExportVault)
 		protected.POST("/import", handlers.ImportVault)

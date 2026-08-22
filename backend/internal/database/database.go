@@ -18,7 +18,14 @@ var DB *gorm.DB
 // the same list, so `make migrate-check` can only ever disagree with the server about
 // schema shape if the models themselves changed.
 func Models() []interface{} {
-	return []interface{}{&models.User{}, &models.Relationship{}, &models.AnalysisSubject{}, &models.RefreshToken{}}
+	return []interface{}{
+		&models.User{},
+		&models.Relationship{},
+		&models.AnalysisSubject{},
+		&models.RefreshToken{},
+		&models.JournalEntry{},
+		&models.JournalMention{},
+	}
 }
 
 // Open dials the configured database and sets DB, without touching the schema. Split out

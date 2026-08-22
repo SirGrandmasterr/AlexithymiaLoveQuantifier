@@ -104,7 +104,7 @@ while `"alex"` and `"Alex"` are two. Uniqueness is enforced in the handlers rath
 database constraint — see [Data Model](03-data-model.md#relationship).
 
 A relationship also carries an optional **check-in rhythm** (`cadence_days`) — see
-[Cadence](#cadence--the-one-nudge) below.
+[Cadence](#cadence-and-the-two-nudges) below.
 
 ### Subject
 A **subject** is the target of one analysis — one dated snapshot, stored as one
@@ -141,6 +141,63 @@ two fields written at snapshot time in `PersonForm`'s "What's been happening?" s
 Context describes a **period, not a person**, so it is never inherited: editing a snapshot
 seeds the existing note and tags, but starting a new version starts them empty. Nothing is
 computed from tags; they are raw material for the user's own reading of the timeline.
+
+### Check-in
+A **check-in** is the journal's peer of the snapshot, and the two are deliberately different
+things. A snapshot is a considered reading of a whole relationship on a date; a check-in is a
+sentence about **right now** — one to five feelings from the closed `FEELINGS` vocabulary,
+each with a strength of one to three and, optionally, what it was about: a person, a trigger,
+or a context tag. It is stored as one `JournalEntry` of `kind: "checkin"`
+([Data Model](03-data-model.md#journalentry)), and it is written in three taps.
+
+- **It records an instant, not a period.** `at` is the moment; `day` is the civil day that
+  moment falls in, with a **4 a.m. rollover** — a check-in at 02:00 belongs to the day you
+  have not gone to bed from yet.
+- **It is append-only, like a version.** A check-in is a statement made at a moment, so there
+  is no edit: a correction is a new entry naming the one it replaces, and a withdrawal is a
+  delete that leaves the people and triggers it named where they are.
+- **Its people are the same people.** A name typed into a check-in resolves through
+  `FindOrCreateRelationship` on the server, in the entry's transaction — the same function the
+  snapshot path uses — so naming someone in the journal and then snapshotting them yields one
+  relationship, not two. A person known only from the journal has `snapshot_count: 0` and so
+  does not appear on the dashboard; the journal's own People view is where they live.
+- **`can't tell` is a first-class answer**, not a gap. Alexithymia is not the absence of
+  feeling but the absence of a name for one, so the vocabulary carries an entry for exactly
+  that, drawn dashed like every other uncertainty in this app, and it stands on its own.
+- **Nothing is graded but the strength.** There is no mood score, no daily average and no
+  streak; the feeling labels are nouns and the one graded axis is the intensity the user set.
+
+### Trigger
+A **trigger** is what a feeling was about when it was not a person — *work*, *the move*,
+*money*. Triggers are records the user grows one at a time: a new one is created only when the
+user confirms the label, in the same transaction as the check-in that named it, and a check-in
+references it by its `client_id` and never by its label, so renaming one never rewrites what
+was already written. Merging two is one-way, and the dialog says so.
+
+### The nightly ritual
+The **ritual** is the journal's other way in: five to nine binary questions, one card at a
+time, at an hour the user picks. The five core questions ask about the things that move how a
+day felt without being about anyone — sleep, movement, daylight, company, eating — and up to
+three optional ones can be turned on beside them. It closes by asking for the day in one word.
+
+It is stored as a single `JournalEntry` of `kind: "ritual"`, and three properties are the
+whole design:
+
+- **A skipped question is absent, not `false`.** `answers` holds only what was answered;
+  `question_set.asked` records what was put on screen, and it is the only thing that can tell
+  a question nobody answered from one that was never shown. Swipe right for yes, left for no,
+  up to skip — and a tap records nothing, because the person doing this is half asleep.
+- **A night nobody answers writes no row.** There is no place a missed night could leave a
+  mark: no "last night", no total, nothing to count. That is the absence of the data
+  structure, not restraint in the copy — see [the two nudges](#cadence-and-the-two-nudges).
+- **The day word is written twice, on purpose.** It stays in the ritual row so the night reads
+  whole in an export, and it is also written as a `checkin` with `source: "ritual_word"` so
+  that everything reading check-ins never has to know rituals exist. It carries no intensity:
+  one tap on one word has no strength in it, and inventing a middle number would be the app
+  authoring a value the user did not.
+
+Each question is stored under a permanent id, so turning an optional one on later never
+changes what an older night meant. The settings are per device and are never sent anywhere.
 
 ### Version
 A **version** is one snapshot in a relationship's history. Creating a new version does not
@@ -206,7 +263,7 @@ difference in the product is that the timeline draws its point slightly smaller 
 *quieter* mark, not a lower-status one. The distinction exists so that a rhythm can survive
 a busy month, not so that snapshots can be ranked.
 
-### Cadence — the one nudge
+### Cadence, and the two nudges
 A relationship can opt in to a **check-in rhythm**: monthly, quarterly, twice a year, or a
 custom interval between 7 and 365 days. Off is the default and always available.
 
@@ -226,6 +283,12 @@ What it deliberately does **not** do, as a product rule rather than a style pref
 
 A relationship with no dated snapshot is never due: an undated snapshot has no position in
 time, so it cannot make anything overdue.
+
+The journal's nightly prompt is the second, under the same rules: opt-in, one sentence, no
+count of anything. The two never show at once — after the ritual's chosen hour the ritual
+line takes the slot and the cadence banner waits for the next session, because two calm
+sentences stacked are a to-do list. A night nobody answers writes no row and leaves no trace
+the next morning.
 
 ### Stat / metric / anchor — three different things
 - A **stat** is one of the seven stored integers (`stats.eros === 85`).
@@ -375,12 +438,13 @@ and in [What Changed](#what-changed).
 how to get it all out.
 
 - **Export** — one JSON document containing every relationship and snapshot with its notes,
-  tags, uncertainty flags and guided answers, plus a flat CSV for spreadsheets (one row per
-  snapshot, one column per category, a skipped category left as an **empty cell** rather
-  than a zero).
+  tags, uncertainty flags and guided answers, and every journal entry with the people it
+  names and anything since corrected; plus flat CSVs for spreadsheets (one row per snapshot,
+  one column per category, a skipped category left as an **empty cell** rather than a zero —
+  and a second sheet at one row per feeling per check-in, without the transcript).
 - **Import** — the same JSON, back in. It always dry-runs first and shows what would happen
-  before writing anything, and a snapshot already present is skipped, so importing the same
-  file twice changes nothing.
+  before writing anything; a snapshot already present is skipped and a journal entry is
+  matched by the id it was written with, so importing the same file twice changes nothing.
 - **The privacy answers** are static copy, and every claim on the page has to be true of the
   code as written: nothing is sent anywhere, there are no AI features, and **the database is
   not encrypted**. Saying the last one plainly matters more than the first two.
@@ -437,6 +501,9 @@ Knowing the negative space prevents wrong assumptions when extending the project
   guided-scoring suggestion band, the What Changed deltas, and the card summary line — is
   mean-and-±8, subtraction, and max-minus-min respectively. Each is stated in words on
   screen, and none writes a value the user did not confirm.
+  **The journal computes nothing either**: no mood score, no daily average, no weighting of
+  one feeling against another. What it counts, it counts — *"4 entries name this"* is a count
+  of the user's own rows, and the People and Triggers views' *"most often"* line is the same.
 - **No causal claims.** Milestone markers put a tag beside a movement; they never assert
   that the tagged event produced it. Vocabulary stays descriptive throughout: "most
   changed", not "most volatile".
@@ -455,7 +522,11 @@ Knowing the negative space prevents wrong assumptions when extending the project
   per relationship, off by default, and computed in the browser. There is no scheduler, no
   email, no push, and nothing that runs when the tab is closed.
 - **No gamification.** No streaks, no badges, no scores about your scoring. See
-  [Cadence](#cadence--the-one-nudge) for the rules this holds itself to.
+  [Cadence](#cadence-and-the-two-nudges) for the rules this holds itself to.
 - **No encryption at rest.** The database is a plain file or your Postgres instance.
-  Passwords are hashed; notes and scores are not. The Vault page says so rather than
-  implying otherwise.
+  Passwords are hashed; notes and scores are not, and neither is anything the journal holds —
+  the words tapped, what was typed, the people and triggers named, and the answers to the
+  evening questions all sit in the same plain rows. The Vault page says so rather than
+  implying otherwise. [`docs/13`](13-zero-knowledge-encryption.md) describes an envelope
+  scheme that would change this; it is an **unconfirmed option and not a schedule**, and
+  nothing in the product promises it.

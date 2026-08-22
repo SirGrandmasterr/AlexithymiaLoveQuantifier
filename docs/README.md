@@ -32,6 +32,7 @@ describing things abstractly.
 | 10 | [Agent Guide](10-agent-guide.md) | Conventions, invariants, and step-by-step recipes for the most common change requests. |
 | 11 | [Known Issues & Documentation Drift](11-known-issues.md) | Verified defects, gaps, and places where the root `README.md` disagrees with the code. |
 | 12 | [The Android App](12-android-app.md) | Why Capacitor rather than a rewrite, how the packaged client reaches a self-hosted backend, the mobile UI changes, and the containerised APK build. |
+| 13 | [Zero-Knowledge Encryption](13-zero-knowledge-encryption.md) | **Design only, and an unconfirmed option rather than a plan.** What would be encrypted, how, and what it would cost. Nothing in the product implements or promises it; read §0 before assuming otherwise. |
 
 ---
 
@@ -78,14 +79,19 @@ When these two disagree, the code wins; please correct the docs in the same chan
 | Concept | Canonical definition lives in |
 | :------ | :---------------------------- |
 | Check-in rhythm arithmetic and the no-guilt copy rules | [`src/constants/cadence.js`](../src/constants/cadence.js) |
-| The export/import document format | [`backend/internal/handlers/vault.go`](../backend/internal/handlers/vault.go) — `format: "alq-export"`, `version: 1` |
+| The export/import document format | [`backend/internal/handlers/vault.go`](../backend/internal/handlers/vault.go) — `format: "alq-export"`, `version: 2` (version 1 still importable) |
 | How a name resolves to a relationship (find-or-create), and the startup backfill | [`backend/internal/database/backfill.go`](../backend/internal/database/backfill.go) — the write path and the migration deliberately share one function |
 | The seven love categories (ids, labels, colours, descriptions, detection metrics, slider anchors) | `CATEGORIES` in [`src/constants/categories.js`](../src/constants/categories.js) |
 | The seven category **ids**, as the server-side validation allowlist | `CategoryIDs` in [`backend/internal/domain/categories.go`](../backend/internal/domain/categories.go) — ids only; must stay in step with `CATEGORIES` |
 | The prose source the category text was derived from | [`TestImplementationDetails.txt`](../TestImplementationDetails.txt) |
 | Chart colours | the `hex` field on each `CATEGORIES` entry — one palette, not two |
 | Guided-scoring scale, suggestion band, card summary arithmetic | `GUIDE_SCALE` / `guideBand` / `summarizeStack` in [`src/constants/categories.js`](../src/constants/categories.js) |
-| Preset context tags and their limits | [`src/components/ContextCapsule.jsx`](../src/components/ContextCapsule.jsx) |
+| Preset context tags and their limits | [`src/constants/contextTags.js`](../src/constants/contextTags.js) — shared by the snapshot form and the journal, and re-exported from `ContextCapsule.jsx` for its existing importers |
+| The journal's vocabularies, readers, candidate matching, day arithmetic and **every string it can say** | [`src/constants/journal.js`](../src/constants/journal.js) — `FEELINGS`, `RITUAL_QUESTIONS`, `JOURNAL_COPY`, `readCheckin`/`readRitual`/`readTrigger`. Pure: nothing here renders or fetches |
+| The journal's **ids**, as the server-side validation allowlist | `FeelingIDs`, `RitualQuestionIDs`, `JournalKinds` in [`backend/internal/domain/journal.go`](../backend/internal/domain/journal.go) — ids only, mirrored by the constants above and asserted in both directions by a test |
+| The journal's row shape, payload validation and the find-or-create path for triggers | [`backend/internal/handlers/journal.go`](../backend/internal/handlers/journal.go) |
+| Journal entries and state for every screen that reads them | [`src/context/JournalContext.jsx`](../src/context/JournalContext.jsx) — a second context beside `SubjectsContext`, never a second copy of the people |
+| The journal's per-device settings (ritual, its hour, the optional questions, ask-who) | [`src/constants/journalSettings.js`](../src/constants/journalSettings.js) — `localStorage` only; none of it is ever sent anywhere |
 | Delta arithmetic for "What Changed" | [`src/components/WhatChanged.jsx`](../src/components/WhatChanged.jsx) |
 | The shared subject list, grouping, and mutations | [`src/context/SubjectsContext.jsx`](../src/context/SubjectsContext.jsx) |
 | Route table (frontend) | [`src/App.jsx`](../src/App.jsx) |

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Activity, Archive, User, Eye, EyeOff } from 'lucide-react';
+import { Activity, Archive, NotebookPen, User, Eye, EyeOff } from 'lucide-react';
+import { JOURNAL_COPY, JOURNAL_ROOT } from '../constants/journal';
 
 /**
  * The primary navigation on a handset.
@@ -9,22 +10,39 @@ import { Activity, Archive, User, Eye, EyeOff } from 'lucide-react';
  * one hand that corner is the single hardest pixel to reach, so the same controls move to the
  * bottom edge where the thumb rests.
  *
- * Four slots, and the fourth is the interesting one. Three are destinations — Analysis,
- * Vault, Profile; the timeline is a drill-down from a card, not a peer, so it is deliberately
- * not here. The fourth is **discretion**, which is a mode rather than a place. It earns a slot
- * because of what it is for: hiding names and notes when someone glances over. On a desktop
- * that is a keyboard shortcut (Ctrl+.) and a corner button. On a phone — the device you are
- * actually holding when someone sits down next to you — it has to be one thumb-press away, or
- * it does not work at all.
+ * Five slots, and the fifth is the interesting one. Four are destinations — Analysis,
+ * Journal, Vault, Profile; the timeline is a drill-down from a card, not a peer, so it is
+ * deliberately not here. The fifth is **discretion**, which is a mode rather than a place. It
+ * earns a slot because of what it is for: hiding names and notes when someone glances over.
+ * On a desktop that is a keyboard shortcut (Ctrl+.) and a corner button. On a phone — the
+ * device you are actually holding when someone sits down next to you — it has to be one
+ * thumb-press away, or it does not work at all.
+ *
+ * **Five is the ceiling, and the width maths is why.** Material's bottom bar takes three to
+ * five destinations; at 360 dp — the narrowest screen this app targets — five equal slots are
+ * 72 dp each, comfortably above the 48 dp minimum touch target, and the 56 px height below
+ * clears it on the other axis. A sixth would be 60 dp and still legal, but the labels stop
+ * fitting: *Analysis* at 11 px is already the widest word here. Anything after this is a
+ * drill-down, not a tab.
+ *
+ * The journal's own microphone button does not live here — it floats above this bar on
+ * `/journal` (§9.2) and it arrives with the capture work in 6-C. Its place is left empty
+ * rather than filled with a disabled control.
  */
 
 const DESTINATIONS = [
     { to: '/', label: 'Analysis', icon: Activity },
+    // The journal's word is the journal's to own, like every other string it says.
+    { to: JOURNAL_ROOT, label: JOURNAL_COPY.nav.label, icon: NotebookPen },
     { to: '/vault', label: 'Vault', icon: Archive },
     { to: '/profile', label: 'Profile', icon: User }
 ];
 
-/** The timeline is a child of the dashboard, so it keeps Analysis lit rather than nothing. */
+/**
+ * The timeline is a child of the dashboard, so it keeps Analysis lit rather than nothing.
+ * The prefix rule does the same for the journal: `/journal/2026-08-21`, `/journal/ritual`
+ * and `/journal/people/3` are all the journal, and all light one slot.
+ */
 const isActive = (pathname, to) => (
     to === '/'
         ? pathname === '/' || pathname.startsWith('/relationships') || pathname.startsWith('/timeline')
@@ -49,7 +67,8 @@ export default function MobileBottomNav({ discreet = false, onToggleDiscretion }
                             <Link
                                 to={to}
                                 aria-current={active ? 'page' : undefined}
-                                // 56px clears the 48dp Material minimum with room for the label.
+                                // 56px clears the 48dp Material minimum with room for the
+                                // label; `flex-1` gives each of the five slots 72dp at 360dp.
                                 className={`flex flex-col items-center justify-center gap-1 h-14 min-h-[56px] text-[11px] font-medium transition-colors ${active ? 'text-rose-500' : 'text-slate-400 active:text-slate-600'
                                     }`}
                             >

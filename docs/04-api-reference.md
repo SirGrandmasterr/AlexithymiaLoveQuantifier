@@ -24,6 +24,11 @@ Route table: [`backend/cmd/server/main.go:17-35`](../backend/cmd/server/main.go#
 | PATCH | `/api/relationships/:id` | Bearer | [`UpdateRelationship`](../backend/internal/handlers/relationships.go) |
 | POST | `/api/relationships/:id/merge` | Bearer | [`MergeRelationship`](../backend/internal/handlers/relationships.go) |
 | DELETE | `/api/relationships/:id` | Bearer | [`DeleteRelationship`](../backend/internal/handlers/relationships.go) |
+| POST | `/api/journal/entries` | Bearer | [`CreateJournalEntry`](../backend/internal/handlers/journal.go) |
+| GET | `/api/journal/entries` | Bearer | [`GetJournalEntries`](../backend/internal/handlers/journal.go) |
+| DELETE | `/api/journal/entries/:id` | Bearer | [`DeleteJournalEntry`](../backend/internal/handlers/journal.go) |
+| GET | `/api/journal/days` | Bearer | [`GetJournalDays`](../backend/internal/handlers/journal.go) |
+| DELETE | `/api/journal/people/:id` | Bearer | [`DeleteJournalPerson`](../backend/internal/handlers/journal.go) |
 | GET | `/api/export` | Bearer | [`ExportVault`](../backend/internal/handlers/vault.go) |
 | POST | `/api/import` | Bearer | [`ImportVault`](../backend/internal/handlers/vault.go) |
 | GET | `/api/meta` | Bearer | [`GetMeta`](../backend/internal/handlers/vault.go) |
@@ -399,14 +404,21 @@ relationships last, ties broken by name.
 
 ```json
 [
-  { "ID": 3, "name": "Alex", "cadence_days": 90, "snapshot_count": 4, "latest_date": "2026-03-01T00:00:00Z" },
-  { "ID": 5, "name": "Sam",  "cadence_days": null, "snapshot_count": 1, "latest_date": null }
+  { "ID": 3, "name": "Alex", "cadence_days": 90, "snapshot_count": 4, "mention_count": 12, "latest_date": "2026-03-01T00:00:00Z" },
+  { "ID": 5, "name": "Sam",  "cadence_days": null, "snapshot_count": 1, "mention_count": 0, "latest_date": null }
 ]
 ```
 
 - `snapshot_count` and `latest_date` count only **live** snapshots — the soft-delete filter
   sits in the JOIN condition, so a relationship whose snapshots were all deleted still
   appears, honestly reporting `0` and `null`. Hiding it would make it impossible to delete.
+- `mention_count` (added in Phase 6) is how many journal mentions of this person sit on
+  entries the journal **shows** — not soft-deleted, not superseded. It exists so
+  [`DELETE /api/relationships/:id`](#delete-apirelationshipsid)'s confirmation dialog can say
+  what will happen *before* it happens, and it is scoped identically to the
+  `mentions_detached` that call returns afterwards, so the promise and the outcome are the
+  same number. `0` for a person the journal has never named, which is every person on a
+  pre-Phase-6 account.
 - `latest_date` is `MAX(date)`. Because `MAX()` drops a column's declared type, SQLite
   returns a string here while Postgres returns a timestamp; the handler's `aggregateTime`
   absorbs both and serializes a plain nullable timestamp either way.
@@ -464,11 +476,16 @@ Moves every snapshot of the source into `:id` and retires the source. `:id` is t
 
 In one transaction: every snapshot of the source (soft-deleted ones included, so nothing is
 left pointing at a retired relationship) moves to the target and takes the target's name;
-then the source is soft-deleted.
+**every journal mention of the source moves too**; then the source is soft-deleted.
+
+The mentions need no `Unscoped()` of their own — a `JournalMention` has no soft delete, so
+the one `UPDATE` already covers the mentions of soft-deleted *entries*, which is the same
+reach and the same reason as the snapshots. A mention left pointing at a retired relationship
+is the stranded row this endpoint exists to prevent.
 
 | Status | Body |
 | :----- | :--- |
-| `200` | The target's relationship summary, with the combined `snapshot_count`. |
+| `200` | The target's relationship summary, with the combined `snapshot_count`, plus `mentions_moved`: `{"ID":2,"name":"Lucie M","cadence_days":null,"snapshot_count":5,"latest_date":null,"mentions_moved":3}`. The summary fields are flat, not nested, so a client that ignores the new field is unaffected. |
 | `400` | `{"error":"source_id is required"}` or `{"error":"cannot merge a relationship into itself"}` |
 | `404` | `{"error":"Relationship not found"}` — **either** side unknown or not owned, so a merge cannot reach across users. |
 | `500` | `{"error":"Failed to merge relationships"}` |
@@ -481,12 +498,260 @@ plainly what will move before asking for confirmation.
 Deletes the whole history — distinct from `DELETE /api/subjects/:id`, which deletes one
 version. Both are soft deletes, so a database backup is still the real undo.
 
+**Journal mentions are counted and then left exactly as they are.** Deleting a person does
+not rewrite the user's own record of a day: the entries stay, each mention keeps its row and
+its `label` — the name as it was said, which is a quotation and still reads correctly — and
+`relationship_id` is left in place, because the relationship it names is soft-deleted so every
+join through it drops out on its own. `mentions_detached` exists so the confirmation dialog
+can say what will happen before it happens, and it does: the dialog reads `mention_count` off
+[`GET /api/relationships`](#get-apirelationships) when it opens and says *"12 journal mentions
+of them stay: the entries are still there, and will no longer be linked to a person."* — left
+out entirely at zero rather than rendered as "0 journal mentions".
+
+**Both numbers cover the entries the journal shows** — neither soft-deleted nor superseded.
+That scope is the point: `mention_count` is read before the delete and `mentions_detached`
+returned after it, and if they counted different sets the dialog would promise one number and
+the account would change by another. It is also why this count is *not* simply
+`SELECT COUNT(*) FROM journal_mentions WHERE relationship_id = ?`, which is what it was
+before 2026-08-22 and which over-reported for anyone who had ever corrected an entry.
+
 | Status | Body |
 | :----- | :--- |
-| `200` | `{"message":"Relationship deleted","snapshots_deleted":4}` |
+| `200` | `{"message":"Relationship deleted","snapshots_deleted":4,"mentions_detached":12}` |
 | `404` | `{"error":"Relationship not found"}` |
 | `500` | `{"error":"Failed to delete relationship"}` |
 
+
+---
+
+## 5a. Journal endpoints
+
+The emotional journal — check-ins, the nightly ritual, facts about a person, and the trigger
+vocabulary — all in one append-only table
+([Phase 6 design §7](../product_vision/06-emotional-journal.md)). One write path, two reads,
+a delete, and one action that removes a person from the journal without touching them
+anywhere else.
+
+Four conventions are specific to this section:
+
+- **There is deliberately no `PUT`.** A journal row is a statement made at a moment, and
+  changing it is a new statement. A correction is a `POST` carrying `supersedes_id`, which
+  stamps `superseded_at` on the row it replaces in the same transaction. Readers filter on
+  that one column instead of walking a chain.
+- **A retry is not an error.** The same `client_id` twice answers `200` with the row already
+  stored — not `201`, not `409` — which is what lets an offline queue resend blindly.
+- **Unknown payload keys are kept.** Only the keys this server knows are validated; anything
+  a newer client writes is stored and echoed untouched. Dropping one silently would be the
+  same class of bug as a `PUT` that erases a description it was not sent.
+- **The trigger vocabulary has no endpoint of its own, and is not going to get one.**
+  `GET /api/journal/entries?kind=trigger` lists it; **a rename and a merge are corrections,
+  not verbs.** A rename is a `POST /api/journal/entries` of `kind: "trigger"` carrying
+  `supersedes_id` and the new `label`; a merge is the same `POST` with `merged_into` in its
+  payload naming the surviving trigger's `client_id`. After a merge every reader resolves the
+  old id to the survivor, and it is **one-way** — nothing stored knows which of the merged
+  entries had belonged to which trigger, so there is no undo to build and the dialog says so.
+  Both carry `corrects`: every `client_id` this trigger has been referenced by before, so a
+  check-in written before the correction still resolves ([§6.3](../product_vision/06-emotional-journal.md)).
+  Giving the vocabulary its own verbs would be a second way to write history that the export,
+  the import and every reader would each have to learn.
+
+### `POST /api/journal/entries`
+
+Creates one entry, its mentions, and any trigger it invents — in a single transaction that
+either commits whole or writes nothing.
+
+Request ([`CreateJournalEntryInput`](../backend/internal/handlers/journal.go)):
+
+```json
+{ "client_id": "6f1c3a0e-9d4b-4a71-8f2e-1c0b7a5e33d1", "kind": "checkin",
+  "at": "2026-08-21T18:42:10+02:00", "day": "2026-08-21", "schema_version": 1,
+  "payload": {
+    "v": 1, "source": "voice", "tz_offset_min": 120,
+    "transcript": "I had a nice day with Lucie today, even though work was stressful.",
+    "feelings": [
+      { "id": "rapport", "intensity": 3, "uncertain": false, "about": [{ "kind": "person", "ref": 0 }] },
+      { "id": "stress",  "intensity": 2, "uncertain": false, "about": [{ "kind": "trigger", "trigger": "0b7e0000-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }] }
+    ],
+    "tags": []
+  },
+  "mentions": [{ "ref": 0, "name": "Lucie", "label": "Lucie" }],
+  "triggers": [{ "trigger": "0b7e0000-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }],
+  "supersedes_id": null }
+```
+
+| Field | Rules |
+| :---- | :---- |
+| `client_id` | **Required**, UUID shape (`8-4-4-4-12` hex). Minted by the client before the first write. Unique **per user**, not globally: two people's queues may mint the same uuid and neither is told. |
+| `kind` | **Required**, one of `checkin`, `ritual`, `person_fact`, `trigger` (`domain.JournalKinds`). There is no default — an entry that does not say what it is cannot be read back. |
+| `at` | **Required**, RFC 3339 **with an offset**; stored UTC. More than 24 h in the future is rejected. The offset the client was in belongs in the payload (`tz_offset_min`), not the row. |
+| `day` | **Required**, `YYYY-MM-DD` strictly — the local civil day with the rollover hour applied, so an entry made at 02:00 belongs to the day before. Must sit within 36 h of `at`, measured from the **day's midpoint**: a rollover hour plus a time zone, not a typo. |
+| `schema_version` | Optional; `1`, or omitted (which means 1). Anything else is rejected rather than stored unvalidated. |
+| `payload` | **Required**, validated per kind (below). Unknown keys are kept. |
+| `mentions[]` | Each carries `ref` (its position, which a feeling's `about` points at), a `label` (the name as it was said, ≤ 40 characters), and **exactly one** of `relationship_id` or `name`. |
+| `mentions[].relationship_id` | Must be the caller's, else `404` for the whole request and nothing is written. |
+| `mentions[].name` | Trimmed, non-blank; resolved through `database.FindOrCreateRelationship` **inside the transaction** — the same function the snapshot path and the backfill use, so a check-in and a snapshot naming one person land on one relationship. The echoed row carries the resolved id, and the `label` defaults to the resolved name. |
+| `triggers[]` | Each is either `{"trigger": "<client_id>"}`, naming one of the caller's **live** (neither deleted nor superseded) `kind: "trigger"` entries — else `404` for the whole request — or `{"label": "…", "client_id": "…"}`, a new trigger created as its own entry **before** the one referencing it. Minting is find-or-create: naming the same new trigger twice creates it once. |
+| `supersedes_id` | Optional. The entry this one corrects. Must be the caller's (`404`) and not already superseded (`409`); it is stamped with this entry's own `at`, so the pair reads consistently in an export. |
+
+**Payload rules by kind** ([design §6.5](../product_vision/06-emotional-journal.md)). Every
+payload needs `"v": 1`.
+
+| `kind` | Validated |
+| :----- | :-------- |
+| `checkin` | ≤ 5 `feelings`, each `id` a known feeling; `intensity`, **when present**, is 1–3 — an absent one is not a zero, and the ritual's day word (`source: "ritual_word"`) is one tap on one word with no strength in it to record; every `about` is `person` (whose `ref` must index a mention), `tag` (≤ 40 characters) or `trigger` (whose id must appear in `triggers[]`); `tags` under the snapshot tag limits and stored trimmed; `transcript` ≤ 4 000 characters; `proposal.proposed` / `proposal.accepted` are known feeling ids. |
+| `ritual` | Every key of `answers` and every entry of `question_set.asked` is a known question id, and every answer is a boolean; `day_word.id` is a known feeling. **A skipped question is absent from `answers`** — never `false` — and its absence is never an error. |
+| `person_fact` | Exactly one mention; `text` ≤ 120 characters. |
+| `trigger` | `label` trimmed, non-blank, ≤ 40 characters, and stored trimmed; `merged_into`, if present, names one of the caller's live triggers and not this one. |
+
+| Status | Body |
+| :----- | :--- |
+| `201` | The created row: `ID`, `CreatedAt`, the stored payload, and every mention with its resolved `relationship_id`. |
+| `200` | This `client_id` is already stored for this user; body is that row, mentions and all. Nothing else happens. |
+| `400` | `{"error":"…"}` naming the field — `unknown feeling id: bliss`, `unknown ritual question: hydrated`, `day must be within 36 hours of at`, `mention 1 needs relationship_id or name`, `feelings[0].intensity must be between 1 and 3`, `unlisted trigger: <id>`, `person_fact needs exactly one mention`, `client_id must be a UUID`, `payload.v must be 1`, `unknown trigger in merged_into: <id>`. Mentions and triggers are numbered from zero, the way `about.ref` addresses them. |
+| `401` | `{"error":"User ID not found in context"}` |
+| `404` | A `relationship_id`, a `supersedes_id`, or a referenced trigger that is not the caller's. Nothing is written. |
+| `409` | `supersedes_id` is already superseded, or the `client_id` is held by a **soft-deleted** entry — a retry after a delete conflicts rather than resurrecting the row. |
+| `500` | `{"error":"Failed to create journal entry"}` |
+
+**Everything or nothing.** The order inside the transaction is fixed by what depends on
+what: the idempotency lookup first, so a retry costs one query; the correction next, so a
+request that cannot be linked writes nothing; the triggers before the entry that references
+them; the mentions with the entry itself, in one `Create`, so there is no window in which an
+entry exists unmentioned.
+
+---
+
+### `GET /api/journal/entries`
+
+Every entry that is **current** — not deleted, not superseded — in a day range, with its
+mentions.
+
+| Parameter | Rules |
+| :-------- | :---- |
+| `from`, `to` | `YYYY-MM-DD` strictly, both ends **inclusive**. Malformed is `400 {"error":"invalid from, expected YYYY-MM-DD"}`. Omit either and the window defaults to the last **31 days**: `to` becomes today (the server's UTC day) and `from` becomes 30 days before `to`. Since `day` is a civil day the *client* chose, a caller that cares which days it gets sends both — every screen does. |
+| `kind` | Optional, one of `checkin`, `ritual`, `person_fact`, `trigger`. Anything else is `400 {"error":"unknown kind: <k>"}`. **`?kind=trigger` is the trigger vocabulary** — there is no separate endpoint for it. |
+| `relationship_id` | Optional, numeric or `400 {"error":"relationship_id must be a number"}`. Filters to entries carrying a mention of that person. It is a filter, not an ownership assertion: another user's id matches nothing and returns `[]`, because the query is already scoped to the caller. An entry naming one person twice is still **one** row — the filter is a subquery, not a join. |
+
+Ordered `day ASC, at ASC, id ASC`. The `id` tiebreaker is load-bearing: without it two entries
+stamped the same instant swap places between refreshes and the day graph redraws itself
+differently each time.
+
+The range comparison is a **string** comparison, which is the whole reason `day` is a
+`varchar(10)`: lexical order on `YYYY-MM-DD` is chronological order, on both engines, with no
+aggregate to mistype ([trap 10a](10-agent-guide.md#3-traps-that-fail-silently)).
+
+`superseded_at IS NULL` is applied always and is not configurable. A correction stamped the
+row it replaced at write time precisely so that a reader never has to walk a chain to find
+out what is current. The superseded row is still stored, and the export carries it.
+
+| Status | Body |
+| :----- | :--- |
+| `200` | An array of entries, each with its `mentions` preloaded. `[]` when nothing matches. |
+| `400` | `{"error":"…"}` — a malformed `from`/`to`, an unknown `kind`, a non-numeric `relationship_id`. |
+| `401` | `{"error":"User ID not found in context"}` |
+| `500` | `{"error":"Failed to fetch journal entries"}` |
+
+### `DELETE /api/journal/entries/:id`
+
+Soft delete (`deleted_at` is set), scoped to the caller — the same shape as
+[`DELETE /api/subjects/:id`](#delete-apisubjectsid).
+
+| Status | Body |
+| :----- | :--- |
+| `200` | `{"message":"Journal entry deleted"}` |
+| `401` | `{"error":"User ID not found in context"}` |
+| `404` | `{"error":"Journal entry not found"}` — nothing matched: unknown id, already deleted, or somebody else's. |
+| `500` | `{"error":"Failed to delete journal entry"}` |
+
+The handler reads `RowsAffected`, so a `200` genuinely means one row went away and deleting
+the same id twice returns `200` then `404`.
+
+**The mentions stay.** They carry no soft delete of their own because they have no life of
+their own; every read that counts them joins through the entry, so a deleted entry's mentions
+stop counting without any row being destroyed — and restoring the entry restores them intact.
+The `client_id` stays reserved too, which is why a retried `POST` after a delete is `409`
+rather than a resurrection.
+
+### `GET /api/journal/days`
+
+One row per day that has something on it, for the month view: enough to draw which days are
+occupied without fetching the days themselves.
+
+`from` and `to` behave exactly as they do on `GET /api/journal/entries`, including the 31-day
+default.
+
+```json
+[ { "day": "2026-08-20", "checkins": 2, "ritual": false, "people": 2 },
+  { "day": "2026-08-21", "checkins": 1, "ritual": true,  "people": 0 } ]
+```
+
+| Field | Meaning |
+| :---- | :------ |
+| `day` | `YYYY-MM-DD`. Days with nothing on them are absent from the array rather than present as zeroes. |
+| `checkins` | Entries of `kind: "checkin"` that day. A ritual is not a check-in and is not counted here. |
+| `ritual` | Whether the ritual was done — a **boolean**, deliberately not a count. The question the month view asks is whether it happened; a number would invite a reader to draw "how many", and this app keeps no such scoreboard. |
+| `people` | **Distinct relationships** named that day, not the number of mentions. Two entries both naming Lucie are one person. |
+
+Deleted and superseded entries are excluded, exactly as on the entries endpoint.
+
+One grouped query, `GROUP BY day` over a `varchar(10)` — a string operation that behaves
+identically on SQLite and Postgres. The join to mentions makes an entry appear once per person
+it names, so the per-kind counts are `COUNT(DISTINCT id)` rather than `COUNT(*)`: without that,
+an entry naming two people would count as two check-ins.
+
+| Status | Body |
+| :----- | :--- |
+| `200` | An array of day rows, ordered by `day`. `[]` for a range with nothing in it. |
+| `400` | `{"error":"invalid from, expected YYYY-MM-DD"}` |
+| `401` | `{"error":"User ID not found in context"}` |
+| `500` | `{"error":"Failed to fetch journal days"}` |
+
+### `DELETE /api/journal/people/:id`
+
+Everything the journal holds **about** one person, removed in one action — the button
+[§10.6](../product_vision/06-emotional-journal.md) requires on the People detail screen. `:id`
+is a `relationship_id`.
+
+Two things happen inside one transaction:
+
+1. Every `person_fact` entry of the caller's that names them is **soft-deleted**. A fact *is*
+   a statement about that person; there is nothing left of it once the person is taken out.
+2. Every mention of them on the caller's entries is **detached** — `relationship_id` becomes
+   `NULL` and `label` is untouched.
+
+```json
+{ "message": "Person removed from the journal", "facts_deleted": 2, "mentions_detached": 3 }
+```
+
+| Field | Meaning |
+| :---- | :------ |
+| `facts_deleted` | `person_fact` entries that went. |
+| `mentions_detached` | Mentions on entries that **stayed** — check-ins and rituals. Disjoint from `facts_deleted`: a deleted fact's own mention is detached too but is in neither number, so the dialog can state both without counting anything twice. |
+
+**What is acted on and what is counted are two different sets.** The action covers superseded
+rows too: they are still statements about this person, and they are still in the export, so a
+superseded fact is soft-deleted and a superseded mention is detached like any other. The two
+*counts*, though, cover only the entries the journal **shows** — not deleted, not superseded —
+because those are the numbers the dialog stated before acting, and it got them by counting
+what `GET /api/journal/entries` returned. Before 2026-08-22 the counts included superseded
+rows, so a user who had ever corrected an entry was told two facts would go and then saw four.
+
+| Status | Body |
+| :----- | :--- |
+| `200` | The body above. Both counts are what *happened*, so running it twice reports zeroes the second time rather than repeating itself. |
+| `401` | `{"error":"User ID not found in context"}` |
+| `404` | `{"error":"Relationship not found"}` — unknown, deleted, non-numeric, or somebody else's. Never `403`. |
+| `500` | `{"error":"Failed to remove this person from the journal"}` |
+
+**The check-ins survive, and so does each mention's `label`.** A check-in is the user's own
+record of a day, and removing a third party from the journal must not rewrite it — the same
+rule [`DELETE /api/relationships/:id`](#delete-apirelationshipsid) follows for its own
+mentions. What is left is the name as it was said that day: a quotation, and never enough to
+recreate the person.
+
+**This is not a relationship delete.** The relationship, its snapshots and its cadence are
+untouched; the two actions live on different screens with different dialogs, and neither
+implies the other.
 
 ---
 
@@ -502,7 +767,7 @@ One JSON document containing everything the signed-in user has.
 ```json
 {
   "format": "alq-export",
-  "version": 1,
+  "version": 2,
   "exported_at": "2026-07-26T03:34:14Z",
   "user": { "email": "you@example.com", "name": "Jane", "age": 31, "mbti_type": "INTJ" },
   "relationships": [
@@ -514,9 +779,51 @@ One JSON document containing everything the signed-in user has.
           "guide_answers": { "eros": { "0": 2 } },
           "created_at": "2026-01-10T09:12:00Z" }
       ] }
-  ]
+  ],
+  "journal": {
+    "entries": [
+      { "client_id": "0b7e5d4c-1a2b-4c3d-8e9f-000000000001", "kind": "trigger",
+        "day": "2026-08-19", "at": "2026-08-19T09:00:00Z", "schema_version": 1,
+        "payload": { "v": 1, "label": "deadline", "merged_into": null } },
+      { "client_id": "6f1c3a0e-9d4b-4a71-8f2e-1c0b7a5e33d1", "kind": "checkin",
+        "day": "2026-08-21", "at": "2026-08-21T16:42:10Z", "schema_version": 1,
+        "payload": { "v": 1, "source": "typed", "tz_offset_min": 120,
+                     "transcript": "A long day, and Lucie made it better.",
+                     "tags": ["work"],
+                     "feelings": [
+                       { "id": "rapport", "intensity": 3, "uncertain": false,
+                         "about": [{ "kind": "person", "ref": 0 }] },
+                       { "id": "stress", "intensity": 2, "uncertain": true,
+                         "about": [{ "kind": "trigger",
+                                     "trigger": "0b7e5d4c-1a2b-4c3d-8e9f-000000000001" }] }
+                     ] },
+        "mentions": [{ "relationship": "Lucie", "ref": 0, "label": "Lucie" }],
+        "superseded_at": "2026-08-21T17:05:00Z" },
+      { "client_id": "6f1c3a0e-9d4b-4a71-8f2e-1c0b7a5e33d2", "kind": "checkin",
+        "day": "2026-08-21", "at": "2026-08-21T17:05:00Z", "schema_version": 1,
+        "payload": { "v": 1, "source": "chips", "feelings": [] },
+        "supersedes": "6f1c3a0e-9d4b-4a71-8f2e-1c0b7a5e33d1" }
+    ]
+  }
 }
 ```
+
+**Version 2** added the `journal` block; version 1 documents have no such key and are still
+importable. The journal is the whole record, not the current view of it:
+
+- **Every kind**, including `trigger` rows. A check-in's `about` names a trigger by the
+  trigger's own `client_id`, which is stable across export and import, so triggers need no
+  name-based resolution on the way back in.
+- **Superseded rows, with their link.** `superseded_at` is the instant a correction replaced
+  the row; `supersedes` is the *client id* of the row this one replaced, because a row id
+  would be the one thing this document does not carry. A reader that wants only what is
+  current filters `superseded_at` exactly the way `GET /api/journal/entries` does.
+- **Mentions reference the relationship by name**, consistent with the rest of the document.
+  `relationship` is **absent** when the mention points at someone the user has since deleted;
+  `label` — the name as it was said that day — stays, and the import does not bring the
+  person back.
+- Entries are ordered `day`, then `at`, then insertion, so two exports of one database are
+  byte-identical apart from `exported_at`.
 
 What is **deliberately absent**:
 
@@ -527,8 +834,11 @@ What is **deliberately absent**:
 - **Soft-deleted rows**, via GORM's default scope: an export is what you have, not what you
   once had.
 - **The denormalized snapshot name** — the relationship above it carries the name.
-- **Avatar image bytes.** Unsupported in version 1; `profile_picture` is a path, and the file
-  is not included.
+- **Avatar image bytes.** Unsupported; `profile_picture` is a path, and the file is not
+  included.
+- **Row ids in the journal too.** An entry travels as its `client_id`, a mention as a name,
+  and a correction as the `client_id` it replaced — `id`, `entry_id`, `relationship_id` and
+  `supersedes_id` appear nowhere in the block.
 
 Shape notes: `date` is `YYYY-MM-DD` (the same format `POST /api/subjects` takes) and is
 always present, `null` when the snapshot is undated. The optional content fields
@@ -545,16 +855,20 @@ ordered by name; snapshots oldest-first, undated last.
 
 ### `POST /api/import`
 
-Accepts the same document. `?dry_run=true` reports what *would* happen and writes nothing.
+Accepts the same document, version 1 or version 2. `?dry_run=true` reports what *would*
+happen and writes nothing.
 
 ```json
-{ "dry_run": false, "relationships_created": 2, "snapshots_created": 31, "snapshots_skipped": 16 }
+{ "dry_run": false, "relationships_created": 2, "snapshots_created": 31, "snapshots_skipped": 16,
+  "journal_entries_created": 128, "journal_entries_skipped": 0 }
 ```
 
 Rules, in the order they matter:
 
-1. **`format` and `version` are checked first.** Anything else is `400` — this endpoint will
-   not guess at a file it does not recognise.
+1. **`format` and `version` are checked first.** The version must be between 1 and 2
+   inclusive; anything else is `400` — this endpoint will not guess at a file it does not
+   recognise. A version 1 file carrying a `journal` block is `400` as well: it describes
+   itself wrongly, and neither reading the block nor dropping it silently would be honest.
 2. **The whole document is validated before anything is written**, reusing the same
    validators as `POST /api/subjects`. An import is not a validation bypass. One bad value
    rejects the file whole rather than leaving half of it applied, and the message names the
@@ -571,25 +885,84 @@ Rules, in the order they matter:
 6. **Everything runs in one transaction.** A dry run walks the identical code path and then
    rolls back on a sentinel error, so the preview cannot disagree with the real run.
 
+And for the journal block, where the rules differ because the data does:
+
+7. **Duplicate detection is the `client_id`, not the content.** A journal entry has a stable
+   identity a snapshot lacks, so the check is exact rather than a resemblance test and a
+   re-import is a true no-op. The lookup ignores the soft-delete scope: a deleted row still
+   holds its `(user_id, client_id)` slot, so re-importing a file does **not** resurrect an
+   entry the user deleted — the same answer `POST /api/journal/entries` gives a retried
+   write.
+8. **Mentions resolve by name** through the same find-or-create as everything else, so an
+   entry naming someone the user already has lands on their existing stack. A mention with
+   **no** `relationship` is written detached, keeping its `label`: the file is saying that
+   person was already deleted, and inventing them again would contradict it.
+9. **Order in the file does not matter.** A check-in points at a trigger by client id inside
+   its payload, which is opaque to SQL, so nothing needs the trigger row written first;
+   `supersedes` is resolved in a second pass over the client ids the import can see, which
+   is order-independent too. A `supersedes` naming a row that is neither in the file nor
+   already stored is left unlinked rather than refused — the row it corrected was deleted
+   before the export was taken, and the correction still stands on its own.
+10. **A trigger a check-in names must be in the file.** An export always carries it, so a
+    miss means the file was edited or truncated: `400`, naming the id, with nothing written.
+    The same applies to a merge's `merged_into`.
+11. **The same validators the write path runs.** Kind, day-against-`at`, `schema_version`,
+    and the per-kind payload rules of [§5a](#5a-journal-endpoints). An import is not a
+    validation bypass here either.
+
 | Status | Body |
 | :----- | :--- |
 | `200` | The counts above. |
-| `400` | `{"error":"unrecognized format …"}`, `{"error":"unsupported export version …"}`, `{"error":"every relationship needs a name"}`, `{"error":"relationship \"X\" appears twice in the file"}`, or any `POST /api/subjects` validation message prefixed with its position. |
+| `400` | `{"error":"unrecognized format …"}`, `{"error":"unsupported export version …"}`, `{"error":"version 1 has no journal block, but this file has one"}`, `{"error":"every relationship needs a name"}`, `{"error":"relationship \"X\" appears twice in the file"}`, `{"error":"journal entry 4 names a trigger this file does not contain: 0b7e…"}`, or any `POST /api/subjects` or `POST /api/journal/entries` validation message prefixed with its position. |
 | `401` | `{"error":"User ID not found in context"}` |
 | `500` | `{"error":"Failed to import"}` |
+
+### The CSV export
+
+Not an endpoint. The spreadsheet form is built in the browser from data it already has, plus
+one call to `GET /api/export` for the journal half, and saved with a blob download —
+`src/components/Vault.jsx`. It is **two files**, delivered as two downloads from the one
+button, because the two sheets have different columns and no one sheet can hold both:
+
+| File | Grain | Columns |
+| :--- | :---- | :------ |
+| `alq-export-YYYY-MM-DD.csv` | one row per snapshot | `relationship, date, kind`, one per category, `uncertain, tags, note` |
+| `alq-journal-YYYY-MM-DD.csv` | one row per feeling per check-in | `day, at, source, feeling, intensity, uncertain, about_kind, about, tags` |
+
+The journal sheet is written only when there is at least one feeling to write, so an empty
+journal produces one file rather than an empty second one. Superseded check-ins are left out,
+matching `GET /api/journal/entries`; `about` resolves a person to their label and a trigger
+to its word, reading superseded trigger rows too so a renamed trigger still resolves. A
+feeling with more than one `about` keeps one row, with both columns space-joined.
+
+**The transcript is deliberately not a column.** The JSON export carries what was said; the
+spreadsheet is the form of this data most likely to be opened on a shared screen.
 
 ### `GET /api/meta`
 
 Counts for the Vault page. No configuration detail: no DSN, no file paths, no secrets.
 
 ```json
-{ "db_backend": "sqlite", "relationship_count": 3, "snapshot_count": 47, "oldest_snapshot_date": "2025-03-04T00:00:00Z" }
+{ "db_backend": "sqlite", "relationship_count": 3, "snapshot_count": 47,
+  "oldest_snapshot_date": "2025-03-04T00:00:00Z",
+  "journal_entry_count": 128, "oldest_journal_day": "2026-07-02" }
 ```
 
 `db_backend` is GORM's dialector name (`sqlite` or `postgres`); the frontend turns it into a
 sentence. `oldest_snapshot_date` is `MIN(date)` scoped to the caller and is `null` when
 nothing is dated — it uses the same `aggregateTime` scanner as `latest_date`, for the same
 engine-typing reason.
+
+`journal_entry_count` counts every journal row still stored, **superseded ones included**: a
+correction does not remove the statement it replaces, the export carries both, and this number
+answers "how much of my data is here", not "how many entries are current". Soft-deleted rows
+do not count.
+
+`oldest_journal_day` is `MIN(day)`, and it is the one aggregate here that needs **no**
+`aggregateTime`: `day` is a `varchar(10)`, so `MIN()` over it is a plain string on both
+engines and there is nothing for the aggregate to mistype. That is the payoff of storing the
+civil day as text ([trap 10a](10-agent-guide.md#3-traps-that-fail-silently)). It is `null`
+when the journal is empty.
 
 ---
 

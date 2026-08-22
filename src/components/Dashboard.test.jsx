@@ -7,6 +7,7 @@ import Dashboard, { PersonForm, CATEGORIES_EXPORT, anchorFor, anchorPhrase, guid
 import { PHRASES_PER_BAND } from '../constants/categories';
 import { SubjectsProvider } from '../context/SubjectsContext';
 import { DiscretionProvider } from '../context/DiscretionContext';
+import { JournalProvider } from '../context/JournalContext';
 import { summarizeStack } from '../constants/categories';
 
 vi.mock('axios');
@@ -16,15 +17,22 @@ const TimelineProbe = () => {
     return <div>timeline for relationship {id}</div>;
 };
 
-/** The dashboard now reads shared state and navigates, so it needs both providers. */
+/**
+ * The dashboard reads shared state and navigates, so it needs the providers App.jsx wraps it
+ * in. `JournalProvider` is among them since A8: the nudge slot is shared with the journal's
+ * nightly prompt, and which of the two shows depends on whether tonight's ritual is already
+ * on the day (§3.6).
+ */
 const renderDashboard = () => render(
     <MemoryRouter initialEntries={['/']}>
         <DiscretionProvider>
             <SubjectsProvider>
-                <Routes>
-                    <Route path="/" element={<Dashboard />} />
-                    <Route path="/relationships/:id/timeline" element={<TimelineProbe />} />
-                </Routes>
+                <JournalProvider>
+                    <Routes>
+                        <Route path="/" element={<Dashboard />} />
+                        <Route path="/relationships/:id/timeline" element={<TimelineProbe />} />
+                    </Routes>
+                </JournalProvider>
             </SubjectsProvider>
         </DiscretionProvider>
     </MemoryRouter>
@@ -61,6 +69,86 @@ const subjectWithContext = {
     tags: ['conflict', 'distance', 'life change', 'routine period'],
     stats: { ...emptyStats, eros: 85, mania: 60 }
 };
+
+/**
+ * §2.2 — the field that stops a journal-only person becoming a near-duplicate.
+ *
+ * The gap A7 found on the running app: a person created by a check-in and then snapshotted
+ * had to be typed out in full, because the field offered nothing at all. Resolution is
+ * exact after trim (invariant 2b), so "Lucie" typed where "Lucie M" exists is two people
+ * from then on.
+ */
+describe('PersonForm — name suggestions', () => {
+    const onSave = vi.fn();
+    const onClose = vi.fn();
+
+    // The list `useSubjects()` holds: every relationship, snapshot or no snapshot.
+    const suggestions = [
+        { ID: 7, name: 'Lucie M', snapshot_count: 0 },
+        { ID: 9, name: 'Noor', snapshot_count: 2 }
+    ];
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('offers every relationship, including the ones the dashboard does not draw', () => {
+        render(<PersonForm onSave={onSave} onClose={onClose} suggestions={suggestions} />);
+
+        const list = document.querySelector('[data-name-suggestions]');
+        expect(list).toBeInTheDocument();
+        expect([...list.querySelectorAll('option')].map(option => option.value))
+            .toEqual(['Lucie M', 'Noor']);
+
+        // The field is wired to it, by the id React minted rather than a literal.
+        const field = screen.getByPlaceholderText('Enter name...');
+        expect(field.getAttribute('list')).toBe(list.id);
+        expect(list.id).toBeTruthy();
+    });
+
+    it('suggests without choosing — the submitted name is still the typed one', async () => {
+        render(<PersonForm onSave={onSave} onClose={onClose} suggestions={suggestions} />);
+
+        await userEvent.type(screen.getByPlaceholderText('Enter name...'), 'Lucie M');
+        await userEvent.click(screen.getByRole('button', { name: /analyze & save/i }));
+
+        // Invariant 15: nothing is written that the user did not confirm. A datalist cannot
+        // fill the field on its own, and the server’s find-or-create is still the one thing
+        // that decides which relationship this string means.
+        expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ name: 'Lucie M' }));
+    });
+
+    it('offers nothing on a new version or a pulse, where the person is already decided', () => {
+        const { rerender } = render(
+            <PersonForm
+                onSave={onSave}
+                onClose={onClose}
+                suggestions={suggestions}
+                initialData={subjectWithContext}
+                isNewVersion
+            />
+        );
+        expect(document.querySelector('[data-name-suggestions]')).toBeNull();
+        expect(screen.getByPlaceholderText('Enter name...')).toBeDisabled();
+
+        rerender(
+            <PersonForm
+                onSave={onSave}
+                onClose={onClose}
+                suggestions={suggestions}
+                initialData={subjectWithContext}
+                isPulse
+            />
+        );
+        expect(document.querySelector('[data-name-suggestions]')).toBeNull();
+    });
+
+    it('renders no empty list when there is nothing to suggest', () => {
+        render(<PersonForm onSave={onSave} onClose={onClose} />);
+
+        expect(document.querySelector('[data-name-suggestions]')).toBeNull();
+    });
+});
 
 describe('PersonForm — context capsules', () => {
     const onSave = vi.fn();
@@ -1072,6 +1160,41 @@ describe('Dashboard — stack-level actions', () => {
         await waitFor(() => {
             expect(axios.patch).toHaveBeenCalledWith('/api/relationships/1', { cadence_days: null });
         });
+    });
+
+    /**
+     * The journal half of the same dialog (Phase 6 §7.3). A delete leaves every journal
+     * entry exactly where it is, and a confirmation that lists only the snapshots describes
+     * half of what is about to happen. The count is `mention_count` off the relationship
+     * summary, read before the delete rather than reported after it.
+     */
+    it('names the journal mentions a relationship delete will leave behind', async () => {
+        mockFetch([alexV1, alexV2, alexM], [
+            { ID: 1, name: 'Alex', snapshot_count: 2, mention_count: 4 },
+            { ID: 2, name: 'Alex M', snapshot_count: 3, mention_count: 0 }
+        ]);
+        renderDashboard();
+        await openMenu('Alex');
+        await userEvent.click(screen.getByRole('menuitem', { name: /delete relationship/i }));
+
+        expect(screen.getByText(/journal mentions/)).toHaveTextContent(
+            '4 journal mentions of them stay: the entries are still there, and will no longer '
+            + 'be linked to a person.'
+        );
+    });
+
+    it('says nothing about the journal for someone the journal has never named', async () => {
+        mockFetch([alexV1, alexV2, alexM], [
+            { ID: 1, name: 'Alex', snapshot_count: 2, mention_count: 0 },
+            { ID: 2, name: 'Alex M', snapshot_count: 3, mention_count: 0 }
+        ]);
+        renderDashboard();
+        await openMenu('Alex');
+        await userEvent.click(screen.getByRole('menuitem', { name: /delete relationship/i }));
+
+        // A clause whose count is zero is left out, never rendered as "0 journal mentions".
+        expect(screen.getByText(/All 2 snapshots of/)).toBeInTheDocument();
+        expect(screen.queryByText(/journal mention/)).not.toBeInTheDocument();
     });
 
     it('spells out how many snapshots a relationship delete will take', async () => {

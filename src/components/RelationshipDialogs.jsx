@@ -361,6 +361,12 @@ export const DeleteRelationshipDialog = ({ stack, onDelete, onClose }) => {
     const [error, setError] = useState(null);
     const [deleting, setDeleting] = useState(false);
     const count = stack.relationship.snapshot_count;
+    // What the journal holds about this person, which the delete leaves alone (Phase 6
+    // §7.3). It is a second sentence rather than a second clause in the first: a snapshot is
+    // being destroyed and a journal entry is not, and one sentence carrying both verbs would
+    // have to say "deleted" and "kept" in the same breath. Zero is left unsaid entirely —
+    // "0 journal mentions" is a sentence about nothing.
+    const mentions = stack.relationship.mention_count ?? 0;
 
     const submit = async () => {
         if (deleting) return;
@@ -388,6 +394,13 @@ export const DeleteRelationshipDialog = ({ stack, onDelete, onClose }) => {
                     All {count} snapshot{count === 1 ? '' : 's'} of <span className="font-medium text-slate-800">{stack.relationship.name}</span> will
                     be deleted, along with their notes and tags.
                 </p>
+                {mentions > 0 && (
+                    <p className="text-sm text-slate-600 font-light leading-relaxed mt-2">
+                        {mentions === 1
+                            ? 'One journal mention of them stays: the entry is still there, and will no longer be linked to a person.'
+                            : `${mentions} journal mentions of them stay: the entries are still there, and will no longer be linked to a person.`}
+                    </p>
+                )}
                 <div className="mt-8 flex justify-end gap-3">
                     <button
                         type="button"
