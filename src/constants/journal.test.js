@@ -100,6 +100,10 @@ describe('the forbidden-word walk', () => {
         expect(found.map(entry => entry.path)).toContain('people.remove.mentions.one');
         expect(found.map(entry => entry.path)).toContain('people.stackActions');
         expect(found.map(entry => entry.path)).toContain('triggers.attachedFormula');
+        // B2's controls and the sentence a branch says to a screen reader. The graph's own
+        // vocabulary is in this object too, so the walk reads it with everything else.
+        expect(found.map(entry => entry.path)).toContain('dayGraph.rotateRight');
+        expect(found.map(entry => entry.path)).toContain('dayGraph.branch');
     });
 
     it('finds no evaluative or urgency vocabulary in JOURNAL_COPY', () => {
@@ -1089,6 +1093,14 @@ describe('humanMinutes', () => {
         expect(humanMinutes(90)).toBe('an hour and a half');
         expect(humanMinutes(60)).toBe('an hour');
         expect(humanMinutes(45)).toBe('45 minutes');
+    });
+
+    it('lets the day graph name the strength it draws an unstated one at', () => {
+        // §8.2 rule 7 and A8's hand-forward: the ritual's day word carries no intensity, and
+        // whatever the graph draws it at has to be a constant this sentence names.
+        expect(fillCopy(JOURNAL_COPY.dayGraph.unstated, { strength: 1 }))
+            .toBe('A feeling recorded without a strength, like the closing word, is drawn at 1 of three.');
+        expect(JOURNAL_COPY.dayGraph.unstated).toMatch(/\{strength\}/);
     });
 
     it('lets the day graph derive its sentence from the constant rather than write it out', () => {

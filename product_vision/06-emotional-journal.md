@@ -1,6 +1,6 @@
 # Phase 6 — The Emotional Journal
 
-**Status: 6-A implemented; 6-B…6-G planned.** As of **2026-08-22**. Written against the code
+**Status: 6-A and 6-B implemented; 6-C…6-G planned.** As of **2026-08-23**. Written against the code
 on branch `app-improvements` as of 2026-08-21, and revised the same day after review: the
 voice path is built on one audio-native on-device model (Gemma 4 E2B) rather than a
 transcriber plus a text model, triggers are first-class records, and an on-device embedding
@@ -12,6 +12,12 @@ nightly ritual, People and Triggers), with the documentation sweep, the manual Q
 review pass that close it. It contains **no model and no microphone**, which is why the Vault
 page's *"There are none, by design"* is still true of the code as written; that sentence
 changes at 6-C, when the transcriber ships, and not before (§10.1).
+**Slice 6-B shipped on 2026-08-23** — the day graph: `dayGraph.js`, the eight construction
+rules of §8.2 as pure functions (session B1), and `DayGraph.jsx`, the hand-drawn SVG that
+draws them (session B2), mounted in the day view. It costs **0 KB of chart library**: there is
+no three.js, no react-three-fiber and no Recharts anywhere in it, and the flat ribbon is the
+same drawing with the camera's tilt set to nothing. §12.4's question 6 is still open and still
+U1's — it needs readers who are not the person who drew it.
 [`06-progress.md`](06-progress.md) is the record of exactly what has shipped, session by
 session, and of what 6-A deliberately does not do.
 The execution plan for building it is
@@ -1420,7 +1426,7 @@ merge and export — and nothing about how the user spoke.
 
 | Axis / channel | Encodes | Why this and not the alternatives |
 | :------------- | :------ | :-------------------------------- |
-| **x** | Time of day, proportional — 00:00 to 24:00 local | The same honesty rule as the timeline's real time axis: a gap of six hours has to look like six hours. |
+| **x** | Time of day, proportional — the **civil** day, 04:00 → 04:00 local | The same honesty rule as the timeline's real time axis: a gap of six hours has to look like six hours — so the axis is the day and not the span the check-ins happen to cover, or two check-ins ten minutes apart would be drawn as a full day of data. B2: it is the *civil* day rather than midnight-to-midnight because a 02:00 check-in belongs to the day before (`DAY_ROLLOVER_HOUR`, §6.3), and an axis starting at midnight would have nowhere to put one. Both ends are built as local dates, so the axis is genuinely 23 or 25 hours long on the two days a year that are. |
 | **y** | **Valence** of the feeling, −1 … +1, scaled by the current intensity | Valence is the dimension everyone can read without a legend — up is pleasant. Scaling by intensity is what makes a branch *move*: a strong feeling stands far from the trunk and a fading one returns to it. |
 | **z** (depth) | **Energy** of the feeling, 0 … 1 — fixed per vocabulary entry | The second circumplex dimension. Calm and joy are both pleasant; energy is what tells them apart. Fixed per feeling so the same feeling always sits at the same depth, for the reason invariant 18 fixes the radar's axis order: a shape is only recognisable if a thing is always in the same place. |
 | **Colour** | The feeling's identity (`hex` on the vocabulary entry) | Identity is categorical; colour is the categorical channel. |
@@ -1463,7 +1469,12 @@ component only draws what it returns.
    report that the feeling stopped (invariant 14's logic). Only decay ends a branch; only a
    check-in with the feeling sustains it. The one exception is an explicit `neutral`/`level`
    check-in, which is a report that nothing in particular is present and ends every branch
-   over the next `NEUTRAL_SETTLE_MIN` (30 min).
+   over the next `NEUTRAL_SETTLE_MIN` (30 min). **Only when `level` is the whole of the
+   check-in**: "level, and also anxious" is not a report that nothing in particular is
+   present, so a `level` tapped beside another feeling settles nothing (B1). And the exception
+   overrides rule 3 rather than bending it — a feeling reported again *after* an explicit
+   `level` starts a **second branch lifetime** rather than interpolating across it, because a
+   line drawn through the `level` would be the graph overruling the user.
 6. **Extrapolated segments are marked.** Any part of a branch further than
    `CONFIDENT_MIN` (90 min) from the nearest check-in carrying that feeling is emitted with
    `extrapolated: true` and drawn at reduced opacity. The graph never pretends to know what
@@ -1477,9 +1488,23 @@ component only draws what it returns.
    `buildDayCurve` has to decide what an unstated strength draws at, and that decision is a
    **constant named in the ℹ sentence** like the half-life and the thresholds, never a silent
    2. It is a rendering choice about a record, and the ℹ has to be able to say so.
+   **B1 settled it:** `UNSTATED_INTENSITY = 1`, the lightest of the three steps — the choice
+   that claims least — and `JOURNAL_COPY.dayGraph.unstated` is the sentence, filled from the
+   constant so tuning it cannot leave the sentence untrue.
 8. **Sampling.** Samples every `STEP_MIN` (5 min) from the first to the last check-in, each
-   `{ t, branches: [{ feeling, intensity, y, z, uncertain, extrapolated }] }`; ≤ 288 samples,
-   ≤ 5 branches each — a few hundred path segments, trivial for SVG.
+   `{ t, branches: [{ feeling, intensity, y, z, uncertain, extrapolated }] }`; **≤ 288
+   samples** — a cap a civil day containing an autumn clock change genuinely reaches, so the
+   **step widens** to hold it and `bounds.stepMin` reports what was used (B1: a 24-hour span
+   needs a 10-minute step).
+
+   This line used to add "≤ 5 branches each", and **that was wrong** — not softened here, but
+   corrected against the arithmetic of rules 4 and 5. Five is the *composer's* limit, per
+   check-in. It is not a bound on a sample, because branches outlive the check-in that
+   reported them: an intensity-2 feeling stands for 150·log₂(10) ≈ 498 minutes, so two full
+   check-ins an hour apart leave **ten** branches alive together. Nothing truncates them —
+   dropping a branch to hold a sizing estimate would erase a line the user authored — and
+   `bounds.maxBranches` reports what the day actually held. Still a few hundred path
+   segments, and still trivial for SVG, which is all the estimate was ever for.
 
 **What it costs, stated:** the half-life, thresholds and step are *constants*, shown in the
 graph's ⓘ in one sentence (*"Each feeling is drawn fading over about two and a half hours
@@ -1491,10 +1516,39 @@ that too.
 
 | Option | Bundle cost | jsdom-testable | Assessment |
 | :----- | ----------: | :------------- | :--------- |
-| **2.5-D oblique projection, hand-drawn SVG (recommended)** | **0 KB** | **Yes** — `LoveShape` and `VaultKnob` already prove hand-drawn SVG renders and asserts under jsdom | A pure `project(point, {yaw, pitch})` turns (x, y, z) into screen (x, y) plus a depth used for painter's ordering, width and opacity. Rotation is a horizontal drag on the graph (or two buttons); the z axis reads as a receding floor. Works identically in the WebView, under discretion, and in print. Limits: no true perspective, occlusion approximated by sort order. |
+| **2.5-D oblique projection, hand-drawn SVG (recommended)** | **0 KB** | **Yes** — proven by `DayGraph.test.jsx` (B2) | A pure `project(point, {yaw, pitch})` turns (x, y, z) into screen (x, y) plus a depth used for painter's ordering, width and opacity. Rotation is a horizontal drag on the graph (or two buttons); the z axis reads as a receding floor. Works identically in the WebView, under discretion, and in print. Limits: no true perspective, occlusion approximated by sort order. |
 | three.js + react-three-fiber | roughly 150–200 KB gzipped added to the bundle (verify against the current build) | No — needs a WebGL context | Real depth, lighting, free rotation. The geometry functions above would feed it unchanged, so it is the upgrade path, not a fork. Runner-up. |
 | Hand-written WebGL | 0 KB | No | Camera, picking and text all by hand, for a worse result than r3f. Rejected. |
 | Defer the third dimension (2-D valence ribbon, colour = feeling, width = energy) | 0 KB | Yes | The honest fallback and what the first slice ships as (§11, 6-B): it is the same `buildDayCurve` output projected with `pitch = 0`. |
+
+**One correction to the row above, made by B2.** It used to cite `LoveShape` and `VaultKnob`
+as the proof that hand-drawn SVG asserts under jsdom. `VaultKnob` is hand-drawn and does
+render under jsdom, but **neither suite asserts on the drawing** — `LoveShape.test.jsx` checks
+`buildShapeData` and the props `ShapeDot` returns, and `VaultKnob.test.jsx` checks the slider
+role and its keyboard contract. `LoveShape` is not even hand-drawn: it is a Recharts
+`RadarChart`, which is exactly why its tests assert on the pure function instead. The
+conclusion was right and the evidence was not; **`DayGraph.test.jsx` is the first suite in this
+repository that counts rendered `<path>`s and reads a `stroke-dasharray`**, and it is now the
+proof.
+
+**What B2 found while drawing it**, recorded here because the next reader will otherwise
+re-derive it:
+
+- **The tilt has to stay second to valence.** At a 30° pitch with the energy axis at full
+  reach, a low-energy feeling was lifted further by the projection than a strong pleasant one
+  was by its own valence — so *up* stopped meaning *pleasant*, which is the one thing the y
+  axis is for. The default pitch is **26°**, at which the deepest a feeling can be pushed is
+  about a fifth of the valence axis.
+- **The tilt needs a floor to be legible at all.** A branch drawn above the trunk is either a
+  pleasant feeling or a low-energy one seen from above, and nothing else on screen says which.
+  So the drawing carries one faint neutral line per energy the day holds: a branch is born
+  exactly on its own line, and its distance from that line is its valence.
+- **The vertical scale is fixed by the vocabulary, not by the day.** No feeling in `FEELINGS`
+  is at valence 1, so the canvas reads the largest `|valence|` there is rather than ±1. It is
+  still a fixed scale — a quiet day is never drawn as dramatically as a loud one.
+- **The horizontal scale follows the camera**, because turning spreads depth sideways and
+  foreshortens time. Within any one view, and along any one branch, screen x stays affine in
+  time, which is the property the honesty rule actually needs.
 
 **Recommendation:** hand-drawn SVG with the projection as a pure function, shipped first as
 the 2-D ribbon and then tilted. Recharts is not used here at all — it has no branching
@@ -1514,6 +1568,7 @@ vertical to the page. A tap on a branch opens the check-in it came from in the l
 | `branchPaths(samples)` | One path per branch lifetime, with birth and merge points at trunk valence; width follows intensity; dashed for uncertain and for `unclear` |
 | `project(point, camera)` | Known points at `pitch = 0` project to the 2-D ribbon exactly; depth ordering is stable; yaw of 180° mirrors x |
 | `dayGraphLegend(samples)` | Distinct feelings in order of first appearance; discretion does not affect it (it holds no names) |
+| `paintersOrder(items)` | Furthest first, and **stable** for equal depths — two feelings at one energy cannot swap between renders (B1 added it; the depth sort belongs beside the depth that feeds it) |
 
 The component tests assert on the rendered `<path>` count and `stroke-dasharray` — possible
 here precisely because this is hand-drawn SVG.
@@ -1824,12 +1879,18 @@ triggers and confirm every entry now shows the survivor; rename/merge/delete a r
 and check mentions follow §7.3; discretion mode masks the list, the People view and the
 Triggers view; app lock covers every journal route.
 
-### 6-B — The day graph
+### 6-B — The day graph · **shipped 2026-08-23**
 
 **Outcome:** the day view draws the curve — first as the 2-D ribbon (`pitch = 0`), then with
 the tilt and the horizontal-drag rotation.
 
 **Depends on:** 6-A.
+
+**Shipped as:** [`dayGraph.js`](../src/components/dayGraph.js) (B1, the geometry, 62 tests) and
+[`DayGraph.jsx`](../src/components/DayGraph.jsx) (B2, the drawing, 32 tests), mounted in
+`/journal` and `/journal/:day`. Every verification below was run; the manual comparison §12.4
+question 6 asks for was done once, by the person who drew it, and is recorded in the ledger as
+exactly that.
 
 **Verification**
 
@@ -2094,7 +2155,10 @@ phone, before any native inference work begins:
    the labels?
 6. **Is the tilted graph legible, or is the 2-D ribbon enough?** Shown both for the same day,
    which one do people read correctly when asked "when were you most stressed, and about
-   what?"
+   what?" — the drawing has a *Show it flat* button precisely so this can be asked of the
+   same day without a build. **Still open.** B2 ran it once against itself and found the
+   ribbon faster to read and the tilt better at separating branches the ribbon superimposes;
+   one reader, who had just drawn it, is not an answer to this question.
 7. **Is a second nightly prompt tolerated after two weeks**, or turned off — and if turned
    off, was it the time, the length, or the asking?
 8. **German first.** Every recording in the test in the participants' own language, against

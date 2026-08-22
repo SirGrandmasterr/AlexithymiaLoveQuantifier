@@ -314,7 +314,8 @@ describe('a two-deep merge chain', () => {
         renderDay('2026-08-02');
 
         // The chip reads the survivor's label, not the one the entry was written with.
-        expect(await screen.findByText('stress')).toBeInTheDocument();
+        // `findAllBy`, because since B2 the day graph's legend names the feeling too.
+        expect(await screen.findAllByText('stress')).not.toHaveLength(0);
         expect(document.querySelector('[data-chip="trigger"]')).toHaveTextContent('the job');
         expect(screen.queryByText('work')).not.toBeInTheDocument();
     });

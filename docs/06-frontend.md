@@ -55,6 +55,10 @@ graph TD
     CONSTJ -.-> RIT
     CONSTJ -.-> JP
     CONSTJ -.-> JT
+    CONSTJ -.-> DG["components/dayGraph.js<br/>day curve · branch paths · projection<br/>pure geometry, no renderer"]
+    JRN --> DGC["DayGraph.jsx<br/>the day, drawn — hand-written SVG<br/>claims the horizontal axis"]
+    DG -.-> DGC
+    CONSTJ -.-> DGC
     JC -.-> RIT
     JC -.-> JP
     JC -.-> JT
@@ -102,6 +106,8 @@ graph TD
 | [`RelationshipDialogs.jsx`](../src/components/RelationshipDialogs.jsx) | 411 | `Modal` shell plus the four stack-level dialogs (rename, cadence, merge, delete). |
 | [`AnalysisTimeline.jsx`](../src/components/AnalysisTimeline.jsx) | 317 | Time-axis history chart with milestone markers. |
 | [`LoveShape.jsx`](../src/components/LoveShape.jsx) | 126 | The seven-axis radar polygon. |
+| [`dayGraph.js`](../src/components/dayGraph.js) | 750 | **The day graph's geometry.** `buildDayCurve`, `branchPaths`, `project`, `dayGraphLegend` — a day of check-ins as samples, paths and a 2.5-D camera. Pure, like `buildShapeData`: no React, no SVG, no charting library. |
+| [`DayGraph.jsx`](../src/components/DayGraph.jsx) | 736 | **The day graph, drawn.** Hand-written SVG over the geometry above: one `<path>` per branch, a camera with a flat/tilt toggle and two rotate buttons, `touch-action: pan-y`. Note the case: `DayGraph.jsx` draws, `dayGraph.js` decides. |
 | [`WhatChanged.jsx`](../src/components/WhatChanged.jsx) | 253 | Post-snapshot delta screen + its note follow-up. |
 | [`ContextCapsule.jsx`](../src/components/ContextCapsule.jsx) | 137 | The notes + tags editor, shared by `PersonForm` and `WhatChanged`. |
 | [`Profile.jsx`](../src/components/Profile.jsx) | 495 | User settings, avatar upload, check-in reminders, and the journal's three per-device settings. |
@@ -366,8 +372,8 @@ Decisions worth knowing before changing it:
 
 ## 2d. `Journal.jsx` — `/journal` and `/journal/:day`
 
-The day view. It reads and does not write; the day graph is the one thing still to land in
-it (B2). It is also where the journal's **shared pieces** live and are exported from —
+The day view. It reads and does not write. It is also where the journal's **shared pieces**
+live and are exported from —
 `Frame`, `Loading`, `LoadFailed`, `FeelingChip`, `PersonChip`, `WordChip`, `chipClass` and
 `AttachedFeelings` — because the People and Triggers views draw the same chips over different
 subjects and a second copy of a chip is a second place its colours can drift.
@@ -383,15 +389,19 @@ subjects and a second copy of a chip is a second place its colours can drift.
 - **The ritual is the day's footer**, not an item in the list: a check-in is a moment inside
   the day and the ritual is about the whole of it. A question in `asked` with no key in
   `answers` renders as *Unanswered* — never as a *no* (invariant 14).
-- **The day graph's slot renders nothing** until B2. It is a slot rather than a placeholder so
-  that the layout the graph lands in is the one it will get.
+- **The day graph sits between the header and the list** — see §4be. A tap on a branch
+  scrolls the check-in it was drawn from into view and rings it, which is why the rows take an
+  `opened` prop; the state is cleared whenever the day changes, because a row id from
+  yesterday is not on this screen. On a day with no check-in in it the graph renders **nothing
+  at all**, so §9.4's empty state is the only thing that answers for the day.
 - **No bare strings.** Every word the screen says comes from `JOURNAL_COPY`, which is what
   lets the forbidden-word walk in `journal.test.js` see the whole surface of the feature. The
   colours are inline `style` from the complete literal hexes in `FEELINGS`, never composed
   class names (invariant 4).
 - **Discretion** masks names to initials and blurs transcripts, notes, trigger labels and
-  context tags. Feelings and their colours are untouched — a chip carries no name, and the
-  graph B2 draws will not either.
+  context tags. Feelings and their colours are untouched — a chip carries no name, and neither
+  does the graph: it is fed feeling ids and coordinates, so it keeps drawing without a
+  `useDiscretion` anywhere in it.
 
 - **A check-in can be withdrawn, and never edited.** Each card carries a delete affordance
   whose dialog names the time, lists the words, and says what survives: *the people and
@@ -1487,6 +1497,211 @@ reads as noise — the vertices carry the category colours instead.
 
 Placements: the card flip (bars ⇄ shape, bars default), the timeline header with its compare
 selector, and above the delta list in `WhatChanged`.
+
+`buildShapeData` and `ShapeDot` being exported and unit-tested is the pattern the day graph
+follows wholesale — see [4bd](#4bd-daygraphjs--the-day-graphs-geometry), which is that idea
+with the component still to come.
+
+---
+
+## 4bd. `dayGraph.js` — the day graph's geometry
+
+**Pure geometry, beside `LoveShape`'s.** `buildShapeData` is where every honesty rule of the
+radar polygon lives and the component is a `map` over what it returns; `dayGraph.js` is the
+same arrangement for the day graph, and rather more of it. It exports four functions and no
+component:
+
+| Function | Returns | What it decides |
+| :------- | :------ | :-------------- |
+| `buildDayCurve(entries, options)` | `{ samples, branches, bounds }` | The whole day: where every branch is born, how it moves between check-ins, when it merges back into the trunk, and which stretches are guesses. |
+| `branchPaths(curve)` | one path per branch lifetime | Birth and merge at trunk valence, stroke width from strength, dashed for uncertainty, and the split where the opacity changes. |
+| `project(point, camera)` | `{ x, y, depth, width, opacity }` | The 2.5-D oblique camera. `{ yaw, pitch }`, in degrees. |
+| `dayGraphLegend(samples)` | the day's feelings, in first-appearance order | The key beside the drawing. |
+
+`paintersOrder(items)` is a fifth and small: the depth sort has to be **stable** for equal
+depths, and it decorates with the index rather than trusting the engine's sort, so two
+feelings at one energy cannot swap places between renders.
+
+**There is no React import in the file, and there will not be one.** That is invariant 19
+made structural rather than remembered: Recharts draws nothing under jsdom, so a test that
+asserts on a chart's rendered SVG proves nothing — and the answer this repo takes is to put
+every decision about where a line goes in a function a test can call with a fixture and check
+to the minute. `dayGraph.test.js` does exactly that, including a case that reads the source
+file back and fails if a renderer import ever appears.
+
+**The eight construction rules** ([§8.2](../product_vision/06-emotional-journal.md#82-from-discrete-check-ins-to-a-continuous-branching-curve))
+are the specification, and three of them are the honesty rules:
+
+- **Nothing is drawn before the first check-in.** The trunk runs first check-in → last, not
+  00:00 → 24:00. A line back to midnight would claim the user was level all morning, when what
+  is true is that they had not said anything yet — the same rule that keeps an undated
+  snapshot off the timeline's axis.
+- **A later check-in without the feeling does not end its branch.** Absence is not a report
+  that the feeling stopped; that is invariant 14 applied to time. Only decay ends a branch,
+  and only a check-in carrying it sustains one. The single exception is an explicit `level`
+  check-in — *and only when `level` is the whole of it*, because "level, and also anxious" is
+  not a report that nothing in particular is present.
+- **A guess is marked as a guess.** Anything further than `CONFIDENT_MIN` from a check-in
+  actually carrying the feeling is emitted with `extrapolated: true` and drawn faint. The
+  graph never pretends to know what happened at 15:00 because something was said at 11:00.
+
+**`t` is elapsed minutes, not clock minutes.** Samples carry minutes since the day's first
+check-in, computed from instants, and `bounds.startAt + t * 60000` is the instant of any
+sample. A civil day that contains a clock change is 23 or 25 hours long, and an x axis in
+local clock time would run backwards through the hour that happens twice; elapsed minutes are
+monotone by construction, which is the property the DST case in the suite pins.
+
+**Every tunable is a named, exported constant** — `FEELING_HALF_LIFE_MIN`,
+`BRANCH_END_THRESHOLD`, `CONFIDENT_MIN`, `NEUTRAL_SETTLE_MIN`, `STEP_MIN`,
+`UNSTATED_INTENSITY` — and the `options` argument overrides each one, which is how the tests
+prove the arithmetic follows the constant rather than a number written into it. They are
+**drawing choices about a record, not claims about the user**, and the ⓘ says so in
+`JOURNAL_COPY.dayGraph`: the half-life sentence fills from the constant through
+`humanMinutes`, so tuning it cannot leave the sentence saying something untrue.
+
+`UNSTATED_INTENSITY` is the one worth naming here. The ritual's day word is one tap on one
+word and carries no `intensity` at all (§6.5) — the server accepts the absence rather than let
+the client invent a number. The graph still has to put the line somewhere, so it puts it at
+the lightest of the three steps and says which, in `JOURNAL_COPY.dayGraph.unstated`. A silent
+2 would have drawn a word tapped at bedtime as strongly as a feeling deliberately marked
+strong.
+
+**Sampling.** Every `STEP_MIN` from the first check-in to the last, capped at `MAX_SAMPLES`
+(288) — a 25-hour day widens the step to hold the cap, and `bounds.stepMin` reports what was
+used. The five-feeling limit is the *composer's*, per check-in; branches outlive the check-in
+that reported them, so ten can be alive at once and none of them is truncated (see
+`bounds.maxBranches`).
+
+**Renderer-agnostic on purpose.** Everything above is (x, y, z) and minutes.
+[§8.3](../product_vision/06-emotional-journal.md#83-rendering-technology) picks hand-drawn SVG
+for this slice and names three.js as the upgrade path rather than a fork; `project` at
+`pitch = 0` is the exact 2-D ribbon, so the flat fallback and the tilted drawing are one
+geometry with a camera setting between them, not two code paths.
+
+---
+
+## 4be. `DayGraph.jsx` — the day, drawn
+
+**Read `dayGraph.js` (§4bd) first.** Everything about *where a line goes* is decided there, in
+pure functions with 62 tests and no DOM. This file is the `map` over what they return, plus a
+camera and a gesture — the same division `buildShapeData`/`LoveShape` uses, with rather more
+arithmetic on the other side of it.
+
+**Mind the case.** `DayGraph.jsx` draws; `dayGraph.js` decides. They differ only in the case of
+one letter, and this filesystem does not — so **every import of either must spell the
+extension out**. Vite resolves `.js` before `.jsx`, so a bare `import DayGraph from './DayGraph'`
+silently returns the *geometry* module, whose default export does not exist; what you get is
+`Element type is invalid: … got: undefined`, pointing at the JSX rather than at the import. It
+cost session B2 a confused ten minutes. `Journal.jsx`, `DayGraph.jsx` and `DayGraph.test.jsx`
+all carry the extension and a comment saying why.
+
+### What it draws
+
+One `<path>` per branch lifetime, a `<line>` for the trunk, a `<line>` per six-hourly time
+mark, and a faint `<line>` per depth the day holds. Nothing else is a `<path>`, which is what
+lets `DayGraph.test.jsx` assert that the number of paths in the drawing **equals**
+`branchPaths(curve).length` — a branch that stopped being drawn, or one drawn twice, fails
+rather than looking fine.
+
+| Channel | Drawn as | Note |
+| :------ | :------- | :--- |
+| **x** — time of day | Position along the **civil day**, 04:00 → 04:00 | Proportional: a six-hour gap is six hours of pixels. |
+| **y** — valence × strength | Distance from the branch's own neutral line | Up is pleasant, the one thing the vertical axis is for. |
+| **z** — energy | Depth: the branch's neutral line, and how far the turn moves it sideways | Fixed per feeling, so a feeling is always at the same depth. |
+| Colour | `stroke`, a complete literal hex from `FEELINGS` | Never a composed class name (invariant 4). |
+| Strength | `stroke-width`, from `strokeWidthFor` | The branch's **peak**: SVG strokes one width per element, and the moment-to-moment strength is already in y. |
+| Uncertain, or `unclear` | `stroke-dasharray="4 3"` | The radar's ghost dash — one `≈` convention across the app. |
+| Extrapolated | Reduced `stroke-opacity`, or a gradient along the stroke | See below. |
+
+**The axis is the day, not the record.** §8.1 asks for time of day, proportional, so two
+check-ins ten minutes apart draw ten minutes of line on a whole day. It is the **civil** day —
+04:00 to 04:00, `DAY_ROLLOVER_HOUR` — and not midnight to midnight, because a 02:00 check-in
+belongs to the day before (§6.3) and a midnight axis would have nowhere to put one. Both ends
+are built as local dates rather than as `from + 24 h`, so the axis is genuinely 23 or 25 hours
+long on the two days a year that are, and the six-hourly labels still read `06:00` and `12:00`
+through a clock change.
+
+**The trunk is the record, not the day.** It runs first check-in → last (§8.2 rule 1); a line
+running back to 04:00 would claim the user was level all morning when what is true is that
+they had not said anything yet. On a day with one check-in in it the trunk is a *point*, drawn
+with a round cap so the branch still has a baseline to be read against.
+
+**The receding floor.** One faint neutral line per energy the day holds, spanning the record.
+Without it the tilt is not subtle but unreadable: a branch above the trunk is either a
+pleasant feeling or a low-energy one seen from above, and nothing else on screen says which.
+With it, a branch is born exactly on its own line and its distance from that line is its
+valence — which is the reading §8.1 asks for. Flat has no depth to show and so has no floor.
+
+**Opacity along a stroke, without a second path.** A branch is routinely part measured and
+part guess — §8.2 rule 6 marks anything further than `CONFIDENT_MIN` from a check-in that
+carried the feeling, which for a branch reported twice is the *middle* of it as well as the
+tail. SVG strokes one opacity per element, so drawing that faithfully normally means an
+element per run — and that would break the one-path-per-branch property the suite holds. A
+`userSpaceOnUse` gradient along the stroke keeps both, and it is exact rather than
+approximate: screen x is `x·cos(yaw) + z·sin(yaw)` and z is constant along a branch, so screen
+x is affine in time and strictly increasing for every angle inside `MAX_YAW`. Pairs of stops
+at one offset make it a step, because the geometry's answer is a step. A branch that is all
+one thing skips the gradient and carries a plain `stroke-opacity`.
+
+### The camera
+
+`{ yaw, pitch, depthScale }`, straight into `project`. `pitch = 0` is the exact identity on x
+and y, so **the flat ribbon is a camera setting and not a second implementation** — the *Show
+it flat* button is the whole of §8.3's "honest fallback", which is what makes §12.4's open
+question ("is the tilt legible, or is the ribbon enough?") cheap to keep asking.
+
+- **`DEFAULT_PITCH = 26°`**, tuned against real days rather than chosen. At 30° with the depth
+  axis at full reach, a low-energy feeling was lifted further by the tilt than a strong
+  pleasant one was by its own valence — *up* stopped meaning *pleasant*, which is the one
+  thing §8.1 says the vertical axis is for. At 26° the deepest a feeling can be pushed is
+  about a fifth of the valence axis: enough to see the floor recede, not enough to outvote it.
+- **`MAX_YAW = 45°`, in 15° steps.** Turning spreads the energy axis sideways and foreshortens
+  time; that is what an oblique turn *is*, and it is why the graph opens at `yaw = 0`, where
+  the time axis is undistorted.
+- **The scale follows the camera.** A fixed scale would either waste two thirds of the canvas
+  at `yaw = 0` or push the drawing off it at full turn, so the extent is fitted per angle. It
+  costs nothing in honesty — within one view and along one branch, screen x stays affine in
+  time. The **vertical** scale is fixed by the vocabulary, not by the day: `Y_EXTENT` is the
+  largest `|valence|` in `FEELINGS`, read from the constant, so a quiet day is never drawn as
+  dramatically as a loud one and a feeling added at a stronger valence rescales the drawing
+  instead of overflowing it.
+
+### The gesture, and the axis it is allowed to take
+
+`touch-action: pan-y` on the plot, and the card stack's contract in JavaScript beside it: 45 px
+of horizontal travel turns the drawing, 12 px of vertical travel hands the gesture back
+*permanently* so a scroll cannot become a turn halfway through, and a drag that pushes past the
+last angle is released to the page rather than swallowed. The listener is registered by hand
+with `{ passive: false }`, because a passive listener cannot `preventDefault` and claiming the
+gesture is the whole point. Two rotate buttons do the same job for anyone who does not drag —
+and they are also what a mouse has, since this is a touch-only gesture.
+
+### Two things it deliberately does not do
+
+- **It holds no names.** There is no `useDiscretion` in the file and nothing for it to do: its
+  input is feeling ids, strengths and coordinates, so it keeps drawing under discretion because
+  it never had a name to hide (§9.6). The legend is feeling labels and nothing else. That also
+  means the graph answers *when* and *what feeling* but never *about what* — that is the
+  check-in row underneath, which is why a tap on a branch opens it.
+- **It draws nothing for an empty day** — not a frame, not an axis with no record on it. §9.4's
+  empty state is the day's answer, and a second, emptier one above it would be noise.
+
+### Accessibility
+
+Each branch has a `<polyline>` tap target 16 px wide (a 1–3 px line is not something a thumb
+can land on) carrying `role="button"`, a tab stop and a label — *"Open the stress check-in from
+09:00"*. It is a `<polyline>` and not a `<path>` on purpose: the path count is one per branch,
+and a second path per branch would quietly break the assertion that says so. The browser's own
+focus ring is turned off and replaced by the branch **thickening**, because a UA ring is drawn
+around the element's bounding box and a branch that crosses the day has a bounding box the size
+of the picture.
+
+### Printing
+
+It prints because it is inline SVG in the normal flow: no `<canvas>`, no WebGL, no image, and
+the app defines **no `@media print` rules at all**, so what prints is what is on screen. That
+is one of the three reasons §8.3 chose hand-drawn SVG over three.js, which needs a WebGL
+context and would print blank.
 
 ---
 

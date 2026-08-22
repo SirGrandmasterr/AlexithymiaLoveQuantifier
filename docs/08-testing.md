@@ -5,7 +5,7 @@ Three layers, three runners. Status below was verified by running each suite
 
 | Layer | Runner | Location | Verified status |
 | :---- | :----- | :------- | :-------------- |
-| Frontend unit | Vitest + Testing Library + jsdom | `src/**/*.test.{js,jsx}` | ✅ **511/511 pass** |
+| Frontend unit | Vitest + Testing Library + jsdom | `src/**/*.test.{js,jsx}` | ✅ **609/609 pass** |
 | Backend unit / integration | `go test` + sqlmock + in-memory SQLite | `backend/internal/**/*_test.go` | ✅ **all packages pass** |
 | End-to-end | Playwright | `tests/` | ❌ **failing** — needs servers that nothing starts |
 
@@ -41,7 +41,21 @@ in `tests/` and fail on `@playwright/test` imports.
 
 ### Coverage today
 
-Twenty-two files, 511 tests, all passing (2026-08-22, the 6-A closeout).
+Twenty-four files, 609 tests, all passing (2026-08-23, session B2).
+
+> **The day graph's legend names the same feelings the check-in chips do.** Since B2 a bare
+> `screen.getByText('connectedness')` on the day view finds **two** elements — the drawing's
+> key and the chip it was drawn from — and both are correct. Tests about the *rows* scope with
+> `within(...)`: `Journal.test.jsx` has a `rows()` helper that waits for
+> `[data-entry-kind="checkin"]` and returns a scoped query set, and `CheckinComposer.test.jsx`
+> gates on the delete button instead of on a feeling's label. Four suites had to change when
+> the legend landed; a fifth (`RitualCards.test.jsx`) switched to `findAllByText`.
+
+> **The two day-graph suites are one letter apart.** `dayGraph.test.js` is the geometry — 62
+> tests, no DOM — and `DayGraph.test.jsx` is the drawing: 32 tests that count `<path>`s, read a
+> `stroke-dasharray`, dispatch touch events and assert which of the page and the graph called
+> `preventDefault`. They are *different files on a case-insensitive filesystem*, so an import
+> of either must spell the extension out; see [Frontend §4be](06-frontend.md#4be-daygraphjsx--the-day-drawn).
 
 Three components now need providers to render at all — `Dashboard` reads `useSubjects()` and
 navigates, `TimelineRoute` does both, and `Journal` needs `SubjectsProvider`,
@@ -143,6 +157,31 @@ undated footnote, the conditional dashed-point hint, and the compare selector.
 `buildShapeData` (taxonomy order, `scored: false` for a skip, a genuine 0 distinguished from
 a skip, uncertainty carried through, no compare series without `compareTo`) and `ShapeDot`
 (filled / open-dashed / filled-dashed).
+
+[`src/components/dayGraph.test.js`](../src/components/dayGraph.test.js) — 62 tests, and
+**the pattern to copy for any chart logic** (see the Recharts note below). No DOM at all: the
+day graph's geometry is four pure functions, so the whole suite is fixtures in and geometry
+out. `buildDayCurve` gets the eight construction rules of
+[§8.2](../product_vision/06-emotional-journal.md#82-from-discrete-check-ins-to-a-continuous-branching-curve)
+one at a time — the trunk starting at the first check-in and not at midnight, two simultaneous
+feelings leaving it at the same `t`, a feeling reported twice interpolating without dipping
+below either endpoint, decay crossing `BRANCH_END_THRESHOLD` at the minute the half-life
+implies, a later check-in *without* the feeling not ending its branch, an explicit `level`
+check-in ending every other branch over `NEUTRAL_SETTLE_MIN`, and both sides of the
+`CONFIDENT_MIN` boundary for `extrapolated`. Then `branchPaths` (one path per lifetime, birth
+and merge at trunk valence, dashed for `unclear` and for `uncertain`), `project` (exactly the
+2-D ribbon at `pitch = 0`, `yaw = 180°` mirroring x), `paintersOrder` (stable for equal
+depths) and `dayGraphLegend` (first-appearance order, and holding no names at all).
+
+> Three of its habits are worth stealing. **Compute the expected minute from the constant**
+> rather than pasting the number the implementation produced: the decay case asserts
+> `150 · log₂(1 / 0.2)`, and a second case re-runs the same day at a different half-life, so a
+> constant that stopped driving the arithmetic would fail rather than pass with stale numbers.
+> **Assert both sides of every boundary** — 90 minutes is confident and 95 is not.
+> And **read the source file back**: one case greps `dayGraph.js` for a React, Recharts or
+> three.js import and for JSX, which is the only way a "this module never renders" claim stays
+> true a year later. Use `resolve(process.cwd(), '<repo path>')` — Vitest rewrites
+> `import.meta.url` into something `fileURLToPath` refuses.
 
 [`src/components/TimelineRoute.test.jsx`](../src/components/TimelineRoute.test.jsx) — 8
 tests, rendered through `MemoryRouter` + `SubjectsProvider`. The id route: `timelinePath`,
@@ -398,6 +437,15 @@ transform table remains the highest-value addition.
 > Every chart component therefore exports its data shaping and its dot renderers as pure
 > functions, and those are what the suites assert on. Do the same for any new chart: a test
 > that asserts on rendered SVG will pass vacuously or not at all.
+>
+> **[`dayGraph.js`](../src/components/dayGraph.js) is the pattern to follow** — invariant 19
+> taken to its conclusion rather than worked around. The day graph uses no charting library at
+> all: every decision about where a line goes lives in four exported pure functions with 62
+> tests on them, and the component (B2) is a `map` over paths. `AnalysisTimeline`'s
+> `buildTimelineData` and `LoveShape`'s `buildShapeData` are the same idea at a smaller scale.
+> When a new chart needs logic, put the logic here-shaped and the drawing in the component;
+> hand-drawn SVG then makes even the drawing assertable, which is why `LoveShape.test.jsx` can
+> check `stroke-dasharray` and a Recharts test cannot.
 
 ### Patterns to copy
 

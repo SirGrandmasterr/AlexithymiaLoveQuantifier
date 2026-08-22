@@ -101,6 +101,18 @@ const renderAt = (path) => render(
 
 const dayShown = () => document.querySelector('header time[datetime]')?.getAttribute('datetime');
 
+/**
+ * The day's rows, once they are on screen — and scoped, since B2.
+ *
+ * The graph's legend names the same feelings the chips do, so a bare
+ * `getByText('connectedness')` now finds two: the drawing's key and the check-in it was drawn
+ * from. Both are correct and these tests are about the rows, so they say so.
+ */
+const rows = async () => {
+    await waitFor(() => expect(document.querySelector('[data-entry-kind="checkin"]')).toBeInTheDocument());
+    return within(document.querySelector('[data-entry-kind="checkin"]').parentElement);
+};
+
 beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
@@ -120,11 +132,12 @@ describe('the day view', () => {
         mockFetch({ entries: [triggerEntry, checkin] });
 
         renderAt(`/journal/${TODAY}`);
+        const day = await rows();
 
         // The label the constant carries, not the id: "rapport" is stored, "connectedness"
         // is shown.
-        expect(await screen.findByText('connectedness')).toBeInTheDocument();
-        expect(screen.getByText('irritation')).toBeInTheDocument();
+        expect(day.getByText('connectedness')).toBeInTheDocument();
+        expect(day.getByText('irritation')).toBeInTheDocument();
         // The person, by the relationship's current name.
         expect(screen.getByText('Lucie')).toBeInTheDocument();
         // The trigger, resolved from the id the check-in stored to the word it means.
@@ -137,7 +150,7 @@ describe('the day view', () => {
         mockFetch({ entries: [checkin] });
 
         renderAt(`/journal/${TODAY}`);
-        await screen.findByText('connectedness');
+        await rows();
 
         expect(document.querySelector(`time[datetime="${checkin.at}"]`)).toBeInTheDocument();
         expect(screen.getByText(checkin.payload.transcript)).toBeInTheDocument();
@@ -147,13 +160,13 @@ describe('the day view', () => {
         mockFetch({ entries: [checkin] });
 
         renderAt(`/journal/${TODAY}`);
-        await screen.findByText('connectedness');
+        const day = await rows();
 
-        const unclear = screen.getByText("can't tell").closest('[data-feeling]');
+        const unclear = day.getByText("can't tell").closest('[data-feeling]');
         expect(unclear).toHaveAttribute('data-uncertain', 'true');
         expect(unclear.className).toContain('border-dashed');
 
-        const solid = screen.getByText('connectedness').closest('[data-feeling]');
+        const solid = day.getByText('connectedness').closest('[data-feeling]');
         expect(solid).toHaveAttribute('data-uncertain', 'false');
         expect(solid.className).not.toContain('border-dashed');
     });
@@ -169,11 +182,11 @@ describe('the day view', () => {
         }] });
 
         renderAt(`/journal/${TODAY}`);
-        await screen.findByText('calm');
+        const day = await rows();
 
-        expect(screen.getByText('calm').closest('[data-feeling]').className).toContain('border-dashed');
-        expect(screen.getByText('joy').closest('[data-feeling]').className).not.toContain('border-dashed');
-        expect(screen.getByText('pride').closest('[data-feeling]').className).not.toContain('border-dashed');
+        expect(day.getByText('calm').closest('[data-feeling]').className).toContain('border-dashed');
+        expect(day.getByText('joy').closest('[data-feeling]').className).not.toContain('border-dashed');
+        expect(day.getByText('pride').closest('[data-feeling]').className).not.toContain('border-dashed');
     });
 
     it("renders the ritual's answers as the day's footer, under the check-ins", async () => {
@@ -196,14 +209,16 @@ describe('the day view', () => {
         expect(kinds).toEqual(['checkin', 'ritual']);
     });
 
-    it('leaves the day graph a slot and draws nothing in it yet', async () => {
+    it('draws the day graph by hand, and never through a chart library', async () => {
         mockFetch({ entries: [checkin] });
 
         renderAt(`/journal/${TODAY}`);
-        await screen.findByText('connectedness');
+        await rows();
 
-        // B2 fills this. Until then the day sits directly under the header.
+        // A6 left a slot here and B2 filled it. Recharts draws nothing under jsdom, which is
+        // why §8.3 keeps it out of this screen — and why the assertion below can be made.
         expect(document.querySelector('svg.recharts-surface')).toBeNull();
+        expect(document.querySelector('[data-day-curve]')).toBeInTheDocument();
     });
 });
 
@@ -245,6 +260,50 @@ describe('the empty states, §9.4', () => {
         expect(await screen.findByText(JOURNAL_COPY.empty.pastDay)).toBeInTheDocument();
         expect(screen.queryByText(JOURNAL_COPY.empty.today)).not.toBeInTheDocument();
         expect(screen.queryByText(JOURNAL_COPY.empty.firstRun)).not.toBeInTheDocument();
+    });
+});
+
+/* ------------------------------------------------------------------------------------ */
+/* The day graph, in the slot A6 left for it (B2)                                         */
+/* ------------------------------------------------------------------------------------ */
+
+describe('the day graph in its slot', () => {
+    it('draws the day above the check-ins it was drawn from', async () => {
+        mockFetch({ entries: [triggerEntry, checkin] });
+
+        renderAt(`/journal/${TODAY}`);
+        await rows();
+
+        const graph = document.querySelector('[data-day-graph]');
+        expect(graph).toBeInTheDocument();
+        // Three feelings at one moment are three branches leaving the trunk together.
+        expect(graph.querySelectorAll('[data-day-curve] path')).toHaveLength(3);
+
+        // Above the list, which is where the slot was: the drawing answers *when*, the row
+        // under it answers *what about*.
+        const row = document.querySelector('[data-entry-kind="checkin"]');
+        expect(graph.compareDocumentPosition(row)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    });
+
+    it('draws nothing at all on a day with nothing in it', async () => {
+        renderAt('/journal');
+
+        await screen.findByText(JOURNAL_COPY.empty.today);
+        // Not an empty frame above an empty state: the day says it once.
+        expect(document.querySelector('[data-day-graph]')).toBeNull();
+    });
+
+    it('rings the check-in a branch came from when the branch is tapped', async () => {
+        mockFetch({ entries: [triggerEntry, checkin] });
+
+        renderAt(`/journal/${TODAY}`);
+        await rows();
+
+        expect(document.querySelector('[data-entry-kind="checkin"][data-opened]')).toBeNull();
+
+        await userEvent.click(document.querySelector('[data-day-curve] [role="button"]'));
+
+        expect(document.querySelector('[data-entry-kind="checkin"][data-opened="true"]')).toBeInTheDocument();
     });
 });
 
@@ -320,22 +379,24 @@ describe('under discretion', () => {
 
     it('masks names to initials and leaves the feelings alone', async () => {
         renderAt(`/journal/${TODAY}`);
-        await screen.findByText('connectedness');
+        const day = await rows();
 
         expect(screen.queryByText('Lucie')).not.toBeInTheDocument();
         expect(screen.getAllByText('L.').length).toBeGreaterThan(0);
         // Feelings and their colours are unaffected: the graph and the chips carry no name.
-        expect(screen.getByText('connectedness')).toBeInTheDocument();
-        expect(screen.getByText("can't tell")).toBeInTheDocument();
+        expect(day.getByText('connectedness')).toBeInTheDocument();
+        expect(day.getByText("can't tell")).toBeInTheDocument();
+        // And the graph keeps drawing, because it never had a name in it to hide (§9.6).
+        expect(document.querySelector('[data-day-curve]')).toBeInTheDocument();
     });
 
     it('blurs the transcript and the trigger label, not the feeling chips', async () => {
         renderAt(`/journal/${TODAY}`);
-        await screen.findByText('connectedness');
+        const day = await rows();
 
         expect(document.querySelector('[data-transcript]').className).toContain(BLUR_CLASS);
         expect(screen.getByText('the deadline').className).toContain(BLUR_CLASS);
-        expect(screen.getByText('connectedness').closest('[data-feeling]').className)
+        expect(day.getByText('connectedness').closest('[data-feeling]').className)
             .not.toContain(BLUR_CLASS);
     });
 });

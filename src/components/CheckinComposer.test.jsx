@@ -783,7 +783,10 @@ describe('deleting a check-in from the day view', () => {
     it('states what goes before it goes', async () => {
         mockFetch({ entries: [stored] });
         renderJournal(`/journal/${TODAY}`);
-        await screen.findByText('connectedness');
+        // The day has drawn. Gated on the row rather than on a feeling's label: since B2 the
+        // graph's legend names the same feelings the chips do, so a bare `findByText` for one
+        // finds two (both correct).
+        await screen.findByLabelText(JOURNAL_COPY.checkin.delete.action);
 
         await userEvent.click(screen.getByLabelText(JOURNAL_COPY.checkin.delete.action));
 
@@ -800,26 +803,32 @@ describe('deleting a check-in from the day view', () => {
         axios.delete.mockResolvedValue({ data: {} });
         mockFetch({ entries: [stored] });
         renderJournal(`/journal/${TODAY}`);
-        await screen.findByText('connectedness');
+        // The day has drawn. Gated on the row rather than on a feeling's label: since B2 the
+        // graph's legend names the same feelings the chips do, so a bare `findByText` for one
+        // finds two (both correct).
+        await screen.findByLabelText(JOURNAL_COPY.checkin.delete.action);
 
         await userEvent.click(screen.getByLabelText(JOURNAL_COPY.checkin.delete.action));
         await userEvent.click(screen.getByRole('button', { name: JOURNAL_COPY.checkin.delete.confirm }));
 
         await waitFor(() => expect(axios.delete).toHaveBeenCalledWith('/api/journal/entries/11'));
-        await waitFor(() => expect(screen.queryByText('connectedness')).not.toBeInTheDocument());
+        await waitFor(() => expect(screen.queryAllByText('connectedness')).toHaveLength(0));
         expect(screen.getByText(JOURNAL_COPY.empty.today)).toBeInTheDocument();
     });
 
     it('keeps the check-in when the delete is declined', async () => {
         mockFetch({ entries: [stored] });
         renderJournal(`/journal/${TODAY}`);
-        await screen.findByText('connectedness');
+        // The day has drawn. Gated on the row rather than on a feeling's label: since B2 the
+        // graph's legend names the same feelings the chips do, so a bare `findByText` for one
+        // finds two (both correct).
+        await screen.findByLabelText(JOURNAL_COPY.checkin.delete.action);
 
         await userEvent.click(screen.getByLabelText(JOURNAL_COPY.checkin.delete.action));
         await userEvent.click(screen.getByRole('button', { name: JOURNAL_COPY.checkin.delete.cancel }));
 
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-        expect(screen.getByText('connectedness')).toBeInTheDocument();
+        expect(screen.getAllByText('connectedness').length).toBeGreaterThan(0);
         expect(axios.delete).not.toHaveBeenCalled();
     });
 
@@ -828,13 +837,16 @@ describe('deleting a check-in from the day view', () => {
         axios.delete.mockRejectedValue({ response: { status: 500, data: {} } });
         mockFetch({ entries: [stored] });
         renderJournal(`/journal/${TODAY}`);
-        await screen.findByText('connectedness');
+        // The day has drawn. Gated on the row rather than on a feeling's label: since B2 the
+        // graph's legend names the same feelings the chips do, so a bare `findByText` for one
+        // finds two (both correct).
+        await screen.findByLabelText(JOURNAL_COPY.checkin.delete.action);
 
         await userEvent.click(screen.getByLabelText(JOURNAL_COPY.checkin.delete.action));
         await userEvent.click(screen.getByRole('button', { name: JOURNAL_COPY.checkin.delete.confirm }));
 
         expect(await screen.findByRole('alert')).toHaveTextContent(JOURNAL_COPY.checkin.delete.error);
-        expect(screen.getByText('connectedness')).toBeInTheDocument();
+        expect(screen.getAllByText('connectedness').length).toBeGreaterThan(0);
         quiet.mockRestore();
     });
 });

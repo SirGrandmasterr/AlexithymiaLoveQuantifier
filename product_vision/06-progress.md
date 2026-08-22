@@ -40,8 +40,8 @@ and whether the weights stay out of it entirely.
 | A8 | Frontend: the nightly ritual | done | — | 2026-08-22 | `/journal/ritual`, its settings, and the second nudge; one backend line moved with it |
 | A9 | Frontend: People and Triggers views | done | — | 2026-08-22 | Both vocabularies visible and editable; two corrections, not endpoints; **one backend endpoint added** for §10.6 |
 | A10 | 6-A closeout: docs, QA, review | done | — | 2026-08-22 | **Slice 6-A ships.** Ten QA items on a real stack, three defects found and fixed, thirteen documents made true, a review pass and a simplify pass |
-| B1 | Day graph: the geometry | not started | | | |
-| B2 | Day graph: the component | not started | | | |
+| B1 | Day graph: the geometry | done | — | 2026-08-23 | Four pure functions and 62 tests; nothing renders, and nothing reaches the bundle yet |
+| B2 | Day graph: the component | done | — | 2026-08-23 | **Slice 6-B ships.** Hand-drawn SVG, mounted; 32 component tests; the tilt needed a floor and a smaller angle to be legible |
 | U1 | The user test | not started | | | Gate: decides whether G1/G2 are built at all |
 | C1 | Deployment: headers and the model channel | not started | | | |
 | C2 | Capture and the inference boundary | not started | | | |
@@ -87,12 +87,16 @@ Everything the design document marked `(verify)`, as it gets measured. Device, b
 | 2026-08-22 | Main-chunk size after A9 | 896.58 kB raw / **273.02 kB gzip** (**+20.59 kB raw / +4.56 kB gzip** over A8). The two vocabulary screens, their four dialogs and two lucide icons. Superseded by the A10 row below | `npx vite build`, this machine | n/a — not a `(verify)` |
 | 2026-08-22 | **Main-chunk size after A10 — and therefore the cost of the whole of slice 6-A** | **897.65 kB raw / 273.27 kB gzip.** Against S0's pre-journal baseline of 813.17 / 250.38, **6-A costs +84.48 kB raw / +22.89 kB gzip** — about 9 % of the main chunk for two tables, five endpoints, six routes and five screens. CSS 41.73 / 7.33, up 3.62 / 0.46. A10 itself added +1.07 kB raw / +0.25 kB gzip over A9 (the Vault copy, `contextTags.js`, the trigger index). **This is the number C3 and D3 are measured against** — and the reason to have it: the entire manual journal is 23 kB gzip, so a transcriber costing megabytes has to stay out of this chunk altogether | `npx vite build`, this machine | n/a — not a `(verify)`, and the yardstick for the rest of the phase |
 | 2026-08-22 | **§12.4 question 1, the mechanism floor for the *worst-case* deck** | **11 interactions, 17.2 s** — five core questions, three optional, the *Who?* card and its Done, and the day word — driven at a deliberate 1.5 s per interaction at 360 × 800. The app's own share is **~90 ms per card**; a minute allows **5.4 s per interaction**, so ~3.5× headroom and **§3.3's optional tail does not need to shrink**. The screen had no scroll in either axis throughout, which is the condition invariant 2g's exception rests on. **Driven, not observed** — the pace was chosen, and the number §12.4 actually asks for is U1's. Note that `duration_ms` on the stored row read **29.8 s** for the same pass, because the app's clock starts when the screen mounts: do not read that field as a user timing | Chromium, dev server against a real backend, this machine | Yes — §3.3 now carries the measurement and states plainly what it is and is not |
+| 2026-08-23 | **Main-chunk size after B2 — and therefore the cost of the whole of slice 6-B** | **914.65 kB raw / 279.98 kB gzip** (**+17.00 kB raw / +6.71 kB gzip** over A10/B1's 897.65 / 273.27). B1 predicted this: `dayGraph.js` and the whole `dayGraph` copy block were tree-shaken out of every build before this one, so B2's delta carries both slices. CSS 42.26 / 7.43, up 0.53 / 0.10. **The whole day graph — geometry, drawing, camera, gesture — costs under 7 kB gzip, because it uses no chart library at all.** This is now the yardstick C3 and D3 are measured against | `npx vite build`, this machine | n/a — not a `(verify)` |
+| 2026-08-23 | **§12.4 question 6, answered once and by the wrong person** | Same day shown flat and tilted, asked *"when were you most stressed, and about what?"* — **both correct; the ribbon in one glance, the tilt needing a second.** Flat, every branch hangs from one baseline so the lowest crimson point is the only thing to look for; tilted, each hangs from its own floor and the reading needs a check that depth is not doing the work. The tilt won the other half: flat, `can't tell` (valence 0) lies along the trunk and is nearly invisible and equal-valence feelings superimpose. Neither answers *about what* — that is the row underneath. **One reader, who had just drawn it. U1 still has to ask this** | Chromium, dev server, fixture days, this machine | Yes — §8.3 and §12.4 both record it as still open |
 | 2026-08-22 | **Phase-5 → Phase-6 migration, against a seeded database rather than an empty one** | Built a Phase-5 database from a worktree at `HEAD`, seeded it through the API with a user, two relationships and three snapshots, then ran the Phase-6 code against it. `make migrate-check-local` reported **exactly** `missing table "journal_entries"` and `missing table "journal_mentions"` — no column drift on any existing table — and after `go run ./cmd/migrate`, *schema is up to date* with every Phase-5 row intact. This is the evidence behind the roadmap invariant now reading "additive… **outside** Phase 4" | `make migrate-check-local`, this machine | Yes — `product_vision/README.md` |
 | 2026-08-22 | **A trigger rename and a merge, end to end on a real backend** — the §7.1 claim that readers resolve while the writer never does | Three check-ins naming `cea3f018…` still reference **that** id after a rename; the export carries both rows with `corrects` linking them; the day view, the composer and the triggers view all read the survivor's label. A two-step merge behaved the same | Chromium, dev server against a real backend, this machine | Yes — §6.3's `corrects` decision is now demonstrated rather than argued |
 | 2026-08-22 | Main-chunk size after A8 | 875.99 kB raw / **268.46 kB gzip** (**+16.41 kB raw / +4.00 kB gzip** over A7). The ritual route, its settings section and two lucide icons. This is now the yardstick C3 and D3 are measured against | `npx vite build`, this machine | n/a — not a `(verify)` |
 | 2026-08-22 | **§12.4 question 1, partially: nine interactions at a deliberate pace** | **13.5 s** wall clock, first card to *Recorded.*, at 1.5 s per card on a 360 × 800 viewport — a minute allows 6.7 s per card, so ~4× headroom and the optional tail need not shrink. **Driven, not observed**: the pace was chosen. The number §12.4 asks for is U1's; this is the floor to compare it against | Chromium, dev server against a real backend, this machine | Partly — §3.3's "nine interactions … should confirm" now has a mechanism floor; the user-test half is still open |
 | 2026-08-22 | **The ritual card and its controls at 360 dp** | card 328 × 143 with a 98 px commit threshold (30 %); Yes/No 157 × 56 at y 632, skip 56 × 44 at y 704 — inside the thumb's arc over a viewport with **no scroll in either axis**, which is what invariant 2g's exception rests on | Chromium, dev server, this machine | Yes — `docs/12-android-app.md` §3.3 now lists the ritual card as the second surface allowed `touch-action: none` |
 | 2026-08-22 | **Five bottom-nav slots at 360 dp** — the §9.2 claim, which was arithmetic until now | **72 × 56 dp each**, no label truncated, `nav` 57 px tall including `pb-safe`. Measured with `getBoundingClientRect` on the running app at a 360 × 800 viewport | Chromium, dev server, this machine | Yes — `docs/12-android-app.md` §3.1 now states the measured number and its date |
+| 2026-08-23 | **Main-chunk size after B1** | **897.65 kB raw / 273.27 kB gzip — byte-identical to A10.** `dayGraph.js` is imported by nothing yet and tree-shakes out entirely (as `journal.js` did between A5 and A6), and Rollup drops the unused `JOURNAL_COPY.dayGraph` sub-object too: the built chunk contains none of *"Each feeling is drawn fading"*, *"About this drawing"* or *"Feelings today"*. **B2's delta will therefore be larger than B2's own diff suggests** | `npx vite build`, this machine | n/a — not a `(verify)`; A10's figure remains the yardstick |
+| 2026-08-23 | The decay end minute, and the step a long day needs | An intensity-1 feeling reaches `BRANCH_END_THRESHOLD` at 150·log₂(5) ≈ **348.29 min**, an intensity-3 one at ≈ **586 min**. A 24-hour span needs a **10-minute** step to hold `MAX_SAMPLES = 288` — not theoretical, since an autumn civil day is 25 hours | `dayGraph.test.js`, which computes both from the constants | Yes — §8.2 rule 8 now says the step widens, and what the old "≤ 5 branches" claim was for |
 
 ## Deferred and follow-ups
 
@@ -105,6 +109,8 @@ Everything the design document marked `(verify)`, as it gets measured. Device, b
 | S0 | **Closed by A10.** The *"Is it encrypted?"* answer now names the journal in the journal's own words, and `Vault.test.jsx` asserts the sentence verbatim. It promises nothing about docs/13. Original note: the Vault page must state that journal content is stored plaintext, in the journal's own words. | — |
 | A10 | **`createEntry`'s un-awaited `refresh()` can drop a check-in that was written while it was in flight.** After a write that mints a trigger, `refresh()` is fired and not awaited; if a second check-in is saved and spliced optimistically before that GET resolves, `setEntries(response.data)` replaces the list with one taken before the second POST committed, and the check-in vanishes from the day view until the next range change. The row is on the server — a display inconsistency, not data loss. | **F1**, which rewrites `createEntry` for the outbox and has to solve request ordering anyway. A request-sequence guard on `refresh` is the small fix; awaiting it is the wrong one, and the comment there says why |
 | A10 | **`applyJournal` records correction links only for rows it creates in that run.** Import a file holding only correction row B (target A absent): B is created and the link skipped, correctly. Import A later: A is created, B is skipped as already held, and nothing revisits B — its `supersedes_id` stays NULL for good. Reads stay correct because A carries the `superseded_at` its own file declared; what is lost is provenance. Needs hand-split export files to reach. | Not scheduled. Worth doing whenever the import is next opened — the fix is to seed `corrections` from skipped rows whose `supersedes_id` is still null |
+| B2 | **The two A10 performance follow-ups tagged "B1/B2" are still unfixed, and B2 was their last named home.** Neither is reachable from the day graph: it consumes the day's entries the screen had already loaded and adds no fetch of its own, and `summarizeTrigger`'s per-trigger re-scan lives on the Triggers view, which B2 never touched. **They are not B-slice work and pretending otherwise would leave them tagged to a session that has already run.** | Re-tagged to **whichever session first has a user with thousands of entries** — the only place either can be measured rather than guessed at. `loadAll()` widening rather than replacing is the cheaper of the two and belongs with **F1**, which rewrites the read/write path for the outbox |
+| B2 | **The graph's legend and the check-in chips name the same feelings**, so any query for a feeling's label on the day view now matches two elements. Four suites were scoped when the legend landed. It is a test-authoring rule rather than a defect, and it is recorded under *Warnings*. | A rule for every session that adds a day-view test |
 | A10 | **Performance findings from `/simplify`, all real and none reachable at today's data volumes.** (a) `summarizeTrigger` re-scans every entry and re-parses every check-in payload **once per trigger** — 40 triggers over 3,000 check-ins is ~120,000 `readCheckin` calls in one synchronous `useMemo`; one pass building a `Map<liveId, …>` replaces it. (b) `loadAll()` replaces rather than widens, so every People↔day↔Triggers navigation re-downloads the whole journal, and `refresh` always fetches `/api/journal/days` even for the two screens that never read it. (c) The import JSON round-trips every check-in payload twice — `validateCheckinPayload` and then `checkinTriggerRefs` decode the same map. (d) `DeleteJournalPerson` materialises every mentioned entry id in Go and sends it back in three statements, which will hit `SQLITE_MAX_VARIABLE_NUMBER` (999 on some builds) for a frequently-named person; a subquery keeps it constant. | **Not scheduled, and deliberately not fixed at closeout** — each needs a change that can measure it. (a) and (b) belong with **B1/B2**, which are the sessions that make the journal's read path hot. (d) belongs wherever the journal first has a user with thousands of entries |
 | A10 | **`PickedFeeling` re-implements `FeelingChip`'s markup** (same classes, same `${hex}1f`, same dashed rule) minus the `data-feeling-label` hook — so invariant 4's literal-hex rule is enforced in two places no test compares. `chipClass`, the byte-identical half, was fixed; this half was not, because replacing it changes rendering the QA run had just validated. | Any session that touches the composer's chips. The fix is a shared chip module — not an import from `Journal.jsx`, which would be a cycle |
 | A10 | **Three request builders live in components** (`buildCheckinRequest`, `buildRitualRequest`, `buildDayWordRequest`) beside two that live in `journal.js`, and all four hand-write the row envelope with `schema_version: 1` as a **bare literal**. §6.2 explicitly anticipates the row version moving independently of `payload.v`; the day it does, four literals in three files must be found by eye, and the two in components are the ones a grep for the constant will not surface. | **F1** — it rewrites the write path for the outbox, which is the moment one `journalEntryRequest({…})` helper and an exported `SCHEMA_VERSION` pay for themselves |
@@ -120,7 +126,7 @@ Everything the design document marked `(verify)`, as it gets measured. Device, b
 | A6 | **Closed — A8 took the first, A9 the other three.** `App.jsx` imports the real components and `JournalPlaceholder` is gone. Original note: `/journal/ritual`, `/journal/people`, `/journal/people/:id` and `/journal/triggers` render `JOURNAL_COPY.empty.nothingHere` from `Journal.jsx`'s exported `JournalPlaceholder`. | **A8** replaces the first, **A9** the other three — swap the import in `App.jsx`, do not add a route |
 | A7 | **Closed by A9** — `PersonForm` takes a `suggestions` prop the dashboard fills with `useSubjects().relationships`, rendered as a `datalist` on the *Identity* field; verified on the running app offering a `snapshot_count: 0` person. Original note: **the dashboard's *New Analysis* name field offers no suggestions at all** — no `datalist`, no autocomplete, nothing. §2.2 asks for a journal-only person to be offered there, and it is not: verified against the running app, where a person created by a check-in and then snapshotted had to be typed out in full. It resolved correctly (one relationship, not two), so this is a discoverability gap and not a data one. | **A9 or A10** — the prompt names both. It is a `PersonForm` change, not a journal one: `useSubjects().relationships` already holds every person including the `snapshot_count: 0` ones |
 | A7 | **`POST /api/journal/entries` does not echo the trigger rows it creates.** The client works around it by refetching the range after a request that minted one. Echoing them would remove a round trip and is the better fix. | Not scheduled. Worth doing only if the write path is revisited for another reason — **F1** touches it for the outbox and is the natural place |
-| A8 | **`intensity` is now optional on a check-in payload**, because the ritual's day word is one tap with no strength in it and inventing a number would break invariant 15. A `source: "ritual_word"` sample therefore reaches the day graph with `intensity: null`. | **B1** — `buildDayCurve` must decide what an intensity-free sample draws at, as a **stated constant in the ⓘ sentence**, never a silent 2. §6.5 and §8.2 now say so |
+| A8 | **Closed by B1.** `UNSTATED_INTENSITY = 1` — the lightest of the three steps, the choice that claims least — and `JOURNAL_COPY.dayGraph.unstated` is the sentence, filled from the constant. **B2 must render it in the ℹ beside `fade` and `caveat`**, or the constant is stated nowhere the user can see it. Original note: a `source: "ritual_word"` sample reaches the day graph with `intensity: null`, and `buildDayCurve` must decide what it draws at as a stated constant, never a silent 2. | — |
 | A8 | §10.3 asks `docs/01-concepts.md` §6's *"No notifications sent anywhere"* to gain a sentence about the ritual's local notification. A8 did **not** write it: that notification does not exist yet, and the sentence would be a false claim on the concepts page. | **F2**, with the notification itself |
 | A8 | The five §9.7 settings with no feature behind them (voice, suggestions, embeddings, transcripts, language) are described in `JOURNAL_COPY.settings` and rendered nowhere. `Profile.test.jsx` asserts their absence. | **C3** (voice, suggestions, transcripts, language) and **G1** (embeddings) — each renders its toggle in the session that builds the feature, never before |
 | A7 | **Partly closed by A9**, which writes correction rows for the trigger vocabulary — the concrete half. A check-in still has only *delete*; a general "correct this check-in" is **D2's or later**, and §7.1 supports the current position. Original note: the composer has **no edit affordance**, deliberately. A correction is a new entry with `supersedes_id` (§7.1, Appendix D) and the provider already drops the row it replaces; nothing in the UI writes one yet. | **A9**, as the prompt allows. The triggers view is already writing correction rows there, so the two land in one place |
@@ -193,6 +199,18 @@ Things a future session would otherwise rediscover the hard way.
   `'journal' is not recognized as an internal or external command`. A4 lost a run of its
   manual script to this. Write the program to a `.py` file and call it; SQLite has no other
   client on this machine, so any session inspecting a database will hit this.
+- **`DayGraph.jsx` and `dayGraph.js` differ only in the case of one letter, and this
+  filesystem does not.** Vite resolves `.js` before `.jsx`, so `import X from './DayGraph'`
+  returns the **geometry** module, whose default export does not exist — and the error is
+  `Element type is invalid: … got: undefined`, pointing at the JSX rather than at the import.
+  It would work on a Linux CI and fail here. **Spell the extension out** in every import of
+  either: `'./DayGraph.jsx'`, `'./dayGraph.js'`. Both names come from the B2 prompt, so
+  renaming one was not on the table.
+- **A feeling's label is on the day view twice** since B2 — once on the check-in's chip, once
+  in the graph's legend — and both are correct. `screen.getByText('connectedness')` therefore
+  throws *"Found multiple elements"*. Scope the query: `Journal.test.jsx` has a `rows()` helper
+  that waits for `[data-entry-kind="checkin"]` and returns a `within(...)` set;
+  `CheckinComposer.test.jsx` gates on the delete button's label instead of on a feeling's.
 - **`docs/13` is design only.** No `encryption_status`, no Argon2, no `/api/auth/params`, no
   `wrapped_dek` exists anywhere in `backend/` or `src/`. The local `feature/encryption` branch
   is an ancestor of `main` and carries no encryption code — the name is a leftover.
@@ -1769,3 +1787,273 @@ assumed.
 5. **B1 inherits an open question from A8**, unchanged: a `source: "ritual_word"` check-in
    carries **no `intensity`**, so `buildDayCurve` must decide what an intensity-free sample
    draws at, as a stated constant in the ⓘ sentence rather than a silent 2.
+
+---
+
+**B1 — Day graph: the geometry** · 2026-08-23 · commit `—` (not committed)
+
+- **Shipped:** [`src/components/dayGraph.js`](../src/components/dayGraph.js) (750 lines) — the
+  eight construction rules of §8.2 as pure functions, and nothing else. `buildDayCurve`,
+  `branchPaths`, `project`, `dayGraphLegend`, plus `paintersOrder` (the depth sort has to be
+  stable for equal depths, and that belongs beside the depth that feeds it). Every tunable is
+  an exported named constant with an `options` override: `FEELING_HALF_LIFE_MIN = 150`,
+  `BRANCH_END_THRESHOLD = 0.2`, `CONFIDENT_MIN = 90`, `NEUTRAL_SETTLE_MIN = 30`,
+  `STEP_MIN = 5`, plus `UNSTATED_INTENSITY`, `MAX_SAMPLES`, `TRUNK`, `STROKE_WIDTH`,
+  `EXTRAPOLATED_OPACITY`. `dayGraph.test.js` is 62 tests, no DOM.
+  One line of copy was added to `JOURNAL_COPY.dayGraph` — see *A8's open question, answered*
+  below. **No component, no SVG, no React import, no Recharts, no three.js.**
+- **Verified:** `npm test` **23 files / 574 tests green**, 19.9 s (was 22/511; +62 dayGraph,
+  +1 journal copy). `npx vite build` success, 2464 modules, 5.9 s.
+  `cd backend && go test ./...` not re-run and not affected — no Go file changed.
+  No manual QA: nothing renders yet, which is the point of the slice.
+- **Measured:**
+  - **Main chunk after B1: 897.65 kB raw / 273.27 kB gzip — byte-identical to A10.** Two
+    reasons, both worth knowing. `dayGraph.js` is not imported by anything yet, so it
+    tree-shakes out entirely, exactly as `journal.js` did between A5 and A6. And the new
+    `JOURNAL_COPY.dayGraph.unstated` string is **also** absent from the bundle: Rollup drops
+    the whole unused `dayGraph` sub-object of `JOURNAL_COPY` — grepping the built chunk for
+    *"Each feeling is drawn fading"*, *"About this drawing"* and *"Feelings today"* returns
+    nothing. **B2 is where the geometry and its copy both land in the chunk**, so B2's delta
+    is the one to record, and it will be larger than B2's own diff suggests.
+  - **The decay end minute, computed rather than pasted:** an intensity-1 feeling reaches
+    `BRANCH_END_THRESHOLD` at `150 · log₂(5)` ≈ **348.29 min** after its last check-in; an
+    intensity-3 one at `150 · log₂(15)` ≈ **586 min**. The test computes both from the
+    constants and re-runs the same day at two other half-lives, so a constant that stopped
+    driving the arithmetic fails rather than passing on stale numbers.
+  - **A 24-hour span needs a 10-minute step** to hold `MAX_SAMPLES = 288`. Not theoretical:
+    the civil day containing an autumn clock change is 25 hours long.
+- **Deferred:** nothing in scope. Explicitly *not* built, per the scope fence: the component,
+  any SVG, drag handling, three.js. The A10 performance follow-ups tagged *"belong with
+  B1/B2"* — `summarizeTrigger`'s per-trigger re-scan and `loadAll()` replacing rather than
+  widening — were **not** touched: B1 adds no read path at all. They are **B2's**, which is
+  the session that actually makes the day view hot.
+
+**A8's open question, answered.** A `source: "ritual_word"` check-in carries no `intensity`,
+and §8.2 rule 7 required the graph's answer to be a constant *named in the ⓘ sentence* rather
+than a silent 2. It is **`UNSTATED_INTENSITY = 1`** — the lightest of the three steps, the
+choice that claims least — and the sentence is a new key,
+`JOURNAL_COPY.dayGraph.unstated`: *"A feeling recorded without a strength, like the closing
+word, is drawn at {strength} of three."* Filled from the constant like the half-life sentence,
+so tuning it cannot leave the copy untrue. `journal.test.js` pins the filled string; **B2 must
+render this line in the ⓘ beside `fade` and `caveat`**, or the constant is stated nowhere the
+user can see it and rule 7 is only half kept.
+
+**One design-document claim was wrong and is now corrected.** §8.2 rule 8 said a sample holds
+"≤ 5 branches". It cannot: five is the *composer's* per-check-in limit, and branches outlive
+the check-in that reported them. An intensity-2 feeling stands for `150 · log₂(10)` ≈ 498 min
+under rule 4, so **two full check-ins an hour apart leave ten branches alive together** —
+which a test now asserts. Nothing truncates: dropping a branch to hold a sizing estimate would
+erase a line the user authored, and `bounds.maxBranches` reports what the day held instead.
+Rule 8 now states the real bound and says what the old one was for. Rules 5 and 7 gained a
+clause each for the same reason (below).
+
+### Two readings of §8.2 that the prompt left open, and how B1 read them
+
+1. **`level` settles other branches only when it is the whole check-in.** Rule 5 calls the
+   exception "a report that nothing in particular is present" — and "level, and also anxious"
+   is a report that something is. So a `level` tapped beside another feeling settles nothing,
+   and the feelings named in the same breath as it are supported at that instant rather than
+   ended by it.
+2. **A feeling reported again *after* a `level` starts a second branch lifetime**, rather than
+   interpolating across it. Rules 3 and 5 collide here and rule 5 has to win: rule 3 draws a
+   line between two check-ins that both carry the feeling, but a check-in in between saying
+   nothing in particular is present is the user contradicting that line, and drawing through
+   it would be the graph overruling them. `branches` therefore keys on `feeling#lifetime`
+   (`anxiety#0`, `anxiety#1`), and `branchPaths` draws two paths.
+
+Both are now written into §8.2 as clauses, so B2 and any later reader get the same answer.
+
+### Decisions inside the geometry a later session should not have to re-derive
+
+- **`t` is elapsed minutes from the first check-in, not clock minutes.** Computed from
+  instants, so it is monotone by construction; `bounds.startAt + t * 60000` is the instant of
+  any sample, and the component does the clock formatting. A local-clock x axis would run
+  **backwards** through the autumn hour that happens twice — the DST case in the suite pins
+  six check-ins across the Europe/Berlin change, two of which read 02:30, an hour apart on the
+  axis.
+- **`y` is `valence · intensity / 3`, `z` is the feeling's fixed `energy`, never scaled.**
+  §8.1's rule that a feeling is always at the same depth is what makes a shape recognisable;
+  scaling z would break it the way a moving radar axis would.
+- **A branch is born at the check-in's own minute, not at the next sample.** Rule 2's "two
+  feelings at one moment leave the trunk at the same `t`" is only true if the birth is that
+  moment; a check-in at 09:02 would otherwise be drawn at 09:05. `branchPaths` reads
+  `branch.startT` for this, which is why it accepts the whole curve — handed a bare `samples`
+  array it still works, and falls back to the grid.
+- **A merge point is drawn only when the branch actually reached the trunk.** A branch the day
+  ended before, and one an explicit `level` interrupted before the user resumed it, both end
+  without one: closing them onto the trunk would draw an ending the record does not have.
+- **Nothing is silently discarded.** A feeling id this build does not know is reported in
+  `bounds.unknownFeelings` rather than dropped; a strength outside 1–3, which only a
+  hand-written file can produce, is clamped rather than dropped.
+
+### Next session should know
+
+1. **B2's ⓘ owes three sentences, not two.** `JOURNAL_COPY.dayGraph` now holds `fade`,
+   `unstated`, `caveat`, `extrapolated`, `legend` and `infoLabel`. `fade` fills from
+   `humanMinutes(FEELING_HALF_LIFE_MIN)` and `unstated` from `UNSTATED_INTENSITY`; both are
+   imports from `dayGraph.js`, so the ⓘ cannot drift from the arithmetic.
+2. **B2's bundle delta is bigger than its diff.** `dayGraph.js` and the whole `dayGraph` copy
+   block are tree-shaken out of today's chunk; the first import of either pulls both in.
+   A10's 897.65 kB / 273.27 kB gzip is still the yardstick.
+3. **`project` at `pitch = 0` is exactly the identity on x and y**, and both depth
+   multipliers are exactly 1 there — the flat ribbon and the tilted drawing are one geometry
+   with a camera between them, which is what makes §12.4 question 6 ("maybe the ribbon is the
+   whole answer") a cheap thing to be right about. The trig snaps values under 1e-12 to zero,
+   which is what makes `yaw: 180` an exact mirror rather than a near one.
+4. **The A10 performance follow-ups are B2's, not B1's.** `summarizeTrigger`'s per-trigger
+   re-scan and `loadAll()` replacing rather than widening both live on the read path, and B1
+   added no read path.
+5. **`bounds` carries more than the axis extents** — `stepMin`, `sampleCount`, `maxBranches`,
+   `unknownFeelings`. The last two exist so B2 never has to decide what to do about a day that
+   overflowed a bound: it did not, and the count says so.
+
+---
+
+**B2 — Day graph: the component** · 2026-08-23 · commit `—` (not committed)
+
+- **Shipped:** [`src/components/DayGraph.jsx`](../src/components/DayGraph.jsx) (736 lines) —
+  hand-drawn SVG over B1's geometry, mounted in the slot A6 left for it in `/journal` and
+  `/journal/:day`. One `<path>` per branch lifetime; the trunk, the six-hourly time marks and
+  the receding floor are `<line>`s, so the path count *is* `branchPaths(curve).length` and a
+  test can say so. A camera with a **flat/tilt toggle** (`pitch = 0` is the 2-D ribbon, and the
+  button is the whole of it), two rotate buttons and a ≥ 45 px horizontal drag;
+  `touch-action: pan-y` on the plot. A tap on a branch rings the check-in it came from in the
+  list below. The ⓘ carries all four sentences of `JOURNAL_COPY.dayGraph`, each filled from the
+  constant it describes. Six new copy keys; `DayGraph.test.jsx` is 32 tests. No three.js, no
+  react-three-fiber, no Recharts, and no second geometry — `dayGraph.js` is imported, not
+  re-implemented.
+- **Verified:** `npm test` **24 files / 609 tests green**, 20.3 s (was 23/574; +32 DayGraph,
+  +3 Journal). `npx vite build` success, 2466 modules, 5.9 s. `cd backend && go test ./...`
+  not re-run and not affected — no Go file changed, and B2 touched no backend surface.
+  Manual QA on the running dev server at 900 × 1000, against all six days the prompt's list
+  names — see *The manual QA run* below.
+- **Measured:**
+  - **Main chunk after B2: 914.65 kB raw / 279.98 kB gzip** — **+17.00 kB raw / +6.71 kB gzip**
+    over A10/B1's 897.65 / 273.27. CSS 42.26 / 7.43, up 0.53 / 0.10. B1 predicted the delta
+    would be larger than B2's own diff and it is: the 750-line `dayGraph.js` and the whole
+    `dayGraph` copy block were tree-shaken out of every previous build and both land here.
+    **This is now the yardstick C3 and D3 are measured against.**
+  - **§12.4 question 6, answered once and by the wrong person.** Same day (five check-ins,
+    six branches), shown flat and tilted, asked *"when were you most stressed, and about
+    what?"*. **Both gave the right answer; the ribbon gave it in one glance and the tilt
+    needed a second one.** Flat, every branch hangs from a single baseline, so "the lowest
+    point of the crimson line" is the only thing to look for — around 11:45. Tilted, each
+    branch hangs from *its own* floor line, so the same reading needs a check that the depth
+    is not doing the work. The tilt won on the other half: flat, `can't tell` (valence 0) lies
+    exactly along the trunk and is nearly invisible, and two feelings of equal valence
+    superimpose; tilted, they are on separate floors and plainly two lines. Neither view
+    answers *about what* at all — that is the check-in row, which is why a tap on a branch
+    opens it. **This is one reader who had just drawn the thing, and it is not the answer
+    §12.4 asks for. U1 still has to ask it.**
+  - **No `@media print` rule exists anywhere in the app's stylesheets** (checked by walking
+    `document.styleSheets` on the running app), and the drawing is inline `<svg>` in the normal
+    flow with no `<canvas>` — so what prints is what is on screen. A literal print preview was
+    **not** opened: this browser surface has no print-media emulation and `window.print()`
+    blocks on a modal. What was verified is the structural claim, which is the one §8.3 makes.
+- **Deferred:** nothing in scope. **The A10 performance follow-ups tagged "B1/B2" were not
+  touched, and B2 is the last session they were addressed to** — see *Deferred and follow-ups*
+  for where they actually belong now.
+- **Next session should know:** four things, below.
+
+### The two case-colliding filenames, which cost this session ten minutes
+
+`dayGraph.js` (B1's geometry) and `DayGraph.jsx` (B2's component) differ **only in the case of
+one letter**, and Windows and macOS filesystems do not. Vite resolves `.js` before `.jsx`, so
+`import DayGraph from './DayGraph'` returns the *geometry* module — which has no default
+export. Every test in the new file failed at once with
+
+```
+Element type is invalid: expected a string … but got: undefined
+```
+
+pointing at the JSX, not at the import. **Both names are what the prompt specifies**, so the
+fix is the extension: `'./DayGraph.jsx'` and `'./dayGraph.js'`, spelled out in `Journal.jsx`,
+`DayGraph.jsx` and `DayGraph.test.jsx`, each with a comment. It would work on a Linux CI and
+fail here, which is the worst shape a bug can have. Recorded under *Warnings* too.
+
+### The manual QA run (the B2 list), on the dev server at 900 × 1000
+
+A throwaway Vite entry (`qa-daygraph.html` + `src/qa-daygraph.jsx`) rendered the real
+component against six fixture days with a miniature of the day's list beneath each, and was
+**deleted before the session closed** — `git status` shows nothing new but the four day-graph
+files. A real backend was not used and would not have added anything: the component's whole
+input is entries the provider already holds, and fixtures gave all six days at once instead of
+one hand-seeded one.
+
+| # | Day | What it drew |
+| :- | :-- | :----------- |
+| 1 | One check-in | A single vertical tick at 09:15 with the trunk as a round dot at its neutral point. Minimal, and honest: the record is one moment. The dot was **added during QA** — a zero-length trunk drew as nothing, leaving the one branch with no baseline to be read against |
+| 2 | Two feelings at one moment | Two ticks at the same x on different floors — rule 2 drawn, one up (connectedness), one down (irritation) |
+| 3 | The same feeling at noon and 18:00 | One branch descending from 12:00 to 18:00 as the strength goes 2 → 3, its middle stretch faint because both check-ins are more than 90 minutes away. Rule 3 and rule 6 in one picture |
+| 4 | A `level` check-in in the middle | Anxiety (dashed — the first report was marked unsure) falls, is cut short by the 13:00 `level`, and **a second lifetime** starts at 16:00. B1's two-lifetime reading, visible |
+| 5 | A full day with the closing word | Six branches; the word draws at `UNSTATED_INTENSITY` and is visibly the thinnest line on the day |
+| 6 | The same day with no ritual | Identical, ending at 19:30. Nothing is drawn to stand in for the ritual that did not happen |
+
+Also verified on the running app: `touch-action: pan-y` on the plot and **no ancestor claiming
+an axis**; a wheel over the drawing scrolls the page (400 px, measured); a synthetic
+`TouchEvent` drag of 80 px horizontal turns the drawing **and** calls `preventDefault`, while
+one of 120 px vertical does neither; the ⓘ shows all four sentences with *two and a half
+hours* and *1 of three* in them; a click on the stress branch rings the 11:45 row underneath.
+
+### Two things the drawing needed that neither the design document nor the prompt asked for
+
+Both were found by looking at it, and both are now in §8.3 and `docs/06-frontend.md`.
+
+1. **The tilt has to stay second to valence.** At the 30° pitch B2 started with, a low-energy
+   feeling was lifted further by the projection than a strong pleasant one was by its own
+   valence — `tiredness` was drawn *above* the trunk. *Up* had stopped meaning *pleasant*,
+   which is the one thing §8.1 says the y axis is for. `DEFAULT_PITCH` is **26°** with
+   `DEPTH_SCALE = 1`, at which the deepest a feeling can be pushed is about a fifth of the
+   valence axis.
+2. **The tilt is unreadable without a floor.** A branch above the trunk is either a pleasant
+   feeling or a low-energy one seen from above, and nothing on screen said which. The drawing
+   now carries **one faint neutral line per energy the day holds**, spanning the record and not
+   the day (rule 1's reason). A branch is born exactly on its own line — verified numerically
+   on the running app, not by eye — so its distance from that line is its valence. Flat has no
+   depth and so has no floor.
+
+### Decisions inside the drawing a later session should not have to re-derive
+
+- **The x axis is the civil day, 04:00 → 04:00, not the record's span and not midnight to
+  midnight.** §8.1 asks for proportional time of day; an axis fitted to the record would draw
+  two check-ins ten minutes apart as a full day of data. Midnight would have nowhere to put a
+  02:00 check-in, which belongs to the day before (§6.3). Both ends are built as local dates,
+  so a 25-hour day is 25 hours long and the labels still read `06:00` through a clock change.
+  §8.1's table now says this.
+- **Opacity along a branch is a gradient, not a second path.** A branch is routinely part
+  measured and part guess, SVG strokes one opacity per element, and one `<path>` per branch is
+  the property the suite holds. Screen x is affine in time and strictly increasing for every
+  angle inside `MAX_YAW` (z is constant along a branch), so a `userSpaceOnUse` gradient laid
+  along it maps offsets to minutes **exactly**; pairs of stops at one offset make it a step,
+  because the geometry's answer is a step.
+- **Stroke width is the branch's peak strength, not the strength at each minute.** One element,
+  one width. The moment-to-moment strength is already y, continuously, so nothing is lost; a
+  variable-width ribbon would have to be a filled outline, and then `stroke-dasharray` would
+  dash the outline rather than the line — and dashing is how uncertainty is drawn.
+- **The tap target is a `<polyline>`, not a second `<path>`.** A 1–3 px line is not something a
+  thumb can land on, so each branch has a 16 px transparent `<polyline>` carrying the
+  `role="button"`, the tab stop and the label. Making it a `<path>` would double the path count
+  and quietly break the assertion that the drawing is one path per branch.
+- **The focus ring is the branch thickening.** A UA focus ring on an SVG element is drawn
+  around its *bounding box*, and a branch that crosses the day has a bounding box the size of
+  the picture; the outline is turned off and the focused branch doubles its stroke width.
+
+### Next session should know
+
+1. **`DayGraph.jsx` and `dayGraph.js` are one letter apart and this filesystem cannot tell
+   them apart.** Spell the extension out in any import of either. See above.
+2. **The graph's legend names the same feelings the check-in chips do**, so a bare
+   `screen.getByText('connectedness')` on the day view now finds two elements and both are
+   correct. Four suites had to be scoped when the legend landed: `Journal.test.jsx` grew a
+   `rows()` helper, `CheckinComposer.test.jsx` gates on the delete button instead, and
+   `JournalTriggers.test.jsx` and `RitualCards.test.jsx` moved to `findAllByText`. Any new test
+   that reaches for a feeling's label on the day view must say which of the two it means.
+3. **The A10 performance follow-ups are still unfixed and B2 was their last named home.**
+   Neither is reachable from this change: the graph consumes the day's entries the screen had
+   already loaded and adds no fetch, and `summarizeTrigger` lives on the Triggers view, which
+   B2 never touched. They are re-tagged in *Deferred and follow-ups* to the session that first
+   has a user with thousands of entries, which is the only place either can be measured rather
+   than guessed at.
+4. **`docs/12-android-app.md` §3.3's axis table has a fifth row now**, and the graph took the
+   card stack's numbers deliberately — 45 px to claim, 12 px to yield — so two surfaces that
+   take a horizontal drag on the same phone cannot disagree about how far a drag is.

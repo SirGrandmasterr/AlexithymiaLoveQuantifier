@@ -205,6 +205,7 @@ owner, declared to the compositor with `touch-action` rather than argued about i
 | A ritual card (`/journal/ritual`) | `none` | Up skips the question | Right is yes, left is no |
 | A category's range input | `pan-y` | Scrolls the page | Moves the score |
 | A card stack | `pan-y` | Scrolls the page | Scrubs versions (≥45px) |
+| The day graph (`/journal`) | `pan-y` | Scrolls the page | Turns the drawing (≥45px) |
 | Anywhere else | default | Scrolls the page | — |
 
 The reading rule behind the table: **vertical is the page's everywhere except where nothing
@@ -212,6 +213,16 @@ else on the screen wants it.** Two surfaces qualify, for two different reasons:
 
 - **The vault dial** is a control small enough to land on deliberately, which is why the
   sliders could give the axis up without losing precise input.
+
+The **day graph** takes the card stack's contract rather than inventing one: 45 px of
+horizontal travel to turn, 12 px of vertical travel to hand the gesture back permanently, and
+`touch-action: pan-y` on the plot so the compositor knows before JavaScript does. It also has
+the card stack's pager equivalent — two rotate buttons — so the gesture is nobody's only way
+in, and it gives the gesture back to the page at the last angle rather than swallowing a drag
+that can no longer do anything. `DayGraph.test.jsx` dispatches the events and asserts *which*
+of the page and the graph called `preventDefault`, which is the only way to test an axis
+split. Design notes in
+[Frontend §4be](06-frontend.md#4be-daygraphjsx--the-day-drawn).
 - **The nightly ritual is the one *whole screen* that qualifies.** It is `fixed inset-0`,
   over the header and the bottom bar, and it does not scroll — so there is nothing under the
   card for a vertical drag to scroll, and the card may take everything. **The claim is

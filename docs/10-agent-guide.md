@@ -63,7 +63,7 @@ Breaking any of these produces a silent or confusing failure rather than a clean
 | 16 | **Guide answers store the scale *index* (0-3), not its value (0/35/70/100).** | The band arithmetic maps index → value through `GUIDE_SCALE`. Confusing them yields a band that looks reasonable and is wrong. |
 | 17 | **The subject list lives in `SubjectsContext`.** | Fetching it again in a screen re-introduces the stale-copy bug the context exists to kill. Use `useSubjects()`. `JournalContext` is the second context, not a second store: it holds journal entries and **reads** the people from `useSubjects()`, which is why it is mounted inside `SubjectsProvider`. |
 | 18 | **Radar axis order is `CATEGORIES` order, always.** | A Love Shape is only recognisable if a given category sits at the same angle every time. Do not sort the shape data. |
-| 19 | **Recharts renders nothing under jsdom.** | Chart logic must live in exported pure functions; a test asserting on rendered SVG proves nothing. |
+| 19 | **Recharts renders nothing under jsdom.** | Chart logic must live in exported pure functions; a test asserting on a *Recharts* chart's output proves nothing. **Hand-drawn SVG is the exception, and it is the reason to prefer it**: `DayGraph.jsx` is a `map` over [`dayGraph.js`](../src/components/dayGraph.js)'s geometry, and `DayGraph.test.jsx` counts its `<path>`s and reads its `stroke-dasharray` for real. The rule is unchanged — the decisions live in pure functions either way. |
 
 ---
 
@@ -137,6 +137,17 @@ Ranked by how much time they waste.
     opaque and one is a UUID, so a mix-up returns a clean 404 rather than an error that
     explains itself. The rule behind it: ids that travel in an export are client ids, because
     row ids are not portable; ids that only ever address a row on this server are row ids.
+15. **Two files in `src/components/` differ only in the case of one letter, and this
+    filesystem does not.** `dayGraph.js` is the day graph's geometry; `DayGraph.jsx` is the
+    component that draws it. Vite resolves `.js` before `.jsx`, so `import X from './DayGraph'`
+    returns the **geometry** module — no default export, and an error reading
+    `Element type is invalid: … got: undefined` that points at the JSX rather than at the
+    import. It would resolve correctly on a Linux CI and wrongly on Windows and macOS.
+    **Spell the extension out** in every import of either.
+16. **A feeling's label appears twice on the day view** — once on the check-in's chip, once in
+    the graph's legend — so `screen.getByText('connectedness')` throws *"Found multiple
+    elements"*. Both are correct; the test has to say which it means.
+    `Journal.test.jsx`'s `rows()` helper is the scoped-query pattern to copy.
 
 ---
 

@@ -1,9 +1,13 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Info, Loader2, NotebookPen, Trash2 } from 'lucide-react';
 import { useJournal } from '../context/JournalContext';
 import { useDiscretion } from '../context/DiscretionContext';
 import CheckinComposer, { CheckinButton, CheckinFab, chipClass } from './CheckinComposer';
+// The extension is deliberate: `dayGraph.js` (the geometry) and `DayGraph.jsx` (the drawing)
+// differ only in case, this filesystem does not, and Vite resolves `.js` before `.jsx` — so
+// a bare `'./DayGraph'` silently imports the geometry module and renders `undefined`.
+import DayGraph from './DayGraph.jsx';
 import { Modal } from './RelationshipDialogs';
 import {
     JOURNAL_COPY,
@@ -32,10 +36,10 @@ import { ritualSettingUntouched } from '../constants/journalSettings';
 /**
  * `/journal` and `/journal/:day` — one day of the emotional journal.
  *
- * It reads and does not write. The composer is A7, the ritual's cards are A8, the People and
- * Triggers bodies are A9 and the day graph is B1/B2; what is here is the day itself: a month
- * strip for orientation, a header that walks days, the day's check-ins newest-first, and the
- * ritual's answers underneath as the day's footer.
+ * It reads and does not write. The composer is A7, the ritual's cards are A8 and the People
+ * and Triggers bodies are A9; what is here is the day itself: a month strip for orientation, a
+ * header that walks days, the day graph (B1's geometry, B2's drawing), the day's check-ins
+ * newest-first, and the ritual's answers underneath as the day's footer.
  *
  * **No bare strings.** Everything this screen says in words comes from `JOURNAL_COPY`, which
  * is what lets the forbidden-word walk in `journal.test.js` see the whole surface of the
@@ -269,12 +273,25 @@ const DeleteCheckinDialog = ({ entry, checkin, time, onClose }) => {
     );
 };
 
-/** One check-in: when it was, what it was, what it was about, and what was said. */
-const CheckinEntry = ({ entry }) => {
+/**
+ * One check-in: when it was, what it was, what it was about, and what was said.
+ *
+ * `opened` is the graph pointing at it. A tap on a branch above scrolls this row into view and
+ * rings it, because a drawing that answers *when* is only half an answer — the other half is
+ * the check-in it came from, and it is already on the screen (§8.3).
+ */
+const CheckinEntry = ({ entry, opened = false }) => {
     const { blurClass } = useDiscretion();
     const checkin = readCheckin(entry.payload);
     const time = timeOfDay(entry.at);
     const [confirming, setConfirming] = useState(false);
+    const article = useRef(null);
+
+    useEffect(() => {
+        // Optional-called: jsdom has no `scrollIntoView` at all, and a highlight that only
+        // works where a test runner implements scrolling is not a highlight.
+        if (opened) article.current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    }, [opened]);
 
     const mentionsByRef = useMemo(
         () => new Map((entry.mentions ?? []).map(mention => [mention.ref, mention])),
@@ -283,8 +300,11 @@ const CheckinEntry = ({ entry }) => {
 
     return (
         <article
+            ref={article}
             data-entry-kind="checkin"
-            className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 sm:p-5 space-y-3"
+            data-opened={opened ? 'true' : undefined}
+            className={`bg-white rounded-2xl shadow-sm border p-4 sm:p-5 space-y-3 transition-colors ${opened ? 'border-slate-300 ring-2 ring-slate-200' : 'border-slate-100'
+                }`}
         >
             <div className="flex items-start justify-between gap-3">
                 {time && (
@@ -433,14 +453,6 @@ const RitualFooter = ({ entry }) => {
     );
 };
 
-/**
- * Where the day graph lands in B2.
- *
- * A slot rather than a placeholder: it renders nothing at all, so the day below it sits
- * where it will sit once the graph is drawn and B2 replaces a body rather than a layout.
- */
-const DayGraphSlot = () => null;
-
 /** The month the viewed day falls in, one cell per day, marking the days with something on. */
 const MonthStrip = ({ day }) => {
     const { markedDays } = useJournal();
@@ -572,6 +584,9 @@ export default function Journal() {
         entries, entriesForDay, loading, loadError, dismissLoadError, loadRange
     } = useJournal();
     const [composing, setComposing] = useState(false);
+    // Which check-in the graph is pointing at. Cleared by the day change below, because a row
+    // id from yesterday is not on this screen.
+    const [openedCheckin, setOpenedCheckin] = useState(null);
 
     const today = civilDay();
     const day = isDayString(dayParam) ? dayParam : today;
@@ -582,6 +597,8 @@ export default function Journal() {
         const bounds = monthBounds(day);
         if (bounds) loadRange(bounds.from, bounds.to);
     }, [day, loadRange]);
+
+    useEffect(() => { setOpenedCheckin(null); }, [day]);
 
     const dayEntries = entriesForDay(day);
     // Newest first — the opposite of the server's order, which is oldest-first because the
@@ -622,7 +639,10 @@ export default function Journal() {
 
             {loadError && <LoadFailed message={loadError} onDismiss={dismissLoadError} />}
 
-            <DayGraphSlot day={day} />
+            {/* The day, drawn. It renders nothing at all for a day with no check-in in it —
+                §9.4's empty state below is the day's own answer, and an empty frame above it
+                would be a second, emptier one. */}
+            <DayGraph day={day} entries={dayEntries} onOpenCheckin={setOpenedCheckin} />
 
             {loading && dayEntries.length === 0 && !loadError ? (
                 <Loading />
@@ -632,7 +652,9 @@ export default function Journal() {
                         <EmptyDay day={day} today={today} firstRun={firstRun} />
                     ) : (
                         <div className="space-y-3">
-                            {checkins.map(entry => <CheckinEntry key={entry.ID} entry={entry} />)}
+                            {checkins.map(entry => (
+                                <CheckinEntry key={entry.ID} entry={entry} opened={openedCheckin === entry.ID} />
+                            ))}
                             {facts.map(entry => <PersonFactEntry key={entry.ID} entry={entry} />)}
                         </div>
                     )}

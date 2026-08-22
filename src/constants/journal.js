@@ -581,9 +581,26 @@ export const JOURNAL_COPY = {
         // The half-life is filled from the constant rather than written into the sentence,
         // so tuning the constant cannot leave the sentence saying something untrue.
         fade: 'Each feeling is drawn fading over about {halfLife} unless you mention it again.',
+        // The closing card is one tap on one word and records no strength (§6.5), so the
+        // graph has to choose one to draw it at. §8.2 rule 7 says that choice is a stated
+        // constant rather than a silent middle number, which is what this sentence states.
+        unstated: 'A feeling recorded without a strength, like the closing word, is drawn at {strength} of three.',
         caveat: 'That is a drawing choice about what you recorded, not a claim about you.',
         extrapolated: 'The faint part is drawn past what you said, not measured.',
-        legend: 'Feelings today'
+        legend: 'Feelings today',
+
+        // B2's own words: the drawing's name, its two rotation buttons, the camera
+        // toggle, and what a branch says when a screen reader reaches it. The graph shows
+        // no person, no trigger and no note, so there is nothing here that discretion mode
+        // would have to mask — the legend is feeling labels and nothing else (§9.6).
+        label: 'The day as a curve',
+        rotateLeft: 'Turn the drawing left',
+        rotateRight: 'Turn the drawing right',
+        // The two halves of one button. Flat is the 2-D ribbon — the same geometry with the
+        // camera's tilt set to nothing (§8.3).
+        flatten: 'Show it flat',
+        tilt: 'Show it tilted',
+        branch: 'Open the {feeling} check-in from {time}'
     },
 
     people: {

@@ -573,7 +573,8 @@ describe('a night with no ritual', () => {
             </MemoryRouter>
         );
 
-        await screen.findByText('calm');
+        // `findAllBy`: the graph's legend names `calm` beside the chip that records it.
+        await screen.findAllByText('calm');
 
         // Not a row, not a heading, not a zero, not a placeholder saying it is absent.
         expect(document.querySelector('[data-entry-kind="ritual"]')).toBeNull();

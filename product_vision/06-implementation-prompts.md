@@ -80,7 +80,7 @@ docs disagree, fix the docs in the same change.
 | :--- | :-- |
 | `product_vision/06-emotional-journal.md` | The design. Read the sections your prompt names, in full. Do not implement from the prompt alone — the prompt is a scope fence around the design, not a replacement for it. |
 | `product_vision/06-progress.md` | The ledger. What actually shipped in the sessions before yours, and what they warn you about. **Read it before planning.** |
-| `docs/10-agent-guide.md` §2 and §3 | Twenty-two hard invariants and twelve silent-failure traps. Several bite in every session. |
+| `docs/10-agent-guide.md` §2 and §3 | Twenty-six hard invariants and sixteen silent-failure traps (the counts were stale at twenty-two and twelve until 2026-08-23). Several bite in every session. |
 | `product_vision/README.md` | The roadmap invariants every phase must preserve. |
 
 Then read the specific files your prompt lists. Read whole files, not greps, for any file you
