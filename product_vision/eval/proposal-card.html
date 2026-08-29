@@ -1,0 +1,770 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Proposal card — U1 fixture</title>
+<!--
+  The §4.4 proposal card, driven by a fixture instead of by a model.
+
+  Built for the user test in product_vision/eval/user-test-protocol.md, question 2. The
+  facilitator plays the model: they hear the participant's sentence, type it in, pick the
+  feelings a small model would plausibly have proposed, and hand the phone over. Everything
+  the participant then does is timestamped, so the acceptance rate is counted rather than
+  remembered.
+
+  Three things this file is not. It is not shipped code — nothing here is imported by the app,
+  nothing reaches the bundle, and no route renders it. It is not a model — the proposal is
+  typed by a person. And it is not a second store — it writes to this browser's localStorage
+  and to nothing else; there is no network call in this file at all.
+
+  The vocabulary below is generated from src/constants/journal.js. Regenerate after any change
+  to FEELINGS:  node product_vision/eval/build-proposal-card.mjs
+-->
+<style>
+  :root {
+    --slate-50:#f8fafc; --slate-100:#f1f5f9; --slate-200:#e2e8f0; --slate-300:#cbd5e1;
+    --slate-400:#94a3b8; --slate-500:#64748b; --slate-600:#475569; --slate-700:#334155;
+    --slate-800:#1e293b; --slate-900:#0f172a;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin:0; padding:0; background:var(--slate-100); color:var(--slate-800);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { min-height:100dvh; display:flex; align-items:flex-end; justify-content:center; }
+  @media (min-width: 640px) { body { align-items:center; padding:1rem; } }
+  .sheet { background:#fff; width:100%; max-width:32rem; border:1px solid var(--slate-100);
+    border-radius:1rem 1rem 0 0; box-shadow:0 10px 30px rgba(15,23,42,.12);
+    max-height:96dvh; display:flex; flex-direction:column; overflow:hidden; }
+  @media (min-width: 640px) { .sheet { border-radius:1rem; } }
+  .sheet-head { padding:1.25rem 1.25rem .75rem; display:flex; justify-content:space-between;
+    align-items:flex-start; gap:1rem; flex-shrink:0; }
+  .sheet-head h2 { margin:0; font-size:1.125rem; font-weight:300; color:var(--slate-800); }
+  .sheet-body { flex:1; overflow-y:auto; padding:0 1.25rem 1.25rem;
+    display:flex; flex-direction:column; gap:1.25rem; }
+  .sheet-foot { padding:1rem 1.25rem calc(1rem + env(safe-area-inset-bottom, 0px));
+    border-top:1px solid var(--slate-100); display:flex; flex-direction:column; gap:.75rem;
+    flex-shrink:0; }
+  .row { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; }
+  .row-end { display:flex; justify-content:flex-end; gap:.75rem; align-items:center; }
+  .eyebrow { margin:0; font-size:.75rem; font-weight:600; color:var(--slate-400);
+    text-transform:uppercase; letter-spacing:.05em; }
+  .hint { margin:0; font-size:.6875rem; font-weight:300; color:var(--slate-400); }
+  .quote { margin:0; padding:.75rem .875rem; border-left:3px solid var(--slate-200);
+    background:var(--slate-50); border-radius:0 .5rem .5rem 0; font-size:.9375rem;
+    line-height:1.5; color:var(--slate-700); width:100%; border-top:0; border-right:0;
+    border-bottom:0; font-family:inherit; resize:vertical; min-height:3.5rem; }
+  .quote:focus { outline:none; border-left-color:var(--slate-800); }
+  .chip { display:inline-flex; align-items:center; gap:.25rem; border-radius:9999px;
+    padding:.25rem .625rem; font-size:.75rem; font-weight:500; border:1px solid transparent;
+    background:transparent; font-family:inherit; cursor:pointer; }
+  .chip .dot { height:.5rem; width:.5rem; border-radius:9999px; flex:0 0 auto; }
+  .chip.dashed { border-style:dashed; }
+  .chip.muted { border-color:var(--slate-200); background:#fff; color:var(--slate-600); }
+  .chip.newish { border-style:dashed; border-color:var(--slate-300); background:#fff;
+    color:var(--slate-500); }
+  .picked { border:1px solid var(--slate-100); background:rgba(248,250,252,.6);
+    border-radius:.75rem; padding:.75rem; display:flex; flex-direction:column; gap:.5rem; }
+  .picked.proposed { border-style:dashed; border-color:var(--slate-300); }
+  .dots { padding:0 .5rem; height:1.5rem; min-width:2.25rem; border-radius:9999px;
+    border:1px solid var(--slate-200); background:#fff; color:var(--slate-600);
+    letter-spacing:.2em; line-height:1; cursor:pointer; font-family:inherit; }
+  .approx { width:1.5rem; height:1.5rem; border-radius:9999px; font-size:.75rem;
+    font-weight:600; border:1px solid var(--slate-200); background:#fff;
+    color:var(--slate-400); cursor:pointer; font-family:inherit; }
+  .approx[aria-pressed="true"] { background:var(--slate-700); color:#fff;
+    border-color:var(--slate-700); }
+  .x { margin-left:auto; border:0; background:transparent; color:var(--slate-300);
+    padding:.25rem; cursor:pointer; font-size:.875rem; line-height:1; }
+  .addlink { display:inline-flex; align-items:center; gap:.25rem; border:0;
+    background:transparent; font-size:.6875rem; font-weight:500; color:var(--slate-400);
+    cursor:pointer; font-family:inherit; padding:0; }
+  .field { width:100%; font-size:.875rem; border:0; border-bottom:2px solid var(--slate-200);
+    padding:.375rem 0; background:transparent; color:var(--slate-700); font-family:inherit; }
+  .field:focus { outline:none; border-bottom-color:var(--slate-800); }
+  .primary { padding:.5rem 1.5rem; background:var(--slate-800); color:#fff; border:0;
+    border-radius:.5rem; font-family:inherit; font-size:.875rem; cursor:pointer; }
+  .primary:disabled { opacity:.4; cursor:not-allowed; }
+  .ghost { padding:.5rem 1rem; background:transparent; color:var(--slate-500); border:0;
+    border-radius:.5rem; font-family:inherit; font-size:.875rem; cursor:pointer; }
+  .underlink { border:0; background:transparent; font-size:.6875rem; font-weight:500;
+    color:var(--slate-400); text-decoration:underline; text-underline-offset:4px;
+    cursor:pointer; font-family:inherit; padding:0; }
+  .grid { display:flex; flex-wrap:wrap; gap:.5rem; }
+  .setup { padding:1.25rem; display:flex; flex-direction:column; gap:1rem; }
+  .setup label { font-size:.75rem; color:var(--slate-500); display:block;
+    margin-bottom:.25rem; }
+  .setup textarea, .setup input[type=text] { width:100%; font-family:inherit;
+    font-size:.875rem; padding:.5rem; border:1px solid var(--slate-200);
+    border-radius:.5rem; color:var(--slate-700); }
+  .setup .card-box { border:1px solid var(--slate-200); border-radius:.75rem; padding:.75rem;
+    display:flex; flex-direction:column; gap:.5rem; }
+  .seg { display:inline-flex; border:1px solid var(--slate-200); border-radius:.5rem;
+    overflow:hidden; }
+  .seg button { border:0; background:#fff; color:var(--slate-500); padding:.375rem .75rem;
+    font-family:inherit; font-size:.75rem; cursor:pointer; }
+  .seg button[aria-pressed="true"] { background:var(--slate-800); color:#fff; }
+  .logout { width:100%; min-height:16rem; font-family:ui-monospace, SFMono-Regular, Menlo,
+    monospace; font-size:.6875rem; padding:.5rem; border:1px solid var(--slate-200);
+    border-radius:.5rem; }
+  .hidden { display:none; }
+  .tapzone { position:absolute; top:0; right:0; width:3rem; height:3rem; }
+  .wrap { position:relative; width:100%; max-width:32rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="tapzone" id="tapzone" title="five taps reveal the log"></div>
+
+  <!-- ---------------------------------------------------------------- setup (facilitator) -->
+  <section class="sheet" id="setup-screen">
+    <div class="sheet-head"><h2>Fixture setup</h2></div>
+    <div class="setup">
+      <p class="hint">Facilitator only. The participant should not see this screen.</p>
+
+      <div>
+        <label for="pid">Participant code</label>
+        <input type="text" id="pid" placeholder="P1" />
+      </div>
+
+      <div>
+        <label>Card language (chrome only — the feeling words stay as the app ships them)</label>
+        <div class="seg" id="lang-seg">
+          <button type="button" data-lang="en" aria-pressed="true">English</button>
+          <button type="button" data-lang="de" aria-pressed="false">Deutsch</button>
+        </div>
+      </div>
+
+      <div>
+        <label>Condition</label>
+        <div class="seg" id="cond-seg">
+          <button type="button" data-cond="clean" aria-pressed="true">Clean</button>
+          <button type="button" data-cond="degraded" aria-pressed="false">One label off</button>
+        </div>
+        <p class="hint">Degraded: swap exactly one proposed word for its neighbour before
+          showing the card. Both numbers are reported; the model sits between them.</p>
+      </div>
+
+      <div>
+        <label><input type="checkbox" id="show-transcript" checked /> Show the transcript on the card</label>
+        <p class="hint">Unchecked gives the labels-only variant, for question 5.</p>
+      </div>
+
+      <div>
+        <label for="transcript">The participant's sentence, in their own words and their own language</label>
+        <textarea id="transcript" rows="3"></textarea>
+      </div>
+
+      <div>
+        <label>The proposal — the words a small model would plausibly have heard</label>
+        <div class="grid" id="setup-grid"></div>
+      </div>
+
+      <div id="setup-picked" class="setup" style="padding:0;gap:.5rem"></div>
+
+      <div class="row-end">
+        <button type="button" class="ghost" id="reset-all">Clear this device</button>
+        <button type="button" class="primary" id="show-card" disabled>Show the card</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------------- the proposal card -->
+  <section class="sheet hidden" id="card-screen">
+    <div class="sheet-head">
+      <h2 id="card-title"></h2>
+      <button type="button" class="x" id="card-close" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="sheet-body">
+      <div id="transcript-block" style="display:flex;flex-direction:column;gap:.5rem">
+        <p class="eyebrow" id="t-your-words"></p>
+        <textarea class="quote" id="card-transcript" rows="2"></textarea>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:.5rem">
+        <p class="eyebrow" id="t-feelings"></p>
+        <p class="hint" id="t-dashed"></p>
+        <div id="card-picked" style="display:flex;flex-direction:column;gap:.5rem"></div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:.5rem">
+        <div class="row">
+          <button type="button" class="chip newish" id="add-feeling">+&nbsp;<span id="t-add"></span></button>
+        </div>
+        <div id="grid-block" class="hidden" style="display:flex;flex-direction:column;gap:.5rem">
+          <input type="text" class="field" id="grid-query" />
+          <div class="grid" id="card-grid"></div>
+          <p class="hint" id="t-cap"></p>
+        </div>
+      </div>
+
+      <div id="people-block" style="display:flex;flex-direction:column;gap:.5rem"></div>
+    </div>
+    <div class="sheet-foot">
+      <button type="button" class="underlink" id="rephrase"></button>
+      <div class="row-end">
+        <button type="button" class="ghost" id="discard"></button>
+        <button type="button" class="primary" id="save"></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- --------------------------------------------------------------------------- the log -->
+  <section class="sheet hidden" id="log-screen">
+    <div class="sheet-head"><h2>Log</h2>
+      <button type="button" class="x" id="log-close" aria-label="Close">&#10005;</button></div>
+    <div class="setup">
+      <p class="hint">Copy this into the question&nbsp;2 tally. It never leaves this browser.</p>
+      <div id="log-summary" style="display:flex;flex-direction:column;gap:.25rem"></div>
+      <textarea class="logout" id="log-json" readonly></textarea>
+      <div class="row-end">
+        <button type="button" class="ghost" id="log-copy">Copy</button>
+        <button type="button" class="primary" id="log-back">Back to setup</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+/* Generated 2026-08-25 from src/constants/journal.js — do not hand-edit the vocabulary. */
+const FEELINGS = [
+  {
+    "id": "joy",
+    "label": "joy",
+    "gloss": "lit up, and wholly pleasant",
+    "hex": "#fbbf24"
+  },
+  {
+    "id": "excitement",
+    "label": "excitement",
+    "gloss": "keyed up, something coming",
+    "hex": "#fb923c"
+  },
+  {
+    "id": "pleasure",
+    "label": "pleasure",
+    "gloss": "this is nice, right now",
+    "hex": "#f472b6"
+  },
+  {
+    "id": "rapport",
+    "label": "connectedness",
+    "gloss": "close to someone, in step",
+    "hex": "#fb7185"
+  },
+  {
+    "id": "gratitude",
+    "label": "gratitude",
+    "gloss": "glad something was given",
+    "hex": "#34d399"
+  },
+  {
+    "id": "pride",
+    "label": "pride",
+    "gloss": "this one was yours to do",
+    "hex": "#a3e635"
+  },
+  {
+    "id": "curiosity",
+    "label": "curiosity",
+    "gloss": "pulled toward finding out",
+    "hex": "#22d3ee"
+  },
+  {
+    "id": "calm",
+    "label": "calm",
+    "gloss": "settled, nothing pressing",
+    "hex": "#2dd4bf"
+  },
+  {
+    "id": "neutral",
+    "label": "level",
+    "gloss": "nothing in particular",
+    "hex": "#94a3b8"
+  },
+  {
+    "id": "unclear",
+    "label": "can't tell",
+    "gloss": "something is there, and it has no name yet",
+    "hex": "#a1a1aa"
+  },
+  {
+    "id": "tiredness",
+    "label": "tiredness",
+    "gloss": "run down, low on fuel",
+    "hex": "#38bdf8"
+  },
+  {
+    "id": "boredom",
+    "label": "boredom",
+    "gloss": "nothing here holds you",
+    "hex": "#60a5fa"
+  },
+  {
+    "id": "longing",
+    "label": "longing",
+    "gloss": "reaching for what is not here",
+    "hex": "#a78bfa"
+  },
+  {
+    "id": "loneliness",
+    "label": "loneliness",
+    "gloss": "apart from people, and feeling it",
+    "hex": "#818cf8"
+  },
+  {
+    "id": "sadness",
+    "label": "sadness",
+    "gloss": "heavy, and slow",
+    "hex": "#6366f1"
+  },
+  {
+    "id": "shame",
+    "label": "shame",
+    "gloss": "wanting to be unseen",
+    "hex": "#e879f9"
+  },
+  {
+    "id": "irritation",
+    "label": "irritation",
+    "gloss": "rubbed the wrong way",
+    "hex": "#f97316"
+  },
+  {
+    "id": "stress",
+    "label": "stress",
+    "gloss": "too much at once, and pressing",
+    "hex": "#f43f5e"
+  },
+  {
+    "id": "anxiety",
+    "label": "anxiety",
+    "gloss": "braced for something",
+    "hex": "#a855f7"
+  },
+  {
+    "id": "overwhelm",
+    "label": "overwhelm",
+    "gloss": "more than can be held",
+    "hex": "#d946ef"
+  },
+  {
+    "id": "anger",
+    "label": "anger",
+    "gloss": "hot, and pushed against",
+    "hex": "#ef4444"
+  }
+];
+const MAX_FEELINGS = 5;
+const UNCLEAR = "unclear";
+const INTENSITIES = [1,2,3];
+
+/* The card's own chrome. The feeling words are never translated: the app ships one set of
+   labels and translating them here would test a product that does not exist. What the German
+   column removes is the chrome as a confound, so a German speaker reacts to the proposal and
+   not to the buttons around it. Which column was used is recorded on every run. */
+const COPY = {
+  en: {
+    title: 'What is it like right now?',
+    yourWords: 'Your words',
+    feelings: 'Feelings',
+    dashed: 'Dashed means not saved yet. Tap a word to keep it, tap it again to put it down.',
+    add: 'another word',
+    cap: 'Up to ' + MAX_FEELINGS + ' words in one check-in. That one stands on its own — picking it puts the others down.',
+    find: 'Find a word',
+    about: 'About',
+    save: 'Save', discard: 'Discard', rephrase: "This isn't it",
+    newTrigger: 'new trigger: {label}?',
+    matches: '{name} — matches your relationship “{name}”',
+    newPerson: '{name} — new person?'
+  },
+  de: {
+    title: 'Wie ist es gerade?',
+    yourWords: 'Deine Worte',
+    feelings: 'Gefühle',
+    dashed: 'Gestrichelt heißt: noch nicht gespeichert. Tippe ein Wort an, um es zu behalten, noch einmal, um es abzulegen.',
+    add: 'noch ein Wort',
+    cap: 'Bis zu ' + MAX_FEELINGS + ' Worte in einem Eintrag. Dieses eine steht für sich — wer es wählt, legt die anderen ab.',
+    find: 'Ein Wort suchen',
+    about: 'Worum',
+    save: 'Speichern', discard: 'Verwerfen', rephrase: 'So war es nicht',
+    newTrigger: 'neuer Auslöser: {label}?',
+    matches: '{name} — passt zu deiner Beziehung „{name}“',
+    newPerson: '{name} — neue Person?'
+  }
+};
+
+const byId = (id) => FEELINGS.find(f => f.id === id) || null;
+const fill = (s, v) => s.replace(/\{(\w+)\}/g, (_, k) => (v[k] !== undefined ? v[k] : '{' + k + '}'));
+const $ = (id) => document.getElementById(id);
+
+/* ------------------------------------------------------------------ state and the log */
+let setup = { pid: '', lang: 'en', cond: 'clean', showTranscript: true, transcript: '',
+              proposed: [] };
+let card = null;   /* { t0, entries: [...], events: [...], transcript, edited } */
+
+const t = () => (card ? Math.round(performance.now() - card.t0) : 0);
+const log = (type, detail) => {
+  if (!card) return;
+  card.events.push(Object.assign({ t: t(), type: type }, detail || {}));
+};
+
+/* The runs are held in memory first and mirrored to localStorage second, in that order and
+   not the other way round: a page opened straight off the filesystem can be an opaque origin
+   where localStorage throws on the first write, and a facilitator who has just run six cards
+   should not lose them to that. The mirror is only what survives a reload. */
+const STORE = 'alq:u1:proposal-card';
+const stored = () => { try { return JSON.parse(localStorage.getItem(STORE) || '[]'); }
+                       catch (e) { return []; } };
+let memory = stored();
+const runs = () => memory;
+const saveRun = (run) => {
+  memory.push(run);
+  try { localStorage.setItem(STORE, JSON.stringify(memory)); } catch (e) { /* memory holds it */ }
+};
+
+/* ------------------------------------------------------------------------ setup screen */
+const chipEl = (feeling, opts) => {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'chip' + (opts && opts.dashed ? ' dashed' : '');
+  b.style.borderColor = feeling.hex;
+  b.style.borderStyle = (opts && opts.dashed) ? 'dashed' : 'solid';
+  b.style.backgroundColor = (opts && opts.solid) ? feeling.hex + '33' : 'transparent';
+  b.style.color = (opts && opts.solid) ? '#334155' : '#475569';
+  b.title = feeling.gloss;
+  const dot = document.createElement('span');
+  dot.className = 'dot'; dot.style.backgroundColor = feeling.hex;
+  b.appendChild(dot);
+  b.appendChild(document.createTextNode(feeling.label));
+  return b;
+};
+
+const renderSetupGrid = () => {
+  const host = $('setup-grid'); host.innerHTML = '';
+  FEELINGS.forEach(f => {
+    const on = setup.proposed.some(p => p.id === f.id);
+    const b = chipEl(f, { solid: on });
+    b.addEventListener('click', () => {
+      if (on) setup.proposed = setup.proposed.filter(p => p.id !== f.id);
+      else if (setup.proposed.length < MAX_FEELINGS)
+        setup.proposed.push({ id: f.id, intensity: INTENSITIES[1], about: [] });
+      renderSetup();
+    });
+    host.appendChild(b);
+  });
+};
+
+const renderSetupPicked = () => {
+  const host = $('setup-picked'); host.innerHTML = '';
+  setup.proposed.forEach(p => {
+    const f = byId(p.id);
+    const box = document.createElement('div'); box.className = 'card-box';
+
+    const head = document.createElement('div'); head.className = 'row';
+    head.appendChild(chipEl(f, { solid: true }));
+    INTENSITIES.forEach(level => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'dots';
+      b.setAttribute('aria-pressed', String(p.intensity === level));
+      if (p.intensity === level) { b.style.background = '#1e293b'; b.style.color = '#fff'; }
+      b.textContent = '·'.repeat(level);
+      b.addEventListener('click', () => { p.intensity = level; renderSetup(); });
+      head.appendChild(b);
+    });
+    box.appendChild(head);
+
+    const line = document.createElement('div'); line.className = 'row';
+    const kind = document.createElement('select');
+    [['person', 'person (known)'], ['person_new', 'person (new)'],
+     ['trigger', 'trigger (known)'], ['trigger_new', 'trigger (new)'],
+     ['tag', 'tag']].forEach(([v, text]) => {
+      const o = document.createElement('option'); o.value = v; o.textContent = text;
+      kind.appendChild(o);
+    });
+    kind.style.fontSize = '.75rem';
+    const text = document.createElement('input');
+    text.type = 'text'; text.className = 'field'; text.style.flex = '1';
+    text.placeholder = 'label';
+    const add = document.createElement('button');
+    add.type = 'button'; add.className = 'ghost'; add.textContent = 'add';
+    add.addEventListener('click', () => {
+      const v = text.value.trim(); if (!v) return;
+      p.about.push({ kind: kind.value, label: v }); text.value = ''; renderSetup();
+    });
+    line.appendChild(kind); line.appendChild(text); line.appendChild(add);
+    box.appendChild(line);
+
+    if (p.about.length) {
+      const chips = document.createElement('div'); chips.className = 'row';
+      p.about.forEach((a, i) => {
+        const s = document.createElement('span'); s.className = 'chip muted';
+        s.textContent = a.label + ' (' + a.kind + ')';
+        const x = document.createElement('button');
+        x.type = 'button'; x.className = 'x'; x.textContent = '×'; x.style.marginLeft = '.25rem';
+        x.addEventListener('click', () => { p.about.splice(i, 1); renderSetup(); });
+        s.appendChild(x); chips.appendChild(s);
+      });
+      box.appendChild(chips);
+    }
+    host.appendChild(box);
+  });
+};
+
+const renderSetup = () => {
+  renderSetupGrid(); renderSetupPicked();
+  $('show-card').disabled = setup.proposed.length === 0 || !$('pid').value.trim();
+};
+
+/* -------------------------------------------------------------------- the proposal card */
+const c = () => COPY[setup.lang];
+
+const aboutChip = (a) => {
+  const s = document.createElement('span');
+  const isNew = a.kind === 'trigger_new' || a.kind === 'person_new';
+  s.className = 'chip ' + (isNew ? 'newish' : 'muted');
+  const label = a.kind === 'trigger_new' ? fill(c().newTrigger, { label: a.label })
+              : a.kind === 'person_new'  ? fill(c().newPerson,  { name: a.label })
+              : a.label;
+  s.appendChild(document.createTextNode(label));
+  return s;
+};
+
+const renderCardPicked = () => {
+  const host = $('card-picked'); host.innerHTML = '';
+  card.entries.forEach(entry => {
+    const f = byId(entry.id);
+    const box = document.createElement('div');
+    box.className = 'picked' + (entry.state === 'proposed' ? ' proposed' : '');
+
+    const head = document.createElement('div'); head.className = 'row';
+    const dashed = entry.state === 'proposed' || entry.uncertain || entry.id === UNCLEAR;
+    const chip = chipEl(f, { solid: entry.state !== 'proposed', dashed: dashed });
+    chip.addEventListener('click', () => {
+      if (entry.state === 'proposed') { entry.state = 'confirmed'; log('feeling.confirm', { id: entry.id }); }
+      else if (entry.state === 'confirmed' && entry.from === 'proposal') {
+        entry.state = 'proposed'; log('feeling.unconfirm', { id: entry.id });
+      } else {
+        card.entries = card.entries.filter(e => e !== entry);
+        log('feeling.remove', { id: entry.id, from: entry.from });
+      }
+      renderCardPicked();
+    });
+    head.appendChild(chip);
+
+    const dots = document.createElement('button');
+    dots.type = 'button'; dots.className = 'dots'; dots.textContent = '·'.repeat(entry.intensity);
+    dots.addEventListener('click', () => {
+      const i = INTENSITIES.indexOf(entry.intensity);
+      entry.intensity = INTENSITIES[(i + 1) % INTENSITIES.length];
+      log('intensity', { id: entry.id, to: entry.intensity }); renderCardPicked();
+    });
+    head.appendChild(dots);
+
+    const approx = document.createElement('button');
+    approx.type = 'button'; approx.className = 'approx'; approx.textContent = '≈';
+    approx.setAttribute('aria-pressed', String(entry.uncertain === true));
+    approx.addEventListener('click', () => {
+      entry.uncertain = entry.uncertain !== true;
+      log('uncertain', { id: entry.id, to: entry.uncertain }); renderCardPicked();
+    });
+    head.appendChild(approx);
+
+    const x = document.createElement('button');
+    x.type = 'button'; x.className = 'x'; x.textContent = '×';
+    x.addEventListener('click', () => {
+      card.entries = card.entries.filter(e => e !== entry);
+      log('feeling.remove', { id: entry.id, from: entry.from }); renderCardPicked();
+    });
+    head.appendChild(x);
+    box.appendChild(head);
+
+    if (entry.about.length) {
+      const line = document.createElement('div'); line.className = 'row';
+      const lab = document.createElement('span');
+      lab.className = 'hint'; lab.textContent = c().about;
+      line.appendChild(lab);
+      entry.about.forEach((a, i) => {
+        const s = aboutChip(a);
+        const rm = document.createElement('button');
+        rm.type = 'button'; rm.className = 'x'; rm.textContent = '×'; rm.style.marginLeft = '.25rem';
+        rm.addEventListener('click', () => {
+          entry.about.splice(i, 1);
+          log('about.remove', { id: entry.id, kind: a.kind, label: a.label }); renderCardPicked();
+        });
+        s.appendChild(rm); line.appendChild(s);
+      });
+      box.appendChild(line);
+    }
+    host.appendChild(box);
+  });
+};
+
+const renderCardGrid = () => {
+  const host = $('card-grid'); host.innerHTML = '';
+  const needle = $('grid-query').value.trim().toLowerCase();
+  FEELINGS.filter(f => !needle || f.label.toLowerCase().includes(needle)
+    || f.gloss.toLowerCase().includes(needle) || f.id.includes(needle)).forEach(f => {
+    const on = card.entries.some(e => e.id === f.id);
+    const b = chipEl(f, { solid: on });
+    b.addEventListener('click', () => {
+      if (on) {
+        card.entries = card.entries.filter(e => e.id !== f.id);
+        log('feeling.remove', { id: f.id, from: 'grid' });
+      } else {
+        if (f.id === UNCLEAR) card.entries = [];
+        else card.entries = card.entries.filter(e => e.id !== UNCLEAR);
+        if (card.entries.length >= MAX_FEELINGS && f.id !== UNCLEAR) return;
+        card.entries.push({ id: f.id, intensity: INTENSITIES[1], uncertain: false,
+                            about: [], state: 'confirmed', from: 'grid' });
+        log('feeling.add', { id: f.id });
+      }
+      renderCardPicked(); renderCardGrid();
+    });
+    host.appendChild(b);
+  });
+};
+
+const showCard = () => {
+  card = {
+    t0: performance.now(), events: [], transcript: setup.transcript, edited: false,
+    rephrase: false, outcome: null,
+    entries: setup.proposed.map(p => ({
+      id: p.id, intensity: p.intensity, uncertain: false,
+      about: p.about.map(a => ({ kind: a.kind, label: a.label })),
+      state: 'proposed', from: 'proposal'
+    }))
+  };
+  $('card-title').textContent = c().title;
+  $('t-your-words').textContent = c().yourWords;
+  $('t-feelings').textContent = c().feelings;
+  $('t-dashed').textContent = c().dashed;
+  $('t-add').textContent = c().add;
+  $('t-cap').textContent = c().cap;
+  $('grid-query').placeholder = c().find;
+  $('grid-query').setAttribute('aria-label', c().find);
+  $('save').textContent = c().save;
+  $('discard').textContent = c().discard;
+  $('rephrase').textContent = c().rephrase;
+  $('card-transcript').value = setup.transcript;
+  $('transcript-block').className = setup.showTranscript ? '' : 'hidden';
+  $('transcript-block').style.display = setup.showTranscript ? 'flex' : 'none';
+  $('grid-block').className = 'hidden';
+  $('grid-query').value = '';
+  renderCardPicked();
+  $('setup-screen').className = 'sheet hidden';
+  $('card-screen').className = 'sheet';
+  log('card.shown', { proposed: card.entries.map(e => e.id), condition: setup.cond,
+                      transcriptShown: setup.showTranscript, lang: setup.lang });
+};
+
+const finish = (outcome) => {
+  card.outcome = outcome;
+  log('outcome', { outcome: outcome });
+  const proposed = card.events[0].proposed || [];
+  const kept = card.entries.filter(e => e.state === 'confirmed' && e.from === 'proposal')
+                           .map(e => e.id);
+  const added = card.entries.filter(e => e.from === 'grid').map(e => e.id);
+  const first = card.events.find(e => e.type !== 'card.shown') || null;
+  const run = {
+    participant: setup.pid, lang: setup.lang, condition: setup.cond,
+    transcriptShown: setup.showTranscript, transcript: card.transcript,
+    transcriptEdited: card.edited, rephrase: card.rephrase, outcome: outcome,
+    proposed: proposed, kept: kept, added: added,
+    dropped: proposed.filter(id => !kept.includes(id)),
+    acceptance: proposed.length ? +(kept.length / proposed.length).toFixed(2) : null,
+    firstAction: first ? first.type : null,
+    msToFirstAction: first ? first.t : null,
+    msToOutcome: t(),
+    events: card.events
+  };
+  saveRun(run);
+  showLog(run);
+};
+
+const showLog = (run) => {
+  const sum = $('log-summary'); sum.innerHTML = '';
+  const lines = run ? [
+    ['participant', run.participant + ' · ' + run.lang + ' · ' + run.condition],
+    ['proposed', run.proposed.join(', ') || '—'],
+    ['kept as proposed', run.kept.join(', ') || '—'],
+    ['dropped', run.dropped.join(', ') || '—'],
+    ['added from the grid', run.added.join(', ') || '—'],
+    ['acceptance', run.acceptance === null ? '—' : run.acceptance],
+    ['first action', (run.firstAction || '—') + ' at ' + run.msToFirstAction + ' ms'],
+    ['to ' + run.outcome, run.msToOutcome + ' ms'],
+    ['transcript edited', String(run.transcriptEdited)],
+    ["this isn't it", String(run.rephrase)]
+  ] : [['runs on this device', String(runs().length)]];
+  lines.forEach(([k, v]) => {
+    const p = document.createElement('p');
+    p.className = 'hint'; p.style.color = '#475569';
+    p.textContent = k + ': ' + v;
+    sum.appendChild(p);
+  });
+  $('log-json').value = JSON.stringify(runs(), null, 1);
+  $('setup-screen').className = 'sheet hidden';
+  $('card-screen').className = 'sheet hidden';
+  $('log-screen').className = 'sheet';
+};
+
+/* ------------------------------------------------------------------------------- wiring */
+$('pid').addEventListener('input', renderSetup);
+$('transcript').addEventListener('input', (e) => { setup.transcript = e.target.value; });
+$('show-transcript').addEventListener('change', (e) => { setup.showTranscript = e.target.checked; });
+document.querySelectorAll('#lang-seg button').forEach(b => b.addEventListener('click', () => {
+  setup.lang = b.dataset.lang;
+  document.querySelectorAll('#lang-seg button').forEach(o =>
+    o.setAttribute('aria-pressed', String(o === b)));
+}));
+document.querySelectorAll('#cond-seg button').forEach(b => b.addEventListener('click', () => {
+  setup.cond = b.dataset.cond;
+  document.querySelectorAll('#cond-seg button').forEach(o =>
+    o.setAttribute('aria-pressed', String(o === b)));
+}));
+$('show-card').addEventListener('click', () => { setup.pid = $('pid').value.trim(); showCard(); });
+$('reset-all').addEventListener('click', () => {
+  if (!window.confirm('Remove every run stored on this device?')) return;
+  memory = [];
+  try { localStorage.removeItem(STORE); } catch (e) { /* memory is already empty */ }
+});
+
+$('add-feeling').addEventListener('click', () => {
+  const open = $('grid-block').className !== 'hidden';
+  $('grid-block').className = open ? 'hidden' : '';
+  $('grid-block').style.display = open ? 'none' : 'flex';
+  if (!open) { log('grid.open', {}); renderCardGrid(); }
+});
+$('grid-query').addEventListener('input', renderCardGrid);
+$('card-transcript').addEventListener('input', () => {
+  if (!card.edited) { card.edited = true; log('transcript.edit', {}); }
+});
+$('rephrase').addEventListener('click', () => { card.rephrase = true; log('rephrase', {}); });
+$('save').addEventListener('click', () => finish('save'));
+$('discard').addEventListener('click', () => finish('discard'));
+$('card-close').addEventListener('click', () => finish('closed'));
+$('log-close').addEventListener('click', () => {
+  $('log-screen').className = 'sheet hidden'; $('setup-screen').className = 'sheet';
+});
+$('log-back').addEventListener('click', () => {
+  setup = { pid: setup.pid, lang: setup.lang, cond: setup.cond,
+            showTranscript: setup.showTranscript, transcript: '', proposed: [] };
+  $('transcript').value = '';
+  $('log-screen').className = 'sheet hidden'; $('setup-screen').className = 'sheet';
+  renderSetup();
+});
+$('log-copy').addEventListener('click', () => {
+  $('log-json').select(); try { document.execCommand('copy'); } catch (e) { /* select is enough */ }
+});
+
+let taps = 0, tapAt = 0;
+$('tapzone').addEventListener('click', () => {
+  const now = performance.now();
+  taps = (now - tapAt < 800) ? taps + 1 : 1;
+  tapAt = now;
+  if (taps >= 5) { taps = 0; showLog(null); }
+});
+
+renderSetup();
+</script>
+</body>
+</html>

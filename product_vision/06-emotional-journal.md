@@ -766,7 +766,12 @@ and they are handled in §5.4. The `transcript` is not one of them: it is the us
 **Feelings.** Ids are permanent, exactly as category ids are (invariant 3). Each carries a
 label, a short gloss, a position on the two axes the day graph uses (§8.1), and a colour.
 The list is a first draft for the user test in §12.4 to correct; the *shape* of the contract
-is the decision, the membership is not yet.
+is the decision, the membership is not yet. The test that would correct it has a protocol
+([`eval/user-test-protocol.md`](eval/user-test-protocol.md), 2026-08-25) and **has not been
+run**: this table is still the draft, not a result. That protocol's own §10.1 fixes in advance
+what would change a row — retire on zero use across five or more participants, add on three
+independent asks, and move a valence or energy constant only on an affect-grid median more
+than 0.3 (or 0.25) away from the authored one.
 
 | id | Label | Valence | Energy | Note |
 | :- | :---- | ------: | -----: | :--- |
@@ -2139,6 +2144,15 @@ vector column would be a transcript column under another name.
 Run with the 6-A prototype (chips, ritual, triggers, a paper or fake proposal card) on a
 phone, before any native inference work begins:
 
+> **The protocol exists; the run does not.** [`eval/user-test-protocol.md`](eval/user-test-protocol.md)
+> turns the eight questions below into a three-contact study — a session, a week, a second
+> session — with the decision rules fixed **before** the run, two tally sheets
+> ([feelings](eval/tally-feelings.md), [triggers](eval/tally-triggers.md)) and a fixture
+> proposal card generated from `FEELINGS`, so that question 2 measures a card rather than a
+> mock-up. Written 2026-08-25 in session U1; **not run, and the gate is open.** Until a dated
+> report sits beside the protocol in `product_vision/eval/`, every question below is
+> unanswered, and nothing after 6-B is settled by it.
+
 1. **Can the ritual be done in under 60 s, half-asleep, by thumb?** Is nine cards too many;
    which optional questions do people actually turn on; is the *Who?* card welcome or
    intrusive?
@@ -2173,7 +2187,12 @@ triggers are first-class records; the tone channel is parked (§12.6).
 Still open:
 
 - The exact membership of the feeling vocabulary and the valence/energy constants (§5.3) —
-  a first draft for the test to correct; the id contract is the decision.
+  a first draft for the test to correct; the id contract is the decision. **Still open on
+  2026-08-25**, and now open against a written instrument rather than against an intention:
+  session U1 built [`eval/user-test-protocol.md`](eval/user-test-protocol.md) and did not run
+  it. The valence/energy half has an instrument for the first time — a printed affect grid,
+  §9 of the protocol — without which the membership could be settled while the two numbers
+  behind every branch of the day graph stayed authored from nothing.
 - The tier boundaries (§5.5) — measured on the oldest supported device, not argued.
 - The half-life and thresholds in §8.2 — constants with a stated default, tuned against real
   days.

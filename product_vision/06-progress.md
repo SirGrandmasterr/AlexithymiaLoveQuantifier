@@ -42,7 +42,7 @@ and whether the weights stay out of it entirely.
 | A10 | 6-A closeout: docs, QA, review | done | — | 2026-08-22 | **Slice 6-A ships.** Ten QA items on a real stack, three defects found and fixed, thirteen documents made true, a review pass and a simplify pass |
 | B1 | Day graph: the geometry | done | — | 2026-08-23 | Four pure functions and 62 tests; nothing renders, and nothing reaches the bundle yet |
 | B2 | Day graph: the component | done | — | 2026-08-23 | **Slice 6-B ships.** Hand-drawn SVG, mounted; 32 component tests; the tilt needed a floor and a smaller angle to be legible |
-| U1 | The user test | not started | | | Gate: decides whether G1/G2 are built at all |
+| U1 | The user test | **instrument built, run not done — the gate is open** | — | 2026-08-25 | `product_vision/eval/` holds the protocol, two tally sheets and a fixture proposal card. **No participant has seen any of it.** Nothing after B2 is decided by it yet |
 | C1 | Deployment: headers and the model channel | not started | | | |
 | C2 | Capture and the inference boundary | not started | | | |
 | C3 | Web Light-tier transcription + the Vault copy | not started | | | |
@@ -62,6 +62,7 @@ and whether the weights stay out of it entirely.
 
 | Date | Decision | Reasoning | Who |
 | :--- | :------- | :-------- | :-- |
+| 2026-08-25 | **The full user test is scheduled and run by the operator; the gate stays open until it is.** Not a self-run at n=1, not a reduced variant, and **C2 does not start early.** | U1 built the instrument and could not run it — five or six participants, four of them German-first, over eight days, with two facilitated sessions. Of the alternatives, n=1 cannot answer question 2 at all (a person cannot Wizard-of-Oz themselves) and cannot retire any feeling id under §10.1's n ≥ 5 rule, so it would close one of four decisions and leave the vocabulary exactly where it is; and starting C2 on an unrun gate spends the phase's expensive half on four unmade decisions, two of which are decisions to *not build* something large. | User |
 | 2026-08-22 | **docs/13 does not gate 6-A. The journal ships plaintext.** | Zero-knowledge encryption was *explored as an option and is not confirmed as a future feature.* It is therefore not "close" in the sense §12.3 means, and 6-A does not wait on it. The Vault page states the plaintext position in the journal's own words; the operator explicitly authorised adapting Vault sentences as needed. | User |
 | 2026-08-22 | **`person_fact` waits for 6-E — and 6-E is conditional.** | It is the one payload that is verbatim text *about a named third party* (§12.5, docs/13 §0). A1–A4 still build the `kind` and the server still accepts it; **no UI writes one** until the envelope lands. Because encryption is unconfirmed, the honest reading is that `person_fact` is deferred indefinitely, not merely by one slice. | User |
 
@@ -102,6 +103,7 @@ Everything the design document marked `(verify)`, as it gets measured. Device, b
 
 | From | Item | Where it should land |
 | :--- | :--- | :------------------- |
+| U1 | **The user test itself has not been run.** The instrument exists — `eval/user-test-protocol.md`, two tally sheets, `eval/proposal-card.html` — and running it needs five or six people, four of them German-first, over eight days, with two facilitated sessions. That is not something a session at a keyboard can produce, and inventing numbers for it would be worse than leaving the gate open. **Four decisions are unmade: the feeling vocabulary's membership and its valence/energy constants, the ritual's length, whether the proposal card is built at all, and whether 6-G is built at all.** | **U1, re-run by the operator with real participants.** Then a dated `eval/user-test-report-YYYY-MM-DD.md`, the constant changes it justifies, §5.3 and §12.5 rewritten from draft to result, and the C/D/G prompts updated. C2 does not start before that |
 | S0 | **Closed by A10.** Preamble §2.4 and Appendix B item 9 now say six, and add that `backend/**/uploads/` is gitignored so the untracked leftovers need no attention at all — while a stray `backend/alexithymia.db` **does**, because it is untracked *and* un-ignored. | — |
 | S0 | **Closed by A10.** Preamble §2.4 now states that `gofmt -l .` can never be empty on this checkout, says not to run `gofmt -w .`, and carries the line-ending-insensitive walk inline — with the addition that `git ls-files` will not see the `.go` files your own session created, so add them to the list. | — |
 | S0 | **Closed by A10.** Preamble §2.4 now reads 22 files / 511 tests in ~20 s, which is what this machine does at the 6-A closeout. | — |
@@ -139,6 +141,30 @@ Everything the design document marked `(verify)`, as it gets measured. Device, b
 
 Things a future session would otherwise rediscover the hard way.
 
+- **The U1 gate is open, and C2 is the session that must not step over it.** §12.4 is the reason
+  everything from 6-C onward exists in the order it does: the user test decides the feeling
+  vocabulary, the ritual's length, whether the proposal card is built, and whether 6-G is built.
+  U1 built the instrument (`product_vision/eval/`) and could not run it — running it needs five or
+  six people over eight days. **The absence of a `product_vision/eval/user-test-report-*.md` is
+  how you know.** A session that starts C2 on the strength of an unrun gate is spending the
+  phase's expensive half on four unmade decisions, and two of the four are decisions to *not
+  build* something large.
+- **`eval/proposal-card.html` is generated. Do not hand-edit it.** Its vocabulary is read out of
+  `src/constants/journal.js` at build time so a chip on the fixture is the same word in the same
+  colour as the app's. After any change to `FEELINGS`, run
+  `node product_vision/eval/build-proposal-card.mjs` — nothing in `npm test` catches the drift,
+  because the file is not part of the app and no suite reads it.
+- **The fixture card's copy is deliberately not in `JOURNAL_COPY`.** *This isn't it*, *Dashed
+  means not saved yet* and the German column live in `eval/proposal-card.template.html`, because
+  putting unshipped strings in `src/constants/journal.js` would have the forbidden-word walk
+  asserting copy for a screen the app does not have. **D2 moves them** when it builds the real
+  card, and the walk covers them from that point.
+- **`payload.duration_ms` on a ritual row is mount-to-last-answer, taken before the save.** The
+  ledger's A8 note that it read 29.8 s against a stopwatch's 17.2 s is about a *driven* run,
+  where the screen mounted long before the first synthetic tap. For a person navigating to
+  `/journal/ritual` the two are close, which is what makes it the only usable instrument at
+  23:00 — and §5 of the user-test protocol calibrates it per participant and per phone rather
+  than assuming either.
 - **`gofmt -l .` lists 15 files on a clean tree, and always will.** Every `.go` file the repo
   tracks is CRLF; `gofmt` normalises to LF, so it reports all of them. Formatting is genuinely
   clean. **Do not run `gofmt -w .`** — it rewrites 15 files end to end and buries your real
@@ -2057,3 +2083,89 @@ Both were found by looking at it, and both are now in §8.3 and `docs/06-fronten
 4. **`docs/12-android-app.md` §3.3's axis table has a fifth row now**, and the graph took the
    card stack's numbers deliberately — 45 px to claim, 12 px to yield — so two surfaces that
    take a horizontal drag on the same phone cannot disagree about how far a drag is.
+
+---
+
+**U1 — The user test** · 2026-08-25 · commit `<pending>`
+
+- **Shipped:** the instrument, not the result. `product_vision/eval/` is created and holds six
+  files: [`user-test-protocol.md`](eval/user-test-protocol.md) (a three-contact study — a
+  60–75 min session, a seven-day diary week, a 40 min closing session — with the decision rules
+  for all four gates **fixed before the run**), [`tally-feelings.md`](eval/tally-feelings.md)
+  and [`tally-triggers.md`](eval/tally-triggers.md), a generated fixture proposal card
+  ([`proposal-card.html`](eval/proposal-card.html), its
+  [template](eval/proposal-card.template.html) and its
+  [generator](eval/build-proposal-card.mjs)), a
+  [report template](eval/user-test-report-TEMPLATE.md), and a
+  [README](eval/README.md). Three sentences in
+  `06-emotional-journal.md` — §5.3, §12.4 and §12.5 — now name the instrument and say the run
+  has not happened. **No constant changed. No `src/` or `backend/` file changed.**
+- **Verified:** `npm test` **24 files / 609 tests green**, 28.9 s; `cd backend && go test ./...`
+  green (handlers 10.2 s). Both run before any edit, and nothing this session touched can move
+  either — the only files it created live under `product_vision/`. The fixture card was driven
+  end to end in a browser: 21 chips from the real constant, `stress` rendering `#f43f5e` with a
+  dashed border, and the §4.7 Lucie trace reproduced exactly — proposed `pleasure`/`rapport`/
+  `stress`, kept the first two, `stress` replaced from the grid by `irritation`, **acceptance
+  0.67**, logged with millisecond offsets.
+- **Measured:** nothing. This session resolved no `(verify)`, and that is the honest entry: the
+  four numbers §12.4 asks for come from people, and no person has seen any of this.
+- **Deferred: the run itself, and with it all four decisions.** See *Deferred and follow-ups*.
+  The vocabulary is still a draft, `RITUAL_QUESTIONS` is untouched, D2 is neither confirmed nor
+  cancelled, and 6-G is neither built nor dropped. §5.3 and §12.5 were **not** rewritten from
+  *"a first draft for the user test to correct"* to *"what the test produced, dated"*, because
+  no test produced anything — the prompt's steps 4 and 5 are conditional on step 2, and step 2
+  did not happen.
+- **Next session should know:** the four warnings added above, of which the first is the one
+  that matters: **the gate is open, and the absence of `eval/user-test-report-*.md` is how you
+  know.** C2 is next in the table and it is the session §12.4 exists to sit in front of.
+
+### Why the fixture card is a web page and not the A7 composer, and not paper
+
+The U1 prompt allows either *"the A7 composer with a hard-coded proposal"* or *"a printed
+card"*, and asks which. Neither was taken, and the protocol's §7 gives the reasoning in full;
+the short form:
+
+- **The composer has no proposal card in it.** There is no transcript, no *pre-selected but not
+  yet saved* dashed state, no *This isn't it* — §4.4 is a design and **D2** is the session that
+  builds it. Reaching for the composer means building most of D2 inside U1, and it means putting
+  unshipped strings into `JOURNAL_COPY`, where the forbidden-word walk would then be asserting
+  copy for a screen the app does not have.
+- **Paper cannot produce question 2's number.** An acceptance rate is a count of taps, and the
+  single most decisive one — whether the first move was a *confirm* or the *add* chip — is
+  exactly what a facilitator's memory is worst at. The fixture logs every tap with a millisecond
+  offset and computes the rate itself.
+- **What keeps it from being a mock-up** is that the twenty-one words, their labels, glosses and
+  colours are generated from `src/constants/journal.js`, so a chip on the card is the same word
+  in the same colour as the app's; the chip shape, the dashed outline, the `·`/`··`/`···`
+  button, the ≈ control, the *about* row and the exclusivity of `unclear` are matched against
+  `CheckinComposer.jsx`. What is not the app is the sheet's frame — hand-written CSS, because it
+  is a research instrument and re-rendering the build pipeline for it buys nothing a participant
+  can see.
+
+### Three things the protocol had to decide that neither §12.4 nor the prompt settled
+
+1. **The valence and energy constants had no instrument at all.** §12.4 question 3 asks which
+   words are never chosen and which are missing — a *membership* question — while the U1 prompt's
+   decision table asks for *"the feeling vocabulary's final membership **and the valence/energy
+   constants**"* from the same tally. A use count cannot produce a coordinate. The protocol adds
+   a printed **affect grid** card sort (§9, S1 pass 2): the participant places the words they use
+   on an unnumbered two-axis grid, and the median placement moves a constant only when it is more
+   than 0.3 (valence) or 0.25 (energy) from the authored one. Without it, the membership would be
+   settled while the two numbers behind every branch of the day graph stayed authored from
+   nothing.
+2. **A Wizard-of-Oz proposer is a ceiling, not an estimate.** A facilitator who heard the
+   sentence and watched the face that said it will beat a 2-billion-parameter model working from
+   a transcript. So question 2 is run in **two conditions** — clean, and one word deliberately
+   swapped for its neighbour on the same axis — three cards per participant on a fixed schedule,
+   and the two rates are never pooled. The model sits between them. And a **participant who does
+   not notice the swapped word is a worse outcome than one who fixes it**: that is a card writing
+   a word into the record the user did not choose, which is the invariant-15 failure §4.4 exists
+   to prevent, so it is disqualifying on its own regardless of the acceptance rate.
+3. **§5.8's gate has four outcomes, not two.** *"If people do not reuse triggers and do not
+   search, it is not built"* reads as a coin flip, but the two halves of 6-G have very different
+   costs: normalising trigger labels embeds a few dozen short strings, while recall embeds every
+   entry a user has ever written and is what the 200–300 MB download and the re-embed on model
+   change are for. The protocol's §10.4 therefore admits a **split** outcome — labels fragment,
+   nobody searches — under which G1 is re-scoped and G2 is deferred. On the evidence of how
+   people talk about their own notes, that is the outcome to expect, and the design document does
+   not yet name it.
