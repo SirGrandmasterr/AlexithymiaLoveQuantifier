@@ -37,6 +37,17 @@ services:
         condition: service_started
     networks:
       - web
+    # Model weights, served by Nginx at /models/ and by nothing else. Read-only, because
+    # this container has no business writing them: `make models-fetch` fills the volume from
+    # a one-off container, verifies every file against a SHA-256 pinned in the Makefile, and
+    # is the only writer. Nginx serving a file it could also overwrite would be a way to turn
+    # the upload handler's weakest property — files validated by client-declared MIME — into
+    # a path that reaches something executed on a user's device.
+    #
+    # An absent or empty volume is fine and is the state of every fresh deployment: /models/
+    # simply 404s until the operator opts a model in. See docs/09-deployment.md §2.
+    volumes:
+      - models_data:/srv/models:ro
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -155,3 +166,13 @@ networks:
 volumes:
   postgres_data:
   uploads_data:
+  # Explicitly named, unlike the two above, which Compose prefixes with the project name.
+  #
+  # Two reasons. `make models-fetch` writes into this volume from a one-off `docker run` that
+  # is not a Compose service, so it needs a name it can state rather than derive from whatever
+  # the project happens to be called — and on this repo that is the directory name, which
+  # differs between checkouts. And the contents are gigabytes of content-addressed weights
+  # that a second checkout on the same host should share rather than download again. The
+  # container_name: keys above already make the same trade for the same reason.
+  models_data:
+    name: love-metrics-models

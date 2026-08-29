@@ -80,7 +80,8 @@ GRADLE_TASK ?= assembleDebug
         up down logs db-wait db-shell db-schema db-backup db-restore db-reset db-password \
         migrate migrate-check migrate-local migrate-check-local help \
         android-init build-android bundle-android dev-android run-android \
-        android-install android-logs clean-android
+        android-install android-logs clean-android \
+        models-fetch
 
 # Default target
 all: install build
@@ -251,6 +252,106 @@ db-reset: db-wait
 	@$(MAKE) --no-print-directory migrate
 
 # ---------------------------------------------------------------------------
+# On-device model weights
+#
+# Phase 6 runs a transcriber, and later a proposal model, on the user's own device. The
+# weights are served by Nginx from /models/, backed by the models_data volume — never baked
+# into the frontend image, whose layers would grow by gigabytes, and never fetched by the app
+# from a public model hub, which `connect-src 'self'` and the Vault page both forbid
+# (product_vision/06-emotional-journal.md §5.6). This target is the operator step that fills
+# that volume; docs/09-deployment.md §2 is the operator-facing version of it.
+#
+# Every file is pinned by URL *and* by SHA-256, and a mismatch fails the run rather than
+# being repaired quietly. A weight file is code that runs on a user's device, so "the
+# download looked plausible" is not a check. scripts/models-fetch.sh is the mechanism; the
+# pins live here, so adding a model is editing a table and never editing logic.
+#
+# Two rules for whoever adds the next set:
+#
+#   Pin the revision, not a branch. A `.../resolve/main/...` URL is not a pin — the bytes
+#   behind it can change while the URL does not, and the sum would then fail on the next
+#   operator's first run with no way to tell a re-tag from tampering.
+#
+#   Do not add a large set to the MODELS default. whisper-tiny is 41 MB and is the floor the
+#   Light tier needs; Gemma 4 E2B is ~2.6 GB and EmbeddingGemma ~200-300 MB, and §5.6 has
+#   both opt-in. `make models-fetch MODELS="whisper-tiny gemma-4-e2b"` is how they are asked
+#   for, and an unknown name is refused before anything downloads.
+# ---------------------------------------------------------------------------
+
+# Named explicitly in docker-compose.yml so it can be stated here rather than derived from
+# the Compose project name, which is the checkout's directory name and differs between
+# clones. This runs as a one-off container, not as a Compose service, because it has to work
+# when the stack has never been up.
+MODELS_VOLUME := love-metrics-models
+
+# Pinned like everything else in this section. Alpine's busybox already provides sha256sum;
+# the script adds curl, which is needed for the redirect Hugging Face answers weight URLs
+# with and for a retry that distinguishes a 404 from a dropped connection.
+MODELS_IMAGE := alpine:3.20
+
+# Which sets to fetch. Override to add one, once a later session has pinned it:
+#   make models-fetch MODELS="whisper-tiny gemma-4-e2b"
+MODELS ?= whisper-tiny
+
+# Light-tier transcriber: Whisper tiny, ONNX, int8-quantised, for transformers.js (§5.5).
+#
+# Each row lands at a path mirroring the Hugging Face repo id, because that is what
+# transformers.js resolves against env.localModelPath — the base, then the model id, then the
+# file. C3 should not have to rewrite paths to consume these.
+#
+# The two .onnx files are the quantised encoder and merged decoder that transformers.js loads
+# by default for automatic-speech-recognition; together they are 41 MB, which is the measured
+# answer to the "~40-75 MB (verify)" in §5.5. The rest is the tokeniser and the configs.
+WHISPER_TINY_REV := ff4177021cc41f7db950912b73ea4fdf7d01d8e7
+WHISPER_TINY_URL := https://huggingface.co/onnx-community/whisper-tiny/resolve/$(WHISPER_TINY_REV)
+WHISPER_TINY_DIR := onnx-community/whisper-tiny
+
+# The licence, fetched and pinned like any other row.
+#
+# These weights are an ONNX export of openai/whisper-tiny, which is Apache 2.0 — not MIT,
+# which is the licence of OpenAI's Whisper *code* and which §5.5 of the design document
+# carried until this was checked against the model card on 2026-08-25. Serving them from the
+# operator's own machine is redistribution, and Apache 2.0 §4(a) wants the licence to travel
+# with the copy, so it lands beside the weights rather than in a document nobody deploys.
+# Neither Hugging Face repo ships a LICENSE file, so the canonical text is the source.
+APACHE_20_URL := https://www.apache.org/licenses/LICENSE-2.0.txt
+APACHE_20_SHA := cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30
+
+# One row per file: set|path-under-the-volume|url|sha256
+MODEL_MANIFEST := \
+	whisper-tiny|$(WHISPER_TINY_DIR)/LICENSE.txt|$(APACHE_20_URL)|$(APACHE_20_SHA) \
+	whisper-tiny|$(WHISPER_TINY_DIR)/config.json|$(WHISPER_TINY_URL)/config.json|46aeea0a406afbeb563fc8e59ca10609203df4299af6a83f73752fef369efd2d \
+	whisper-tiny|$(WHISPER_TINY_DIR)/generation_config.json|$(WHISPER_TINY_URL)/generation_config.json|f5c67e5a4f7102f8cb4d058bc95da276bbc19eeec997267c3bb0f25ef68facd1 \
+	whisper-tiny|$(WHISPER_TINY_DIR)/preprocessor_config.json|$(WHISPER_TINY_URL)/preprocessor_config.json|a6a76d28c93edb273669eb9e0b0636a2bddbb1272c3261e47b7ca6dfdbac1b8d \
+	whisper-tiny|$(WHISPER_TINY_DIR)/tokenizer.json|$(WHISPER_TINY_URL)/tokenizer.json|27fc476bfe7f17299480be2273fc0608e4d5a99aba2ab5dec5374b4482d1a566 \
+	whisper-tiny|$(WHISPER_TINY_DIR)/tokenizer_config.json|$(WHISPER_TINY_URL)/tokenizer_config.json|2a4c4281cf9f51ac6ccc406fdc711a087afe6530f671fa7b80953edc498275ce \
+	whisper-tiny|$(WHISPER_TINY_DIR)/special_tokens_map.json|$(WHISPER_TINY_URL)/special_tokens_map.json|e67ae3a0aaa99abcd9f187138e12db1f65c16a14761c50ef10eef2c174a7a691 \
+	whisper-tiny|$(WHISPER_TINY_DIR)/added_tokens.json|$(WHISPER_TINY_URL)/added_tokens.json|9715fd2243b6f06a5858b5e32950d2853f73dd5bc201aafcf76f5082a2d8acd1 \
+	whisper-tiny|$(WHISPER_TINY_DIR)/vocab.json|$(WHISPER_TINY_URL)/vocab.json|50d6a919f0a0601d56a04eb583c780d18553aa388254ba3158eb6a00f13e2c1a \
+	whisper-tiny|$(WHISPER_TINY_DIR)/merges.txt|$(WHISPER_TINY_URL)/merges.txt|2df2990a395e35e8dfbc7511e08c12d56018d8d04691e0133e5d63b21e154dc6 \
+	whisper-tiny|$(WHISPER_TINY_DIR)/normalizer.json|$(WHISPER_TINY_URL)/normalizer.json|bf1c507dc8724ca9cf9903640dacfb69dae2f00edee4f21ceba106a7392f26dd \
+	whisper-tiny|$(WHISPER_TINY_DIR)/onnx/encoder_model_quantized.onnx|$(WHISPER_TINY_URL)/onnx/encoder_model_quantized.onnx|2af4a414ca47aa30f61246017e5fe82b0a8d229281d1255ba666a2a7f6b84d19 \
+	whisper-tiny|$(WHISPER_TINY_DIR)/onnx/decoder_model_merged_quantized.onnx|$(WHISPER_TINY_URL)/onnx/decoder_model_merged_quantized.onnx|25e807a962b6349356d0ea5d0dfe530b7e5bf0e2a484aeca0359d03143faddd3
+
+models-fetch:
+	@test -n "$(MODELS)" || { echo "MODELS is empty. Usage: make models-fetch MODELS=\"whisper-tiny\""; exit 1; }
+	@docker volume inspect $(MODELS_VOLUME) >/dev/null 2>&1 || { \
+		echo "Creating volume $(MODELS_VOLUME)..."; \
+		docker volume create $(MODELS_VOLUME) >/dev/null; \
+	}
+	@echo "Fetching into $(MODELS_VOLUME): $(MODELS)"
+	@# Piped in on stdin rather than bind-mounted. A -v with a *host path* is rewritten by
+	@# MSYS's path conversion when this runs from Git Bash and the mount silently lands
+	@# somewhere else; a named volume has no leading slash and is left alone. `tr` strips CR so
+	@# the script still runs if this repo was cloned with autocrlf=true — there is no
+	@# .gitattributes here, and /bin/sh reports a stray CR as the unhelpful `\r: not found`.
+	@tr -d '\r' < scripts/models-fetch.sh | docker run --rm -i \
+		-e MODELS="$(MODELS)" \
+		-e MANIFEST="$(MODEL_MANIFEST)" \
+		-v $(MODELS_VOLUME):/models \
+		$(MODELS_IMAGE) sh -s
+
+# ---------------------------------------------------------------------------
 # Android
 #
 # Two paths, and it is worth knowing which you are on:
@@ -373,6 +474,7 @@ help:
 	@echo "            db-password (apply POSTGRES_PASSWORD from .env to a live database)"
 	@echo "Frontend:   install, dev, build, preview, clean"
 	@echo "Tests:      test, test-frontend, test-backend, test-e2e"
+	@echo "Models:     models-fetch (fills the weights volume; MODELS=\"whisper-tiny\")"
 	@echo "Android:    android-init, build-android, run-android, dev-android, clean-android"
 	@echo "            android-install, android-logs, bundle-android KEYSTORE=..."
 	@echo "            override the baked-in server with ANDROID_API_URL=http://host:port"

@@ -4,7 +4,7 @@
 
 ## 1. Compose topology
 
-[`docker-compose.yml`](../docker-compose.yml) — three services, two named volumes, two
+[`docker-compose.yml`](../docker-compose.yml) — three services, three named volumes, two
 networks.
 
 ```mermaid
@@ -20,6 +20,7 @@ graph LR
     end
     DB --- VOL["volume: postgres_data"]
     BE --- UPL["volume: uploads_data"]
+    FE --- MOD["volume: models_data (ro)<br/>served at /models/"]
 ```
 
 | Service | Container | Host → container | Networks | Image / build |
@@ -149,7 +150,8 @@ location ~ ^/api/(login|signup)$ {      # regex wins over the /api/ prefix below
 }
 
 location /api/     { proxy_pass $upstream$request_uri; }
-location /uploads/ { proxy_pass $upstream$request_uri; }   # + a sandbox CSP
+location /uploads/ { proxy_pass $upstream$request_uri; }   # + a sandbox CSP, + CORP
+location /models/  { alias /srv/models/; try_files $uri =404; }   # the models_data volume
 ```
 
 `try_files … /index.html` is what makes a refresh on `/profile` work instead of 404ing —
@@ -177,6 +179,52 @@ guess expensive for the *server* too (about a second of CPU), so the limit is as
 denial of service as it is about brute force.
 
 Still absent: gzip/brotli, cache headers for hashed assets, HTTP/2, and TLS.
+
+### Cross-origin isolation, and why `/uploads/` needed a header for it
+
+Phase 6 runs a transcriber on the user's own device, in WebAssembly. Four header changes make
+that possible, and one of them has a blast radius wider than the feature:
+
+| Header | Was | Is | Why |
+| :----- | :-- | :- | :-- |
+| `Permissions-Policy` | `microphone=()` | `microphone=(self)` | A policy denial rejects `getUserMedia` before the browser asks anyone, so the voice check-in could not even show its consent prompt. `(self)` restores the default; the user's answer still decides. `geolocation` and `camera` stay denied. |
+| CSP `script-src` | `'self'` | `'self' 'wasm-unsafe-eval'` | A bare `script-src 'self'` blocks WebAssembly compilation outright. `'wasm-unsafe-eval'` permits WASM **without** re-enabling `eval()` or `new Function()`. |
+| CSP `worker-src` | *(inherited)* | `'self'` | Already resolved to `'self'` through the `default-src` fallback; stated because the transcriber runs in a Worker and that should not have to be derived. |
+| `Cross-Origin-Opener-Policy` / `Cross-Origin-Embedder-Policy` | *(absent)* | `same-origin` / `require-corp` | Together they make the document *cross-origin isolated*, which is the only way a browser hands out `SharedArrayBuffer` — i.e. the only way a WASM build uses more than one core. |
+
+`connect-src` is unchanged and must stay that way: model weights come from this origin, never
+from a public model hub, and the Vault page tells the user exactly that.
+
+**COEP is the one to understand.** `require-corp` means every *cross-origin* subresource the
+page loads must carry a `Cross-Origin-Resource-Policy` header of its own, or the browser
+blocks it — with no HTTP error to read, because the response arrives and is then discarded.
+Avatars under `/uploads/` are cross-origin whenever the SPA and the API are on different
+hostnames, so that location now sends:
+
+```nginx
+add_header Cross-Origin-Resource-Policy "cross-origin" always;
+```
+
+`cross-origin` rather than `same-site`, because `same-site` would still block the Android
+WebView, whose document is served from `https://localhost` by Capacitor and shares no
+registrable domain with the server. It grants nothing new either: with no CORP header at all —
+which is what this location sent before — any origin could already embed these images. The
+containment for the real risk here (files validated only by the client's declared MIME type)
+is the `sandbox` CSP, and that is unchanged.
+
+Two things measured on 2026-08-25 that are easy to get wrong later:
+
+- **A same-origin deployment does not exercise CORP at all.** On the web `getServerUrl()`
+  returns `''`, so avatars resolve as same-origin relative paths and COEP never applies to
+  them. Verifying "avatars still load" on a stock Compose stack therefore proves nothing about
+  CORP. It was verified separately, against a second cross-origin-isolated document with no
+  CSP of its own: `/uploads/` (CORP present) loaded, and `/vite.svg` from the same origin
+  (no CORP) was blocked with
+  `net::ERR_BLOCKED_BY_RESPONSE.NotSameOriginAfterDefaultedToSameOriginByCoep`. The only
+  difference between those two responses is the header.
+- **The app's own CSP blocks cross-origin subresources before COEP is consulted.** `img-src`
+  lists `'self'` plus the two production hostnames over https and nothing else, which is what
+  keeps COEP's blast radius small: there is almost nothing cross-origin for it to break.
 
 ---
 
@@ -218,6 +266,67 @@ CMD ["./main"]
 - `alpine:latest` (not pinned) provides a shell for debugging; `scratch` or `distroless`
   would be smaller and safer since the binary is static. The mutable tag is still a
   reproducibility hole — it errs toward *patched*, which is why it has not been changed.
+
+### The model channel: `/models/` and `make models-fetch`
+
+On-device inference needs weights, and weights are large: the Light-tier transcriber is 41 MB
+and the Full-tier model is around 2.6 GB. They are **not** baked into the frontend image —
+an image layer carrying either would have to be rebuilt and re-pushed on every frontend
+change — and they are **not** fetched by the app from a public model hub, because
+`connect-src 'self'` and the Vault page both say every request goes to this app's own origin.
+
+Instead they live in a named volume, `models_data` (`love-metrics-models`), mounted **read-only**
+into the frontend container at `/srv/models` and served by Nginx at `/models/`. Nginx is the
+only reader; nothing in the stack can write there.
+
+**An empty volume is the normal state of a fresh deployment.** `/models/` simply 404s until
+the operator opts a model in. Nothing else in the app is affected.
+
+#### The operator step
+
+```bash
+make models-fetch
+```
+
+That is the whole thing. It creates the volume if needed, downloads every file of the selected
+model sets into it, and verifies each one against a SHA-256 pinned in the
+[`Makefile`](../Makefile). It is idempotent: a file already present and correct is left alone,
+so re-running it is also the integrity check.
+
+To opt into more than the default:
+
+```bash
+make models-fetch MODELS="whisper-tiny gemma-4-e2b"
+```
+
+The default is `whisper-tiny` — 41 MB, the Light-tier floor. Larger sets are opt-in by name,
+and a name the manifest does not describe is refused before anything downloads.
+
+| | |
+| :-- | :-- |
+| Where the pins live | `MODEL_MANIFEST` in the Makefile: one `set\|path\|url\|sha256` row per file |
+| Where the logic lives | [`scripts/models-fetch.sh`](../scripts/models-fetch.sh) |
+| How it runs | a one-off `alpine:3.20` container with the volume mounted — so it works before the stack has ever been up, and needs no `curl` or `sha256sum` on the host |
+| Licences | fetched and pinned like any other row, and placed **beside** the weights. Whisper tiny is an ONNX export of `openai/whisper-tiny` and is **Apache 2.0**, so `LICENSE.txt` lands next to it. EmbeddingGemma, when a later session adds it, is under the Gemma Terms of Use, which must accompany redistribution. |
+
+#### What a mismatch does
+
+It **fails, and does not repair itself.** A file already in the volume that does not match its
+pin is either corruption or tampering, and silently re-downloading it would erase the evidence
+of which. The run stops, names the file, prints expected and actual, and tells the operator how
+to delete it and try again. Nothing is overwritten. A freshly downloaded file that fails its
+pin has its partial deleted and the run stops the same way — with the pointed reminder that
+either the pin is wrong or the URL is no longer serving what it served when it was pinned, and
+that updating the pin without finding out which is not an option.
+
+Verified on 2026-08-25 by flipping a single byte in the 10 MB encoder file — same length,
+different hash — and confirming the next run refused it, exited non-zero, and left it in place.
+
+> ⚠️ Running `make models-fetch` **before** the first `make up` makes Compose print
+> `volume "love-metrics-models" already exists but was not created by Docker Compose` on every
+> subsequent `up`. It is a warning and nothing more: the volume is used, mounted and served
+> correctly either way. Running `make up` first avoids it, because Compose then creates the
+> volume with its own labels.
 
 ### Uploaded files survive container recreation
 

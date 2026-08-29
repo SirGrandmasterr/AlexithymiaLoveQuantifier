@@ -872,7 +872,7 @@ applies to Argon2 parameters.
 | Option | Assessment |
 | :----- | :--------- |
 | **transformers.js + `onnx-community/gemma-4-E2B-it-ONNX` (`q4f16`, WebGPU) — recommended for the Full tier** | The ONNX export includes the audio encoder, so the browser runs the same single pass as the phone. **WebGPU is mandatory with no fallback**; the download is several shards — size not published *(verify; expect 2–3 GB)*, cached in Cache Storage after the first run. No grammar support *(verify)* → validator-only enforcement. Apache-2.0 runtime. |
-| **transformers.js + Whisper tiny/base — the Light tier and the noise fallback** | ~40–75 MB *(verify)*; WebGPU when present, WASM otherwise (slow but functional). |
+| **transformers.js + Whisper tiny/base — the Light tier and the noise fallback** | **tiny is 41 MB, measured** (C1, 2026-08-25); base still *(verify)*. WebGPU when present, WASM otherwise (slow but functional). |
 | Web Speech API (`webkitSpeechRecognition`) | **Rejected.** In Chrome it sends audio to Google for most languages; the app cannot verify otherwise. It would falsify the Vault page. |
 | No WebGPU (Firefox without it enabled, older Safari, a VM) | Text-only tier: typed + chips, said plainly in Settings. No remote fallback in this phase; §12.2 records what adding one behind its own consent would cost. |
 
@@ -882,7 +882,7 @@ applies to Argon2 parameters.
 | :---- | :--- | :--------- | :------ |
 | **Gemma 4 E2B IT** | Full tier: transcription + proposals in one pass; Light tier: proposals in text mode | 2.6 GB (LiteRT bundle) / 2.8 GB + 1 GB (GGUF) / *(verify)* (ONNX) | Apache 2.0 |
 | Gemma 4 E4B IT | Desktop tier to evaluate: reportedly better on ambiguous input and complex schemas; 4.5 B effective / 8 B total, ~4–5 GB | — *(verify)* | Apache 2.0 |
-| Whisper tiny / base | Light-tier transcriber; noise fallback | 40–75 MB *(verify)* | MIT |
+| Whisper tiny / base | Light-tier transcriber; noise fallback | **tiny: 41 MB measured** (C1, 2026-08-25 — the q8 encoder and merged decoder, 40.8 MB, plus 4.4 MB of tokeniser and configs); base still *(verify)* | **Apache 2.0**, not MIT — see below |
 | **EmbeddingGemma 300m** | The embedding index, §5.8 | < 200 MB RAM quantised; ~200–300 MB on disk at q8/q4 *(verify)* | **Gemma Terms of Use** — not Apache; see §5.6 |
 
 #### Tiers
@@ -915,6 +915,16 @@ the plugin on Android), shown in Settings, overridable by the user.
   weights, and the Vault's model line names both models and both licences. Chosen knowingly
   (decision recorded 2026-08-21); an Apache/MIT embedding model remains a one-line swap if
   that ever becomes a problem.
+
+  **Whisper is Apache 2.0 too, and this document said MIT until 2026-08-25.** MIT is the
+  licence of OpenAI's Whisper *code*; the released weights — which are what is redistributed
+  here — are Apache 2.0, per the `openai/whisper-tiny` model card. The
+  `onnx-community/whisper-tiny` export used for the Light tier declares no licence of its own
+  and inherits its base model's. Neither repository ships a `LICENSE` file, so C1 pins the
+  canonical Apache text by URL and SHA-256 like any other row and places it beside the
+  weights. The practical consequence is nil — Apache 2.0 §4(a) wants the licence to travel
+  with the copy, which is exactly what happens — but a licence stated wrongly in a design
+  document is the kind of thing nobody re-checks, so it is corrected here rather than noted.
 - **Headers** ([`nginx.conf`](../nginx.conf)): `Permissions-Policy` → `microphone=(self)`;
   `script-src` gains `'wasm-unsafe-eval'` (WASM compilation is blocked by the current
   policy); `worker-src 'self'` stated explicitly; for multithreaded WASM,
@@ -922,6 +932,17 @@ the plugin on Android), shown in Settings, overridable by the user.
   which in turn requires `Cross-Origin-Resource-Policy` on the `/uploads/` responses or
   avatars stop loading. Each of these is a deployment change with a blast radius beyond the
   journal and belongs in its own verified step (§11, 6-C).
+
+  **Shipped and verified in C1, 2026-08-25.** Documented in
+  [`docs/09-deployment.md`](../docs/09-deployment.md) §2. Two things C1 measured that change
+  how a later session should read this bullet. First, *"or avatars stop loading"* is true but
+  does not reproduce on a stock deployment: on the web `getServerUrl()` returns `''`, so
+  avatars are same-origin relative paths and COEP never applies to them — CORP earns its place
+  in the `VITE_API_URL` and Android configurations, and proving it needs a deliberately
+  cross-origin document. Second, `worker-src 'self'` **refuses a Worker created from a
+  `blob:` URL**, which is how several WASM runtimes spawn theirs. C3 has to either configure
+  its bundler to emit real worker files or widen this directive to `'self' blob:` — and the
+  second is a real widening, so it wants a stated reason.
 - **Integrity.** Every weight file is fetched with a known length and SHA-256, verified
   before it is cached; a mismatch is an error, never a fallback.
 
