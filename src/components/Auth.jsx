@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { Heart } from 'lucide-react';
-import { rememberEmail, lastEmail } from '../auth/session';
+import { rememberEmail, lastEmail, isStayingSignedIn, setStaySignedIn } from '../auth/session';
 
 export default function Auth({ onLogin }) {
     const [isLogin, setIsLogin] = useState(true);
@@ -10,6 +10,10 @@ export default function Auth({ onLogin }) {
     // exists to avoid needing.
     const [email, setEmail] = useState(lastEmail);
     const [password, setPassword] = useState('');
+    // Defaults to whatever was chosen last, and to on for someone who has never chosen. This
+    // is a self-hosted app on a personal device; being asked for a password every day is the
+    // complaint this exists to answer, not the safety it provides.
+    const [staySignedIn, setStay] = useState(isStayingSignedIn);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
 
@@ -25,6 +29,9 @@ export default function Auth({ onLogin }) {
             const response = await axios.post(endpoint, { email, password }, { __isSessionCall: true });
 
             if (isLogin) {
+                // Before anything is written: this chooses *which store* the session and the
+                // remembered address land in, so it has to run ahead of both.
+                setStaySignedIn(staySignedIn);
                 rememberEmail(email);
                 // The whole payload, not just the token: the refresh half is what keeps this
                 // screen from reappearing tomorrow.
@@ -81,6 +88,31 @@ export default function Auth({ onLogin }) {
                             placeholder="••••••••"
                         />
                     </div>
+
+                    {/* Sign-in only. On the signup branch there is no session to keep yet,
+                        and a control that does nothing is worse than an absent one. */}
+                    {isLogin && (
+                        <label
+                            htmlFor="stay-signed-in"
+                            className="flex items-center gap-3 text-sm text-slate-600 cursor-pointer select-none"
+                        >
+                            <input
+                                id="stay-signed-in"
+                                type="checkbox"
+                                checked={staySignedIn}
+                                onChange={(e) => setStay(e.target.checked)}
+                                className="w-4 h-4 rounded border-slate-300 text-slate-800 focus:ring-slate-800"
+                            />
+                            <span>
+                                Stay signed in
+                                <span className="block text-xs text-slate-400 font-light">
+                                    {staySignedIn
+                                        ? 'This device stays signed in until you sign out.'
+                                        : 'You will be signed out when you close the app.'}
+                                </span>
+                            </span>
+                        </label>
+                    )}
 
                     {error && (
                         <div className="p-3 bg-rose-50 text-rose-600 text-sm rounded-lg text-center">

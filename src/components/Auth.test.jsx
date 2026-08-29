@@ -175,3 +175,62 @@ describe('Auth Component', () => {
         });
     });
 });
+
+describe('Auth — the stay signed in choice', () => {
+    const onLogin = vi.fn();
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        localStorage.clear();
+        sessionStorage.clear();
+    });
+
+    it('is offered on sign in, checked, and absent on sign up', async () => {
+        render(<Auth onLogin={onLogin} />);
+
+        expect(screen.getByLabelText(/stay signed in/i)).toBeChecked();
+
+        // There is no session to keep yet on the signup branch, and a control that does
+        // nothing is worse than an absent one.
+        await userEvent.click(screen.getByRole('button', { name: /sign up/i }));
+
+        expect(screen.queryByLabelText(/stay signed in/i)).not.toBeInTheDocument();
+    });
+
+    it('keeps the session and the address out of localStorage when unchecked', async () => {
+        axios.post.mockResolvedValueOnce({
+            data: { token: 'tok', refresh_token: 'ref', expires_in: 86400 }
+        });
+
+        render(<Auth onLogin={onLogin} />);
+
+        await userEvent.click(screen.getByLabelText(/stay signed in/i));
+        await userEvent.type(screen.getByPlaceholderText('name@example.com'), 'a@b.co');
+        await userEvent.type(screen.getByPlaceholderText('••••••••'), 'password123');
+        await userEvent.click(screen.getByRole('button', { name: /^sign in$/i }));
+
+        await waitFor(() => expect(onLogin).toHaveBeenCalled());
+
+        expect(localStorage.getItem('alq:stay-signed-in')).toBe('false');
+        // The choice is recorded before the address is, or the address lands in the wrong
+        // store and outlives the session it belonged to.
+        expect(localStorage.getItem('alq:last-email')).toBeNull();
+        expect(sessionStorage.getItem('alq:last-email')).toBe('a@b.co');
+    });
+
+    it('leaves the session in localStorage when it stays checked', async () => {
+        axios.post.mockResolvedValueOnce({
+            data: { token: 'tok', refresh_token: 'ref', expires_in: 86400 }
+        });
+
+        render(<Auth onLogin={onLogin} />);
+
+        await userEvent.type(screen.getByPlaceholderText('name@example.com'), 'a@b.co');
+        await userEvent.type(screen.getByPlaceholderText('••••••••'), 'password123');
+        await userEvent.click(screen.getByRole('button', { name: /^sign in$/i }));
+
+        await waitFor(() => expect(onLogin).toHaveBeenCalled());
+
+        expect(localStorage.getItem('alq:last-email')).toBe('a@b.co');
+    });
+});

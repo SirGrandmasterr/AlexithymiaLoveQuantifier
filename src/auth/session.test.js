@@ -7,7 +7,15 @@ import {
     needsRenewal,
     refreshSession,
     renewIfDue,
-    endSession
+    endSession,
+    subscribeSessionLost,
+    resetSessionLost,
+    withFreshToken,
+    recoverFrom401,
+    isStayingSignedIn,
+    setStaySignedIn,
+    rememberEmail,
+    lastEmail
 } from './session';
 
 vi.mock('axios');
@@ -17,6 +25,7 @@ const session = (n) => ({ token: `access-${n}`, refresh_token: `refresh-${n}`, e
 beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    sessionStorage.clear();
     axios.defaults = { headers: { common: {} } };
 });
 
@@ -161,5 +170,143 @@ describe('clearSession', () => {
 
         expect(axios.defaults.headers.common['Authorization']).toBeUndefined();
         expect(readAccessToken()).toBeNull();
+    });
+});
+
+describe('staying signed in', () => {
+    // Absent means yes. Anything else would sign every existing install out in order to
+    // introduce a feature about not being signed out.
+    it('defaults to on for someone who has never chosen', () => {
+        expect(isStayingSignedIn()).toBe(true);
+
+        saveSession(session(1));
+
+        expect(localStorage.getItem('token')).toBe('access-1');
+        expect(sessionStorage.getItem('token')).toBeNull();
+    });
+
+    it('keeps the session out of localStorage when it is turned off', () => {
+        setStaySignedIn(false);
+        saveSession(session(1));
+        rememberEmail('user@example.com');
+
+        // sessionStorage dies with the tab, which is the honest meaning of the checkbox.
+        expect(sessionStorage.getItem('token')).toBe('access-1');
+        expect(sessionStorage.getItem('alq:refresh-token')).toBe('refresh-1');
+        expect(localStorage.getItem('token')).toBeNull();
+        expect(localStorage.getItem('alq:refresh-token')).toBeNull();
+
+        // Nor is there a trace of who used the machine.
+        expect(localStorage.getItem('alq:last-email')).toBeNull();
+        expect(lastEmail()).toBe('user@example.com');
+    });
+
+    // Reading it back has to go through the same switch, or the app signs itself out.
+    it('reads its own session back after turning it off', () => {
+        setStaySignedIn(false);
+        saveSession(session(1));
+
+        expect(readAccessToken()).toBe('access-1');
+        expect(readRefreshToken()).toBe('refresh-1');
+        expect(needsRenewal()).toBe(false);
+    });
+
+    // Ticking the box halfway through an evening must not sign you out; that would teach
+    // the user never to touch it.
+    it('moves a live session between the two stores instead of ending it', () => {
+        saveSession(session(1));
+        rememberEmail('user@example.com');
+
+        setStaySignedIn(false);
+
+        expect(readAccessToken()).toBe('access-1');
+        expect(readRefreshToken()).toBe('refresh-1');
+        expect(lastEmail()).toBe('user@example.com');
+        expect(localStorage.getItem('token')).toBeNull();
+
+        setStaySignedIn(true);
+
+        expect(readAccessToken()).toBe('access-1');
+        expect(localStorage.getItem('token')).toBe('access-1');
+        expect(sessionStorage.getItem('token')).toBeNull();
+    });
+
+    it('is a no-op when the choice has not changed', () => {
+        saveSession(session(1));
+
+        setStaySignedIn(true);
+
+        expect(localStorage.getItem('token')).toBe('access-1');
+    });
+});
+
+// The two interceptor functions are exported by name, so these tests drive the real code
+// paths rather than reaching into axios's mock to find what was registered.
+const responseErrorHandler = recoverFrom401;
+const requestHandler = withFreshToken;
+
+const fire401 = async (config = { url: '/api/subjects', headers: {} }) => {
+    await responseErrorHandler({ response: { status: 401 }, config }).catch(() => { });
+};
+
+describe('losing the session', () => {
+    beforeEach(() => resetSessionLost());
+
+    // The interceptors exist from import; App subscribes from an effect. A 401 answered
+    // during the first paint therefore has nobody to tell, which is why this is a latch and
+    // not an event — without it the app would sit there signed out and still rendering a
+    // dashboard, which is the exact bug this design replaced.
+    it('tells a subscriber that arrives after the session already died', async () => {
+        saveSession({ token: 'dead' });   // no refresh token: nothing to renew with
+
+        await fire401();
+
+        const handler = vi.fn();
+        subscribeSessionLost(handler);
+
+        expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it('announces once however many requests fail', async () => {
+        saveSession({ token: 'dead' });
+        const handler = vi.fn();
+        subscribeSessionLost(handler);
+
+        await fire401({ url: '/api/subjects', headers: {} });
+        await fire401({ url: '/api/relationships', headers: {} });
+
+        expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it('forgets it once a new session is saved', async () => {
+        saveSession({ token: 'dead' });
+        await fire401();
+
+        saveSession(session(9));
+
+        const handler = vi.fn();
+        subscribeSessionLost(handler);
+        expect(handler).not.toHaveBeenCalled();
+    });
+
+    // A wrong password on the sign-in form is not a session to renew, and /api/refresh
+    // answering 401 is the session ending rather than something to retry.
+    it('leaves session calls alone', async () => {
+        saveSession(session(1));
+
+        await expect(
+            responseErrorHandler({ response: { status: 401 }, config: { url: '/api/login', __isSessionCall: true } })
+        ).rejects.toBeTruthy();
+
+        expect(axios.post).not.toHaveBeenCalled();
+    });
+
+    it('does not renew a request that carries no refresh token', async () => {
+        saveSession({ token: 'access-only' });
+
+        const sent = await requestHandler({ url: '/api/subjects', headers: {} });
+
+        expect(axios.post).not.toHaveBeenCalled();
+        expect(sent.headers.Authorization).toBeUndefined();
     });
 });

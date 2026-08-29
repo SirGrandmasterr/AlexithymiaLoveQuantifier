@@ -10,9 +10,7 @@ lucide-react 0.564 · recharts 3.7
 ```mermaid
 graph TD
     MAIN["main.jsx<br/>createRoot + StrictMode<br/>imports index.css"] --> APP["App.jsx<br/>BrowserRouter · token state · route guards"]
-    APP --> SESS["auth/session.js<br/>tokens · renewal · 401 retry"]
-    APP --> SXD["SessionExpiredDialog.jsx<br/>sign back in, in place"]
-    SESS -.-> SXD
+    APP --> SESS["auth/session.js<br/>tokens · renewal · both interceptors<br/>installed on import, not from an effect"]
     APP --> LOCK["AppLock.jsx<br/>optional screen lock"]
     APP --> DISC["context/DiscretionContext.jsx<br/>initials + blur + Ctrl+."]
     APP --> SUBS["context/SubjectsContext.jsx<br/>the one subject list"]
@@ -77,10 +75,9 @@ graph TD
 | File | Lines | Responsibility |
 | :--- | ----: | :------------- |
 | [`main.jsx`](../src/main.jsx) | 11 | React root, `StrictMode`, Tailwind entry import. |
-| [`App.jsx`](../src/App.jsx) | 175 | Router, guards, `SubjectsProvider`, and the decision of what a lost session looks like. |
-| [`auth/session.js`](../src/auth/session.js) | 240 | **The session**: storage, the auth header, renewal, and the 401-renew-retry interceptor. |
-| [`auth/useSessionRenewal.js`](../src/auth/useSessionRenewal.js) | 45 | Renews on mount, tab focus, and Android resume — the reason the prompt is rare. |
-| [`SessionExpiredDialog.jsx`](../src/components/SessionExpiredDialog.jsx) | 135 | Signing back in over the current screen, rather than being evicted to Landing. |
+| [`App.jsx`](../src/App.jsx) | 197 | Router, guards, `SubjectsProvider`, and the decision of what a lost session looks like. |
+| [`auth/session.js`](../src/auth/session.js) | 386 | **The session**: storage and which store it uses, the auth header, renewal, and both axios interceptors — installed on import. |
+| [`auth/useSessionRenewal.js`](../src/auth/useSessionRenewal.js) | 45 | Renews on mount, tab focus, and Android resume — the reason a sign-in screen is rare. |
 | [`constants/categories.js`](../src/constants/categories.js) | 253 | **The taxonomy** plus the pure helpers that read it. |
 | [`constants/cadence.js`](../src/constants/cadence.js) | 107 | Due-date arithmetic and the nudge vocabulary. Pure, so the no-guilt rules are testable. |
 | [`constants/journal.js`](../src/constants/journal.js) | 1570 | **The journal's vocabulary, copy and arithmetic**: `FEELINGS`, `RITUAL_QUESTIONS`, `ENTRY_KINDS` (id-for-id with `domain/journal.go`), every string it can render in `JOURNAL_COPY`, the payload readers, civil-day arithmetic, `ritualDeck`, `ritualTimeReached`, candidate matching, the two vocabulary summaries (`summarizePerson`, `summarizeTrigger`, `topFeelings`) and the two correction builders (`renameTriggerRequest`, `mergeTriggerRequest`). Pure — no React, no network, **no `window`**. |
@@ -135,14 +132,15 @@ is about the token as a value.
 ### `applyToken` — the header is never written from an effect
 
 ```js
-// src/auth/session.js — one writer for the header and its localStorage copy
+// src/auth/session.js — one writer for the header and its stored copy.
+// `write` picks localStorage or sessionStorage from the Stay-signed-in choice; see §2a.
 export const applyToken = (token) => {
     if (token) {
         axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        localStorage.setItem('token', token);
+        write(ACCESS_KEY, token);
     } else {
         delete axios.defaults.headers.common['Authorization'];
-        localStorage.removeItem('token');
+        write(ACCESS_KEY, null);
     }
 };
 
@@ -166,6 +164,14 @@ const handleLogin = (session) => {           // and synchronously on every trans
 > (the module-scope block ran first) but *not* a fresh login. `applyToken` is now the only
 > writer, called from module scope and from `setToken`. There is no effect to get wrong.
 > `App.test.jsx` guards it by asserting the header's value **at the moment the fetch fires**.
+>
+> **The interceptors had the identical bug and it survived a year longer**, because it needed
+> an *aged* token to show itself rather than a fresh login. `installSessionInterceptor` was
+> called from a `useEffect` in `App`, so on a cold start `SubjectsProvider`'s fetch went out
+> before it existed: the requests 401'd with nothing registered to renew or replay them, and
+> the dashboard rendered an error while `token` was still set — signed in, and not working.
+> Both interceptors are now registered at the bottom of `auth/session.js`, at module scope.
+> **Nothing in this module may move back into an effect.**
 
 ### Guards
 
@@ -216,15 +222,47 @@ had done nothing wrong, and there was nothing in it to act on.
 | When | What happens | What the user sees |
 | :--- | :----------- | :----------------- |
 | Token inside its renewal margin (5 min) at mount, tab focus, or app resume | `renewIfDue()` → `POST /api/refresh` | Nothing |
-| A request 401s | One shared refresh, then the request is replayed with the new token | Nothing |
-| Refresh token expired, revoked, or unknown | `onSessionLost()` → `SessionExpiredDialog` over the current screen | A passphrase prompt, in place |
+| **A request is about to go out on a token inside that margin** | The **request** interceptor holds it, refreshes, and sends it with the new token | Nothing |
+| A request 401s anyway | One shared refresh, then the request is replayed with the new token | Nothing |
+| Refresh token expired, revoked, or unknown | `subscribeSessionLost` → `App` drops the token | The landing page, as if they had never signed in |
 
-The last row is the design decision worth defending: **losing a session is not a navigation
-event.** The dialog renders *over* the mounted screen, so scroll position and half-filled
-forms survive it, and `App` keeps `token` in state while `sessionLost` is true rather than
-clearing it. Signing back in bumps `sessionEpoch`, which `SubjectsProvider` takes as a
-`reloadKey` and refetches — the failed requests are not individually replayed, the list is
-simply fetched again.
+**The second row is the one that was missing, and its absence was a real bug.** Both
+interceptors used to be installed from a `useEffect` in `App`. Child effects commit before
+their parent's, so `SubjectsProvider`'s fetch fired first: on a cold load with an aged token,
+`/api/subjects` and `/api/relationships` went out with a dead credential and 401'd with
+nothing installed to catch them. The provider showed an error while `token` was still set — an
+app that looked signed in and did not work. Both interceptors are now installed **at module
+scope, on import**, which is the same constraint and the same fix as `applyToken`.
+
+**The last row is a decision that was reversed.** It used to render a `SessionExpiredDialog`
+*over* the mounted screen, keeping `token` in state so scroll position and half-filled forms
+survived. The argument was that losing a session is not a navigation event. In practice it
+produced the worst of both: a dashboard that still looked signed in, behind a dialog, with
+every request behind it answering 401 — and a user with no way to tell a dead session from a
+broken app. A lost session now clears the token and nothing else. Every route already sends a
+tokenless visitor to `Landing` or `/login`, so the app arrives, with no special case, at
+exactly the state of someone who never signed in.
+
+### Staying signed in
+
+The sign-in form carries a **Stay signed in** checkbox, default on, and the choice decides
+*which store* holds the session:
+
+| Checked | `localStorage` | Survives closing the tab or the Android task. The refresh token carries it for two months. |
+| :------ | :------------- | :----- |
+| **Unchecked** | **`sessionStorage`** | The tab closing is the end of it — the honest meaning of the label. |
+
+Three properties worth keeping when touching this:
+
+- **Absent means checked.** `isStayingSignedIn()` treats a missing preference as on, so
+  installs that predate the checkbox are not signed out to introduce a feature about not being
+  signed out.
+- **The remembered email follows the session.** Unchecking leaves a shared machine with no
+  trace of who used it, not just no token.
+- **Toggling moves a live session rather than ending it** (`setStaySignedIn`). Ticking the box
+  mid-evening must not sign you out; that teaches people never to touch it. It is also why
+  `Auth.jsx` calls it *before* `rememberEmail` and `onLogin` — it chooses the destination
+  store, so it has to run ahead of every write.
 
 ### The two rules a client of this module must not break
 
