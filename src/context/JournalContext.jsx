@@ -46,10 +46,11 @@ export const defaultJournalRange = () => monthBounds(civilDay());
 const DAY_KINDS = new Set(['checkin', 'ritual', 'person_fact']);
 
 /**
- * @param {boolean} enabled false while signed out — nothing to fetch, nothing to keep.
- * @param {number} reloadKey bumped by App when a lost session is re-authenticated in place,
- *   for the same reason `SubjectsProvider` takes one: the requests that failed while the
- *   session was dead are not replayed individually, the range is simply fetched again.
+ * @param {boolean} enabled false while signed out — nothing to fetch, nothing to keep, and
+ *   the flag a lost session flips to make this refetch when the user signs back in.
+ * @param {number} reloadKey a refetch seam, for the same reason `SubjectsProvider` takes one
+ *   — and, like that one, no longer passed by App since a dead session signs the user out
+ *   rather than re-authenticating in place.
  */
 export function JournalProvider({ children, enabled = true, reloadKey = 0 }) {
     // Invariant 17. The names this journal shows belong to the subject list, and this

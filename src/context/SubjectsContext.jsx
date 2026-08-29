@@ -88,10 +88,12 @@ export const buildStacks = (people, relationships) => {
 
 /**
  * @param {boolean} enabled false while signed out — nothing to fetch, nothing to keep.
- * @param {number} reloadKey bumped by App when a lost session is re-authenticated in place.
- *   The requests that failed while the session was dead are not retried individually; the
- *   list is simply fetched again, which is both simpler and more correct than replaying an
- *   unknown set of them.
+ *   This is also how a lost session refetches: it sets the token to null and signing back in
+ *   sets it again, so this flips false and true and the effect below re-runs on its own.
+ * @param {number} reloadKey a refetch seam for a caller that needs one without `enabled`
+ *   changing. **App no longer passes it.** It existed for re-authenticating *in place*,
+ *   behind an overlay, and that path was removed — a dead session now signs the user out.
+ *   Kept because it costs one line and forcing a refetch is a reasonable thing to want.
  */
 export function SubjectsProvider({ children, enabled = true, reloadKey = 0 }) {
     const [people, setPeople] = useState([]);
@@ -154,11 +156,15 @@ export function SubjectsProvider({ children, enabled = true, reloadKey = 0 }) {
             // Logging out must not leave the previous user's snapshots on disk for the next
             // one to find. The in-memory reset above would otherwise be undone by the first
             // failed fetch after a new sign-in.
+            //
+            // This now also runs when a session is *lost* rather than only when the user
+            // signs out deliberately. It did not before: a dead session used to keep `token`
+            // set behind an overlay, so `enabled` stayed true and the Android offline cache
+            // outlived the session it belonged to.
             clearCache();
         }
-        // `reloadKey` is in the dependency list precisely so that a restored session
-        // refetches: nothing else about `enabled` has changed, so without it the screen
-        // would keep showing whatever it managed to load before the session lapsed.
+        // `reloadKey` stays in the dependency list so the seam works for any caller that
+        // passes one; App does not.
     }, [enabled, refresh, reloadKey]);
 
     // Mutations reject on failure: the caller owns the message, since only it knows
