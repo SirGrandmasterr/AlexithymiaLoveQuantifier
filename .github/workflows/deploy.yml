@@ -91,9 +91,13 @@ jobs:
 
       - name: Deploy
         env:
+          # Defaults verified against the host on 2026-08-29. The checkout is at
+          # /root/projects/, not the /opt/ that Setup Guide.md §4.1 suggests, and the login is
+          # root — there is no separate deploy user. Both are overridable with repository
+          # variables so moving either does not need a commit.
           DEPLOY_HOST: ${{ vars.DEPLOY_HOST || '85.215.233.90' }}
-          DEPLOY_USER: ${{ vars.DEPLOY_USER || 'deploy' }}
-          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/AlexithymiaLoveQuantifier' }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER || 'root' }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/root/projects/AlexithymiaLoveQuantifier' }}
           DEPLOY_REF: ${{ github.event.inputs.ref }}
           FORCE_DIRTY: ${{ github.event.inputs.force_dirty }}
           SKIP_BACKUP: ${{ github.event.inputs.skip_backup }}
@@ -133,11 +137,18 @@ jobs:
 
           echo "::group::Update the checkout"
           git fetch --prune --tags origin
-          # Resolve the ref to a commit first, so the log line below is unambiguous about what
-          # actually landed — a branch name in the input is not a record of anything.
-          target="$(git rev-parse --verify "origin/${DEPLOY_REF}" 2>/dev/null || git rev-parse --verify "${DEPLOY_REF}")"
-          echo "Deploying ${DEPLOY_REF} = ${target}"
-          git checkout --detach "${target}"
+          # A branch stays a branch. The host is administered by hand as well as from here —
+          # leaving it on a detached HEAD would break a plain `git pull` on the server for
+          # whoever looks next. A tag or a raw SHA has no branch to be on, so it detaches.
+          if git rev-parse --verify --quiet "origin/${DEPLOY_REF}" >/dev/null; then
+            target="$(git rev-parse "origin/${DEPLOY_REF}")"
+            echo "Deploying branch ${DEPLOY_REF} = ${target}"
+            git checkout -B "${DEPLOY_REF}" "${target}"
+          else
+            target="$(git rev-parse --verify "${DEPLOY_REF}")"
+            echo "Deploying ${DEPLOY_REF} = ${target} (detached)"
+            git checkout --detach "${target}"
+          fi
           git --no-pager log -1 --format='%H %an %ad %s'
           echo "::endgroup::"
 
@@ -188,7 +199,11 @@ jobs:
           echo "::group::Reclaim disk"
           # --build leaves the previous image dangling every deploy, and these are ~100 MB each.
           # Dangling only: nothing tagged and nothing in use is touched.
-          docker image prune -f
+          #
+          # The `until` filter is because this host runs other projects too (there is a second
+          # app on 8083). A week's grace means a deploy here cannot collect an intermediate
+          # image another project's build is still working with.
+          docker image prune -f --filter 'until=168h'
           echo "::endgroup::"
 
           echo "Deployed ${target}"

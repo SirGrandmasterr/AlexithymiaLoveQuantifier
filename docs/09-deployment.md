@@ -605,17 +605,32 @@ Repository **secrets**:
 
 Repository **variables** (optional; the defaults are in the workflow):
 
-| Name | Default |
-| :--- | :------ |
-| `DEPLOY_HOST` | `85.215.233.90` |
-| `DEPLOY_USER` | `deploy` |
-| `DEPLOY_PATH` | `/opt/AlexithymiaLoveQuantifier` |
+| Name | Default | Verified on the host, 2026-08-29 |
+| :--- | :------ | :------------------------------- |
+| `DEPLOY_HOST` | `85.215.233.90` | Ubuntu 26.04, `ufw` allowing OpenSSH and Nginx Full |
+| `DEPLOY_USER` | `root` | There is no separate deploy user; the host is administered as root |
+| `DEPLOY_PATH` | `/root/projects/AlexithymiaLoveQuantifier` | **Not** the `/opt` that `Setup Guide.md` §4.1 suggests |
 
-The deploy user needs to be in the `docker` group, and needs `make`, `git` and `curl` — `make`
-in particular is not part of the package list in `Setup Guide.md` §2.2.
+The login needs Docker, `make`, `git` and `curl`, and its `git` needs to be able to reach
+GitHub — the checkout's `origin` is an SSH remote, so the host has its own key for that,
+separate from the one CI logs in with. All of that was verified present on 2026-08-29:
+Docker 29.1.3, Compose 2.40.3, GNU Make 4.4.1, git 2.53.0, and `git ls-remote origin`
+answering.
+
+Also verified, because the workflow's health checks assume them: the host Nginx serves both
+hostnames from a single TLS server block with a 301 from port 80, the Let's Encrypt
+certificate covers both names, `GET /` answers **200** and an unauthenticated `GET /api/me`
+answers **401** — on the loopback port and over TLS alike.
+
+**This host runs other projects.** There is a second app on `127.0.0.1:8083` behind the same
+Nginx. That is why the deploy's `docker image prune` carries an `until=168h` filter rather
+than collecting every dangling image on the box.
 
 The workflow declares the `production` environment, so required reviewers can be attached to it
 in the repository settings if a deploy should ever need approval.
+
+A branch deploys as a branch — `git checkout -B` — so a plain `git pull` on the server still
+works for whoever administers it by hand. A tag or a raw SHA detaches, having no branch to be on.
 
 ---
 
