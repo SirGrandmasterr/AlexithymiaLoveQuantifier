@@ -1,0 +1,212 @@
+# Build the Android app and publish it as a GitHub Release.
+#
+# The build itself is `Dockerfile.android`, unchanged — the same file `make build-android`
+# drives on a developer's machine. That is deliberate and is the whole reproducibility claim
+# documented in the Makefile's Android section: `android/` is regenerated from the Capacitor
+# template inside the image on every run, so the APK depends on `package-lock.json` and
+# `Dockerfile.android` rather than on whatever state anyone's local `android/` drifted into.
+# CI running a *different* build would throw that away.
+#
+# What CI adds on top of `make build-android` is only the layer cache and the release upload.
+# The two build arguments below are the same two the Makefile passes; if that recipe ever
+# grows a third, this file needs it too.
+#
+# The APK is debug-signed. That is what `assembleDebug` produces and it installs fine from a
+# browser download with "install unknown apps" granted — which is the distribution channel for
+# self-hosted software with no Play listing. It is *not* uploadable to the Play Store: that
+# needs `make bundle-android` with a real keystore, which is deliberately absent here because
+# a signing key does not belong in a repository or in an Actions secret without someone
+# deciding that on purpose.
+
+name: Android build and release
+
+on:
+  # The normal path: tag a commit, get a release.
+  push:
+    tags:
+      - 'v*'
+
+  # The ad-hoc path: build any branch, optionally against a different server.
+  workflow_dispatch:
+    inputs:
+      api_url:
+        description: 'Backend base URL baked in as the default server address'
+        required: false
+        default: 'https://api.alexithymialovequantifier.voglerprojekte.com'
+      release_tag:
+        description: 'Publish a release under this tag. Leave empty to only attach the APK to this run.'
+        required: false
+        default: ''
+      prerelease:
+        description: 'Mark the release as a pre-release'
+        type: boolean
+        required: false
+        default: true
+
+# Read-only by default; the one job that needs to write releases asks for it itself.
+permissions:
+  contents: read
+
+# A second push to the same tag supersedes the first rather than racing it to the release.
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # An APK is not worth publishing from a red tree, and the suite is ~25 s. `npm run lint` is
+  # deliberately not run: the local install of eslint-plugin-react-hooks is broken and the
+  # repo's own guidance is to verify with vitest and the Vite build instead.
+  test:
+    name: Frontend suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # `npm ci` rather than `npm install`, for the same reason Dockerfile.android uses it:
+      # the lockfile is the input that makes the build reproducible.
+      - run: npm ci
+
+      - run: npm test
+
+      # Cheap, and it catches the class of breakage that only shows up when Rollup actually
+      # resolves every import — which is the step the APK's web bundle depends on.
+      - run: npx vite build
+
+  build:
+    name: APK
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      apk: ${{ steps.collect.outputs.apk }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # The container driver, which is what makes `type=gha` caching and `type=local` output
+      # available. Without a cache every run re-downloads the Android command-line tools, the
+      # SDK platform and build-tools, and a Node tarball — several minutes before Gradle even
+      # starts.
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Resolve the API URL
+        id: cfg
+        run: |
+          url='${{ github.event.inputs.api_url }}'
+          # Tag pushes carry no inputs, so fall back to the production API — the same default
+          # ANDROID_API_URL carries in the Makefile and DEFAULT_NATIVE_URL carries in
+          # src/mobile/serverUrl.js. All three have to agree.
+          if [ -z "$url" ]; then
+            url='https://api.alexithymialovequantifier.voglerprojekte.com'
+          fi
+          echo "api_url=$url" >> "$GITHUB_OUTPUT"
+          echo "Baking in: $url"
+
+      # Mirrors the `docker build` in the Makefile's build-android recipe. `target: artifacts`
+      # is the scratch stage that holds nothing but the built files, and `type=local` writes
+      # them straight to the workspace with no container to copy out of.
+      - name: Build the APK
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.android
+          target: artifacts
+          build-args: |
+            VITE_ANDROID_API_URL=${{ steps.cfg.outputs.api_url }}
+            GRADLE_TASK=assembleDebug
+          outputs: type=local,dest=dist-android
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Name the file after what produced it. `app-debug.apk` is what Gradle emits and it tells
+      # a person who downloaded it nothing about which version they are holding.
+      - name: Name and checksum the artefact
+        id: collect
+        run: |
+          set -eu
+          ls -la dist-android/
+
+          test -f dist-android/app-debug.apk || {
+            echo "No app-debug.apk in dist-android/ — the Gradle task produced something else."
+            exit 1
+          }
+
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            version="${{ github.ref_name }}"
+          else
+            version="$(git rev-parse --short HEAD)"
+          fi
+
+          apk="love-quantifier-${version}-debug.apk"
+          mv dist-android/app-debug.apk "dist-android/${apk}"
+          ( cd dist-android && sha256sum "${apk}" > "${apk}.sha256" )
+
+          echo "apk=${apk}" >> "$GITHUB_OUTPUT"
+          cat "dist-android/${apk}.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: dist-android/
+          retention-days: 30
+
+  release:
+    name: Release
+    needs: build
+    runs-on: ubuntu-latest
+    # Only when there is a tag to hang it on: a tag push, or a dispatch that named one.
+    if: github.ref_type == 'tag' || github.event.inputs.release_tag != ''
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-apk
+          path: dist-android
+
+      # `gh` is preinstalled on the runner, so this needs no third-party action with write
+      # access to the repository.
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            tag="${{ github.ref_name }}"
+            prerelease=""
+          else
+            tag="${{ github.event.inputs.release_tag }}"
+            [ "${{ github.event.inputs.prerelease }}" = "true" ] && prerelease="--prerelease" || prerelease=""
+          fi
+
+          notes="$(printf '%s\n' \
+            "Debug-signed APK (\`${{ needs.build.outputs.apk }}\`), built from \`${GITHUB_SHA}\`." \
+            "" \
+            "It points at \`https://api.alexithymialovequantifier.voglerprojekte.com\` by default." \
+            "That is only a default — the in-app Server settings screen overrides it and wins," \
+            "which is how anyone self-hosting their own instance points the app at it." \
+            "" \
+            "To install: download the \`.apk\`, then allow your browser to install unknown apps." \
+            "Verify it first with the \`.sha256\` beside it if you like." \
+            "" \
+            "This build is not signed with a release keystore and cannot be uploaded to the Play Store.")"
+
+          # --clobber so re-running a tag build replaces the assets instead of failing on
+          # "already exists"; `gh release create` is skipped when the release is already there.
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag exists — updating its assets."
+          else
+            gh release create "$tag" \
+              --title "$tag" \
+              --notes "$notes" \
+              $prerelease
+          fi
+
+          gh release upload "$tag" dist-android/* --clobber
+
+          echo "Published: $(gh release view "$tag" --json url --jq .url)"

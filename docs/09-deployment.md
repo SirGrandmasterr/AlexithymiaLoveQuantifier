@@ -532,11 +532,90 @@ and forwards traffic to `127.0.0.1:8082`. This provides complete end-to-end TLS 
 
 ## 7. CI
 
-[`.github/workflows/playwright.yml`](../.github/workflows/playwright.yml) is the only
-workflow. It runs Playwright on push/PR to `main`/`master` and uploads the HTML report.
-Since neither server is started there, it cannot pass — see
-[Testing §3.2](08-testing.md#32-why-it-currently-fails). No image is built, pushed, or
-deployed by any automation; deployment is manual `docker-compose up`.
+Three workflows. Only one of them runs without being asked.
+
+| Workflow | Trigger | What it does |
+| :------- | :------ | :----------- |
+| [`playwright.yml`](../.github/workflows/playwright.yml) | push/PR to `main`/`master` | Runs Playwright and uploads the HTML report. **It cannot pass** — neither server is started there; see [Testing §3.2](08-testing.md#32-why-it-currently-fails). |
+| [`android-release.yml`](../.github/workflows/android-release.yml) | tag `v*`, or manual | Builds the APK and attaches it to a GitHub Release. |
+| [`deploy.yml`](../.github/workflows/deploy.yml) | manual only | Deploys to the production host over SSH. |
+
+### The Android release
+
+`android-release.yml` runs the frontend suite and a `vite build` first, then builds the APK
+through [`Dockerfile.android`](../Dockerfile.android) — the same file `make build-android`
+uses, with the same two build arguments. That is on purpose: `android/` is regenerated from
+the Capacitor template inside the image on every run, so the artefact depends on
+`package-lock.json` and the Dockerfile rather than on any machine's local state, and a CI
+build that took a different path would give that up. If the Makefile's `build-android` recipe
+grows a third build argument, the workflow needs it too.
+
+`VITE_ANDROID_API_URL` defaults to `https://api.alexithymialovequantifier.voglerprojekte.com`
+in three places that must agree: `ANDROID_API_URL` in the [Makefile](../Makefile),
+`DEFAULT_NATIVE_URL` in [`src/mobile/serverUrl.js`](../src/mobile/serverUrl.js), and the
+workflow's `api_url` input. It is only a default — the in-app Server settings screen writes
+`localStorage` and wins, which is what makes one APK usable by anyone self-hosting.
+
+The APK is **debug-signed**, which installs from a browser download and cannot be uploaded to
+the Play Store. A release keystore is deliberately not in the repository or in an Actions
+secret; `make bundle-android KEYSTORE=...` is the path when someone decides otherwise.
+
+Tagging is the normal route:
+
+```bash
+git tag v1.0.0 && git push origin v1.0.0
+```
+
+A manual run with `release_tag` empty attaches the APK to the workflow run instead of
+publishing anything, which is how to test a build.
+
+### The deployment
+
+`deploy.yml` automates [`Setup Guide.md`](../Setup%20Guide.md) §4 and **nothing else**. It
+does not provision the host: Docker, the host Nginx site, the Certbot certificates and `.env`
+are set up once by hand. `.env` can never come from CI — it is git-ignored precisely so the
+database password and the JWT signing key live only on the host ([§6](#6-configuration-and-secrets)).
+
+On the host it updates the checkout, takes a database dump, runs `make up` — database first,
+schema second, app third, so a failed migration stops the deploy instead of leaving a server
+answering 500s — and then probes the stack twice: once on `127.0.0.1:8082` and once over TLS
+from the runner. Two checks rather than one because they fail differently: the first says the
+stack is broken, the second says the host Nginx, DNS or the certificate is.
+
+There is no `/healthz` yet ([§8](#8-production-readiness-checklist)), so the API probe asks an
+unauthenticated `GET /api/me` and expects **401** — the backend answering correctly. A `502`
+is Nginx unable to reach it.
+
+It **refuses to run against a dirty checkout** on the server unless `force_dirty` is set. A
+file edited by hand on the host is usually a fix made in a hurry, and discarding it silently is
+how it gets lost and rediscovered.
+
+Manual dispatch only, deliberately: the default branch is not a green-gated branch — the
+Playwright workflow that runs on it cannot pass — so deploying on push to `main` would be
+deploying on an unchecked signal.
+
+#### What it needs configured
+
+Repository **secrets**:
+
+| Name | What it is |
+| :--- | :--------- |
+| `DEPLOY_SSH_KEY` | Private half of a key whose public half is in the deploy user's `~/.ssh/authorized_keys`. Generate a dedicated one: `ssh-keygen -t ed25519 -C github-actions-deploy -f deploy_key -N ''` |
+| `DEPLOY_HOST_KEY` | The server's host key, so the runner pins it rather than trusting whatever answers on port 22: `ssh-keyscan -t ed25519 85.215.233.90` |
+
+Repository **variables** (optional; the defaults are in the workflow):
+
+| Name | Default |
+| :--- | :------ |
+| `DEPLOY_HOST` | `85.215.233.90` |
+| `DEPLOY_USER` | `deploy` |
+| `DEPLOY_PATH` | `/opt/AlexithymiaLoveQuantifier` |
+
+The deploy user needs to be in the `docker` group, and needs `make`, `git` and `curl` — `make`
+in particular is not part of the package list in `Setup Guide.md` §2.2.
+
+The workflow declares the `production` environment, so required reviewers can be attached to it
+in the repository settings if a deploy should ever need approval.
 
 ---
 

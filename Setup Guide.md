@@ -193,6 +193,12 @@ Certbot will automatically update the Nginx configuration with certificate paths
 
 ## 4. Deploying the Application via Docker Compose
 
+> **This section is the first deploy, done by hand.** Every deploy after it can be the
+> `Deploy` workflow (`.github/workflows/deploy.yml`), run from the Actions tab — it does
+> exactly what §4.3 does, plus a database dump beforehand and a health check afterwards.
+> It assumes §2 and §3 have been done and that `.env` exists; it never creates `.env`.
+> The secrets it needs are listed in [`docs/09-deployment.md` §7](docs/09-deployment.md).
+
 ### 4.1 Clone the Repository
 
 ```bash
@@ -276,6 +282,12 @@ make build-android ANDROID_API_URL=https://api.alexithymialovequantifier.voglerp
 ```
 
 The output APK will be placed in `dist-android/app-debug.apk`.
+
+> **For a release, tag instead.** `git tag v1.0.0 && git push origin v1.0.0` runs the
+> `Android build and release` workflow, which builds this same APK through the same
+> Dockerfile and attaches it — with a SHA-256 beside it — to a GitHub Release. Run it
+> manually from the Actions tab with `release_tag` left empty to get a build without
+> publishing one. See [`docs/09-deployment.md` §7](docs/09-deployment.md).
 
 ### 5.2 Release Bundle for Google Play (AAB)
 

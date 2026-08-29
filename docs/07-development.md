@@ -243,7 +243,7 @@ AlexithymiaLoveQuantifier/
 ├── tests/
 │   ├── example.spec.ts         Playwright scaffold — hits playwright.dev
 │   └── e2e/user_journey.spec.ts  the real E2E journey
-├── .github/workflows/playwright.yml
+├── .github/workflows/         playwright.yml, android-release.yml, deploy.yml (see 09 §7)
 ├── index.html                  SPA shell (title still "temp_app")
 ├── vite.config.js              Vite + Vitest + dev proxy
 ├── tailwind.config.js  postcss.config.js  eslint.config.js

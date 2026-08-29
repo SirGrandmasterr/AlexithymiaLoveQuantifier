@@ -260,9 +260,15 @@ column, and anything relying on SQLite's dynamic typing.
 
 ### CI runs only the suite that cannot pass
 
-[`playwright.yml`](../.github/workflows/playwright.yml) is the only workflow. `vitest`
-(161/161 green) and `go test` (all green) are **not** run in CI, nor are `eslint` or
-`go vet`. The pipeline is red by construction while both healthy suites go unverified.
+[`playwright.yml`](../.github/workflows/playwright.yml) is the only workflow that runs on a
+push, and it is the one suite that cannot pass. `go test` (all green) is **not** run by any
+workflow, nor are `eslint` or `go vet`. The push pipeline is red by construction while the
+healthy suites go unverified.
+
+Partly closed since: [`android-release.yml`](../.github/workflows/android-release.yml) runs
+`vitest` and `npx vite build` before it will build an APK, so a release is gated on a green
+frontend suite. It is triggered by a `v*` tag or by hand, though — not by a push — so it is a
+release gate and not continuous integration. `go test` is still in neither.
 
 ### `npm run lint` is broken in this checkout
 
