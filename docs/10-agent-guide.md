@@ -248,11 +248,15 @@ same data:
   dismissible `role="alert"` banner — emerald for success, red for error. `Dashboard`'s
   `errorText(error, fallback)` helper prefers the server's own message
   (`error.response.data.error`) and falls back to a written sentence that says what to do.
-- **Global 401 handling** is already installed by `installSessionInterceptor`
-  ([`auth/session.js`](../src/auth/session.js)), registered from a `useEffect` in `App.jsx`
-  and ejected on cleanup so StrictMode's double-invoke cannot stack duplicates. A 401 renews
-  the session and replays the request; only a dead refresh token surfaces anything. It covers
-  the global axios, which every screen uses — a private `axios.create()` would opt out of it.
+- **Global 401 handling** is already installed by [`auth/session.js`](../src/auth/session.js)
+  **at module scope**, on import — not from an effect, and this is load-bearing. Child effects
+  commit before their parent's, so registering it in `App`'s `useEffect` let
+  `SubjectsProvider`'s fetch go out first: on a cold load with an aged token those requests
+  401'd with no interceptor to catch them and were never renewed or replayed. There are two
+  interceptors — a request one that renews *before* sending a doomed request, and the response
+  one that renews and replays after a 401. Only a dead refresh token surfaces anything, and
+  what it surfaces is a signed-out app, not a dialog. Both cover the global axios, which every
+  screen uses — a private `axios.create()` would opt out of both.
   If a request must *not* be retried this way (a sign-in, where a 401 is a wrong passphrase),
   mark its config `__isSessionCall: true`.
 - **Do not close a modal on failure.** Keep the close call inside `try`, after the awaits,

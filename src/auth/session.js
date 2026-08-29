@@ -15,16 +15,27 @@ import axios from 'axios';
  *
  * Three things, in order of how often they save the user:
  *
- * 1. **Renew before it breaks.** `expires_in` comes back with every session, so a client
- *    can renew on resume rather than after a request has already failed. This is the path
- *    that runs almost every time, and the user never learns it happened.
+ * 1. **Renew before the request goes out.** `expires_in` comes back with every session, so
+ *    the request interceptor below can hold a request that is about to fail and renew
+ *    first. This is the path that runs almost every time, and the user never learns it
+ *    happened.
  * 2. **Renew after it breaks.** A 401 on any request triggers one refresh and one replay of
  *    that request. Concurrent 401s share a single refresh — see `inFlight` — so a dashboard
  *    firing two requests at once does not burn two refresh tokens and revoke itself.
- * 3. **Ask, without evicting.** Only when the refresh token itself is gone or rejected does
- *    the user see anything, and what they see is a passphrase prompt over the screen they
- *    were on, not a bounce to the landing page. Their place, their scroll position, and any
- *    half-filled form are all still there afterwards.
+ * 3. **Sign the user out, properly.** Only when the refresh token itself is gone or rejected
+ *    is the session over, and then the app returns to exactly the state of someone who never
+ *    signed in: the landing page, no navigation, no error. See `subscribeSessionLost`.
+ *
+ * ## Why the interceptors are installed here, at module scope
+ *
+ * They used to be installed from an effect in `App`, and that was a real bug rather than a
+ * style question. **Child effects commit before their parent's**, so `SubjectsProvider`'s
+ * fetch fired before `App`'s effect could install anything: on a cold load with an aged
+ * token, `/api/subjects` and `/api/relationships` went out with a dead credential, 401'd
+ * with no interceptor to catch them, and were never renewed or replayed. The provider showed
+ * an error while `token` was still set — an app that looked signed in and did not work,
+ * which is the symptom this file's whole design exists to prevent. Installing at import time
+ * is the same constraint, and the same fix, as `applyToken` below.
  *
  * ## Why not literally "reuse the last login data"
  *
@@ -36,12 +47,13 @@ import axios from 'axios';
  *
  * ## Where it is stored, and what that is worth
  *
- * `localStorage`, for the same reason `src/mobile/serverUrl.js` uses it: the WebView's
- * storage lives in the app's private data directory, sandboxed by the OS from every other
- * app, which is the protection Android `SharedPreferences` gives and neither is encrypted at
- * rest. It also has to be readable *synchronously*, before the first render, for exactly the
- * reason `applyToken` documents — an async read would let the first request go out
- * anonymous. `@capacitor/preferences` cannot meet that constraint.
+ * `localStorage` when the user asked to stay signed in, `sessionStorage` when they did not —
+ * see `setStaySignedIn`. Either way it is the WebView's own storage, which on Android lives
+ * in the app's private data directory, sandboxed by the OS from every other app; that is the
+ * protection `SharedPreferences` gives and neither is encrypted at rest. It also has to be
+ * readable *synchronously*, before the first render, for exactly the reason `applyToken`
+ * documents — an async read would let the first request go out anonymous.
+ * `@capacitor/preferences` cannot meet that constraint.
  */
 
 // Unchanged from when App.jsx owned this: an existing install must stay signed in across the
@@ -49,16 +61,38 @@ import axios from 'axios';
 const ACCESS_KEY = 'token';
 const REFRESH_KEY = 'alq:refresh-token';
 const EXPIRES_AT_KEY = 'alq:token-expires-at';
-// The address only, never the passphrase. It is what lets the re-authentication prompt ask
-// for one field instead of two.
+// The address only, never the passphrase. It is what lets a returning user find their email
+// already filled in.
 const EMAIL_KEY = 'alq:last-email';
+// Which store the four keys above live in. Always in localStorage itself, because it has to
+// be readable before we know where to look for everything else.
+const PERSIST_KEY = 'alq:stay-signed-in';
+
+const SESSION_KEYS = [ACCESS_KEY, REFRESH_KEY, EXPIRES_AT_KEY, EMAIL_KEY];
 
 /** Renew this far ahead of expiry, so a slow network still lands before the old one dies. */
 const RENEW_MARGIN_MS = 5 * 60 * 1000;
 
+/**
+ * Whether the session should outlive the tab.
+ *
+ * Absent means yes. That default is what keeps every install that predates the checkbox
+ * signed in across the upgrade — the alternative is logging everyone out to introduce a
+ * feature about not being logged out.
+ */
+export const isStayingSignedIn = () => {
+    try {
+        return window.localStorage.getItem(PERSIST_KEY) !== 'false';
+    } catch {
+        return true;
+    }
+};
+
+const store = () => (isStayingSignedIn() ? window.localStorage : window.sessionStorage);
+
 const read = (key) => {
     try {
-        return window.localStorage.getItem(key);
+        return store().getItem(key);
     } catch {
         return null;
     }
@@ -66,12 +100,43 @@ const read = (key) => {
 
 const write = (key, value) => {
     try {
-        if (value === null || value === undefined) window.localStorage.removeItem(key);
-        else window.localStorage.setItem(key, value);
+        if (value === null || value === undefined) store().removeItem(key);
+        else store().setItem(key, value);
     } catch {
         // Private mode, or a locked store. The value still applies for this run, which is
         // better than refusing to sign in.
     }
+};
+
+/**
+ * Choose whether this session survives closing the app.
+ *
+ * Checked, it lives in `localStorage` and the refresh token carries it for two months.
+ * Unchecked, it lives in `sessionStorage`: the tab or the Android task closing is the end of
+ * it, which is the honest meaning of "do not stay signed in" — and it takes the remembered
+ * email with it, so a shared machine is left with no trace of who used it.
+ *
+ * Switching **moves** the live session rather than ending it. Ticking the box halfway through
+ * an evening should not sign you out; that would teach the user not to touch it.
+ */
+export const setStaySignedIn = (stay) => {
+    const next = stay !== false;
+    if (next === isStayingSignedIn()) return;
+
+    const carried = {};
+    SESSION_KEYS.forEach((key) => { carried[key] = read(key); });
+    SESSION_KEYS.forEach((key) => write(key, null));
+
+    try {
+        window.localStorage.setItem(PERSIST_KEY, next ? 'true' : 'false');
+    } catch {
+        // Without storage the preference applies for this run only, which is the safe way
+        // round: the session is in sessionStorage either way and dies with the tab.
+    }
+
+    SESSION_KEYS.forEach((key) => {
+        if (carried[key] !== null) write(key, carried[key]);
+    });
 };
 
 export const readAccessToken = () => read(ACCESS_KEY);
@@ -80,7 +145,7 @@ export const lastEmail = () => read(EMAIL_KEY) || '';
 export const rememberEmail = (email) => write(EMAIL_KEY, email || null);
 
 /**
- * The single writer for the auth header and its localStorage copy.
+ * The single writer for the auth header and its stored copy.
  *
  * This must run **synchronously**, never from an effect. Child effects commit before their
  * parent's, so the subjects fetch fires before an effect in App could set the header — the
@@ -114,6 +179,10 @@ export const saveSession = (payload) => {
         EXPIRES_AT_KEY,
         payload?.expires_in ? String(Date.now() + payload.expires_in * 1000) : null
     );
+
+    // A new session is not a lost one. Without this, signing back in after an expiry would
+    // leave the "session is over" latch set and the next 401 would be swallowed silently.
+    sessionIsLost = false;
 
     return token;
 };
@@ -192,6 +261,7 @@ export const renewIfDue = async () => {
 export const endSession = async () => {
     const refreshToken = readRefreshToken();
     clearSession();
+    sessionIsLost = false;
 
     if (!refreshToken) return;
     try {
@@ -202,46 +272,115 @@ export const endSession = async () => {
 };
 
 /**
- * Install the response interceptor that turns a 401 into a renewal and a retry.
+ * The session is over and only a fresh sign-in can fix it.
  *
- * @param {() => void} onSessionLost called when renewal is impossible and the user has to
- *   authenticate again. It is called at most once per lost session — after the first call
- *   the refresh token is gone, so later 401s take the early return above it.
- * @returns {() => void} an eject function for the caller's cleanup.
+ * A latch rather than an event, because the subscriber may not exist yet: the interceptors
+ * are installed at import time and `App` subscribes in an effect, so a 401 answered during
+ * the first paint would otherwise be announced to nobody. `subscribeSessionLost` fires
+ * immediately when it finds the latch already set.
  */
-export const installSessionInterceptor = (onSessionLost) => {
-    const id = axios.interceptors.response.use(
-        (response) => response,
-        async (error) => {
-            const config = error?.config;
+let sessionIsLost = false;
+let sessionLostHandler = null;
 
-            if (error?.response?.status !== 401 || !config) return Promise.reject(error);
-            // `/api/refresh` answering 401 is the session ending, not something to renew;
-            // `/api/login` answering 401 is a wrong password, which the form reports itself.
-            if (config.__isSessionCall || config.__isRetry) return Promise.reject(error);
-
-            const token = await refreshSession();
-            if (!token) {
-                onSessionLost();
-                return Promise.reject(error);
-            }
-
-            // Replay the original request with the new credential. `__isRetry` is what stops
-            // a server that 401s for some other reason from looping here forever.
-            //
-            // The old header is removed by case-insensitive comparison rather than by
-            // spreading a replacement over it: axios stores header names normalised to lower
-            // case, so `{ ...config.headers, Authorization }` leaves *both* `authorization`
-            // and `Authorization` in the object and which one survives depends on key order.
-            const headers = { ...config.headers };
-            Object.keys(headers).forEach((name) => {
-                if (name.toLowerCase() === 'authorization') delete headers[name];
-            });
-            headers.Authorization = `Bearer ${token}`;
-
-            return axios.request({ ...config, __isRetry: true, headers });
-        }
-    );
-
-    return () => axios.interceptors.response.eject(id);
+const announceSessionLost = () => {
+    if (sessionIsLost) return;
+    sessionIsLost = true;
+    sessionLostHandler?.();
 };
+
+/**
+ * @param {() => void} handler called once when renewal has become impossible. The app's
+ *   answer to it is to drop the token and render as though nobody had ever signed in — no
+ *   overlay, no error, no half-authenticated screen behind a dialog.
+ * @returns {() => void} unsubscribe.
+ */
+export const subscribeSessionLost = (handler) => {
+    sessionLostHandler = handler;
+    if (sessionIsLost) handler();
+
+    return () => {
+        if (sessionLostHandler === handler) sessionLostHandler = null;
+    };
+};
+
+/** Test seam: forget that a session was ever lost. */
+export const resetSessionLost = () => {
+    sessionIsLost = false;
+    sessionLostHandler = null;
+};
+
+/**
+ * Put a token on one outgoing request.
+ *
+ * axios 1.x hands interceptors an `AxiosHeaders` instance, whose `set` is the supported way
+ * in; a plain object is what a test double and a replayed config carry. Both are handled
+ * rather than assumed, because getting it wrong fails as a *missing* header — a 401 that
+ * looks like an expired session rather than like a bug here.
+ */
+const putToken = (headers, token) => {
+    if (headers && typeof headers.set === 'function') {
+        headers.set('Authorization', `Bearer ${token}`);
+        return headers;
+    }
+
+    // axios lower-cases header names internally, so spreading a capitalised replacement over
+    // an existing lower-case entry leaves both and lets key order decide which wins.
+    const next = { ...headers };
+    Object.keys(next).forEach((name) => {
+        if (name.toLowerCase() === 'authorization') delete next[name];
+    });
+    next.Authorization = `Bearer ${token}`;
+    return next;
+};
+
+/**
+ * Renew *before* the request, not after it fails.
+ *
+ * This is the half that was missing. The response interceptor can only react to a 401, and
+ * on a cold start there is nothing to react with yet — the requests that fail are the ones
+ * the dashboard fires on mount. Holding a doomed request for one refresh costs a few hundred
+ * milliseconds once a day and removes the failure entirely.
+ *
+ * `__isSessionCall` requests are exempt: `/api/refresh` cannot wait for itself.
+ */
+export const withFreshToken = async (config) => {
+    if (!config || config.__isSessionCall) return config;
+    if (!needsRenewal()) return config;
+
+    const token = await refreshSession();
+    // A null token means the session is over. The request still goes out and still 401s,
+    // and `recoverFrom401` is the one place that decides a session has ended — one code
+    // path for that, rather than two that can disagree.
+    if (token) config.headers = putToken(config.headers, token);
+
+    return config;
+};
+
+/** Turn a 401 into a renewal and a replay, or into the end of the session. */
+export const recoverFrom401 = async (error) => {
+    const config = error?.config;
+
+    if (error?.response?.status !== 401 || !config) return Promise.reject(error);
+    // `/api/refresh` answering 401 is the session ending, not something to renew;
+    // `/api/login` answering 401 is a wrong password, which the form reports itself.
+    if (config.__isSessionCall || config.__isRetry) return Promise.reject(error);
+
+    const token = await refreshSession();
+    if (!token) {
+        announceSessionLost();
+        return Promise.reject(error);
+    }
+
+    // Replay the original request with the new credential. `__isRetry` is what stops a
+    // server that 401s for some other reason from looping here forever.
+    return axios.request({
+        ...config,
+        __isRetry: true,
+        headers: putToken({ ...config.headers }, token)
+    });
+};
+
+// Both are named and exported so a test can drive them directly rather than reaching into
+// axios's mock to find them — and so this registration reads as the one line it is.
+axios.interceptors.request.use(withFreshToken);
+axios.interceptors.response.use((response) => response, recoverFrom401);

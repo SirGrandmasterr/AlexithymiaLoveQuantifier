@@ -15,7 +15,6 @@ import Vault from './components/Vault';
 import AppLock from './components/AppLock';
 import MobileBottomNav from './components/MobileBottomNav';
 import ServerSettingsModal from './components/ServerSettingsModal';
-import SessionExpiredDialog from './components/SessionExpiredDialog';
 import { SubjectsProvider } from './context/SubjectsContext';
 import { JournalProvider } from './context/JournalContext';
 import { DiscretionProvider, useDiscretion } from './context/DiscretionContext';
@@ -25,16 +24,18 @@ import { isNative } from './mobile/platform';
 // issue a request — the same ordering constraint, and the same reason, as `applyToken`.
 import { hasConfiguredServer } from './mobile/serverUrl';
 import useNativeShell from './mobile/useNativeShell';
-// The session's storage, renewal and 401 handling. Imported for its side effect as well:
-// reading the stored token applies the auth header at module scope, before any component
-// can issue a request — see `applyToken` there for why that cannot wait for an effect.
+// The session's storage, renewal and 401 handling. Imported for its side effects as much as
+// its exports: reading the stored token applies the auth header at module scope, and the
+// module installs both axios interceptors on import. Neither can wait for an effect — child
+// effects commit before their parent's, so the dashboard's first fetch would already have
+// gone out. See the header comment there.
 import {
     readAccessToken,
     applyToken,
     saveSession,
     clearSession,
     endSession,
-    installSessionInterceptor
+    subscribeSessionLost
 } from './auth/session';
 import useSessionRenewal from './auth/useSessionRenewal';
 
@@ -45,48 +46,33 @@ applyToken(initialToken);
 
 export default function App() {
     const [token, setTokenState] = useState(initialToken);
-    // True while the session cannot be renewed and only the user can fix it. Deliberately
-    // *not* the same thing as having no token: the screen behind the prompt stays mounted,
-    // so signing back in returns the user to the exact place they were, with their form
-    // input intact. Clearing the token instead is what used to evict them to Landing.
-    const [sessionLost, setSessionLost] = useState(false);
-    // Bumped when a session is restored, so the subject list refetches the data the failed
-    // requests never got. A counter rather than an event: it is state, and state is what
-    // the provider is already reacting to.
-    const [sessionEpoch, setSessionEpoch] = useState(0);
 
-    // A 401 no longer means the session is over. The interceptor renews and replays the
-    // request; this callback runs only when that is impossible, and what it does is ask
-    // rather than evict. See `src/auth/session.js` for the whole sequence.
-    useEffect(() => installSessionInterceptor(() => setSessionLost(true)), []);
+    // A 401 no longer means the session is over: the interceptors in `auth/session.js` renew
+    // and replay the request. This runs only when renewal has become impossible — the
+    // refresh token expired after two months away, or the server revoked it.
+    //
+    // What it does then is drop the token, and that is the whole behaviour. There is no
+    // overlay and no error: every route below already sends a tokenless visitor to Landing
+    // or `/login`, so the app lands in exactly the state of someone who never signed in.
+    // It used to hold the token and put a prompt on top, which left a signed-out user
+    // looking at a signed-in app that answered 401 to everything behind the dialog.
+    useEffect(() => subscribeSessionLost(() => {
+        clearSession();
+        setTokenState(null);
+    }), []);
 
-    // Renew on resume, ahead of expiry — the path that means the prompt above is rare.
-    useSessionRenewal(Boolean(token) && !sessionLost);
+    // Renew on resume, ahead of expiry — the path that means the above is rare.
+    useSessionRenewal(Boolean(token));
 
     const handleLogin = (session) => {
         setTokenState(saveSession(session));
     };
 
     const handleLogout = () => {
-        setSessionLost(false);
         setTokenState(null);
         // Revokes the refresh token server-side, then forgets it here. Fire and forget:
         // pressing "log out" on a train has still logged the user out.
         endSession();
-    };
-
-    // Re-authenticated in place: keep the screen, drop the prompt, refetch what was missed.
-    const handleSessionRestored = (newToken) => {
-        setTokenState(newToken);
-        setSessionLost(false);
-        setSessionEpoch(epoch => epoch + 1);
-    };
-
-    // "Sign in as someone else" — the one path out of the prompt that does end the session.
-    const handleSessionAbandoned = () => {
-        clearSession();
-        setSessionLost(false);
-        setTokenState(null);
     };
 
     return (
@@ -96,18 +82,17 @@ export default function App() {
                 <DiscretionProvider>
                     {/* One subject list for every screen: the dashboard and the timeline route
                         read the same state, so an edit in one is never stale in the other. */}
-                    <SubjectsProvider enabled={!!token} reloadKey={sessionEpoch}>
+                    {/* `enabled` is the reload key as well as the switch: a lost session sets
+                        the token to null and signing back in sets it again, so the fetch
+                        effect re-runs on its own. The explicit `reloadKey` this used to pass
+                        existed for re-authenticating *in place*, behind an overlay, and there
+                        is no longer such a path. */}
+                    <SubjectsProvider enabled={!!token}>
                         {/* Inside the subject list, not beside it: the journal names people
                             and reads them from `useSubjects()` rather than fetching a second
                             copy of the list (invariant 17). */}
-                        <JournalProvider enabled={!!token} reloadKey={sessionEpoch}>
+                        <JournalProvider enabled={!!token}>
                             <Shell token={token} onLogout={handleLogout} onLogin={handleLogin} />
-                            {sessionLost && (
-                                <SessionExpiredDialog
-                                    onSignedIn={handleSessionRestored}
-                                    onSignOut={handleSessionAbandoned}
-                                />
-                            )}
                         </JournalProvider>
                     </SubjectsProvider>
                 </DiscretionProvider>
