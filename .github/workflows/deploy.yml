@@ -1,0 +1,229 @@
+# Deploy to the production host.
+#
+#   internet ──▶ host Nginx (TLS, Certbot) ──▶ 127.0.0.1:8082 ──▶ frontend container
+#                                                                      │
+#                                                        alexithymialovequantifier…  → SPA
+#                                                        api.alexithymialovequantifier… → /api/
+#
+# Both hostnames terminate on the same container Nginx, which already carries both in its
+# `server_name` (nginx.conf) and routes `/api/` and `/uploads/` to the Go service. The host
+# Nginx does nothing but terminate TLS and forward to 127.0.0.1:8082 — see `Setup Guide.md` §3.
+# That is why there is one port to forward and not two.
+#
+# This workflow automates `Setup Guide.md` §4 and nothing else. It does not provision the host:
+# Docker, the host Nginx site, the Certbot certificates and `.env` are all set up once, by
+# hand, and this deploy assumes them. `.env` in particular can never come from here — it is
+# git-ignored precisely so the database password and the JWT signing key live only on the host.
+#
+# Manual dispatch only, deliberately. The default branch is not currently a green-gated branch
+# (the Playwright workflow that runs on it cannot pass — docs/11-known-issues.md), so an
+# automatic deploy on push to main would be a deploy on an unchecked signal.
+
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch, tag or commit to deploy'
+        required: true
+        default: 'main'
+      force_dirty:
+        description: 'Deploy even if the checkout on the server has uncommitted changes (they will be discarded)'
+        type: boolean
+        required: false
+        default: false
+      skip_backup:
+        description: 'Skip the pre-deploy database dump'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+# Two deploys at once would race each other through `docker compose up`.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: production
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref }}
+
+      # Fail here rather than three minutes into an SSH session with a confusing error.
+      - name: Check the secrets are present
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST_KEY: ${{ secrets.DEPLOY_HOST_KEY }}
+        run: |
+          set -eu
+          missing=""
+          [ -n "${KEY}" ] || missing="${missing} DEPLOY_SSH_KEY"
+          [ -n "${HOST_KEY}" ] || missing="${missing} DEPLOY_HOST_KEY"
+          if [ -n "${missing}" ]; then
+            echo "Missing repository secrets:${missing}"
+            echo "See docs/09-deployment.md §7 for how to generate and install them."
+            exit 1
+          fi
+
+      # The host key is pinned from a secret rather than accepted on first use. `StrictHostKeyChecking
+      # accept-new` would hand the deploy key to whatever answers on port 22 the first time,
+      # which is the one moment an interception would matter.
+      - name: Set up SSH
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST_KEY: ${{ secrets.DEPLOY_HOST_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${KEY}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "${HOST_KEY}" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Deploy
+        env:
+          # Defaults verified against the host on 2026-08-29. The checkout is at
+          # /root/projects/, not the /opt/ that Setup Guide.md §4.1 suggests, and the login is
+          # root — there is no separate deploy user. Both are overridable with repository
+          # variables so moving either does not need a commit.
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST || '85.215.233.90' }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER || 'root' }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/root/projects/AlexithymiaLoveQuantifier' }}
+          DEPLOY_REF: ${{ github.event.inputs.ref }}
+          FORCE_DIRTY: ${{ github.event.inputs.force_dirty }}
+          SKIP_BACKUP: ${{ github.event.inputs.skip_backup }}
+        run: |
+          set -eu
+          ssh -i ~/.ssh/deploy_key \
+              -o BatchMode=yes \
+              -o StrictHostKeyChecking=yes \
+              "${DEPLOY_USER}@${DEPLOY_HOST}" \
+              "DEPLOY_PATH='${DEPLOY_PATH}' DEPLOY_REF='${DEPLOY_REF}' FORCE_DIRTY='${FORCE_DIRTY}' SKIP_BACKUP='${SKIP_BACKUP}' bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          echo "::group::Preflight"
+          cd "${DEPLOY_PATH}"
+
+          # .env holds POSTGRES_PASSWORD and JWT_SECRET and is git-ignored. Compose refuses to
+          # create the stack without them and names the variable, but failing here says so in
+          # one line instead of in Compose's interpolation error.
+          test -f .env || { echo "No .env at ${DEPLOY_PATH}. See .env.example and Setup Guide.md §4.2."; exit 1; }
+
+          # A dirty checkout usually means someone edited a file on the server to fix something
+          # in a hurry. Discarding that silently is how the fix gets lost and rediscovered.
+          if [ -n "$(git status --porcelain)" ]; then
+            if [ "${FORCE_DIRTY}" = "true" ]; then
+              echo "Working tree is dirty; force_dirty was set, so discarding:"
+              git status --short
+            else
+              echo "The checkout at ${DEPLOY_PATH} has uncommitted changes:"
+              git status --short
+              echo ""
+              echo "Refusing to overwrite them. Commit or stash them on the server, or re-run"
+              echo "this workflow with force_dirty set."
+              exit 1
+            fi
+          fi
+          echo "::endgroup::"
+
+          echo "::group::Update the checkout"
+          git fetch --prune --tags origin
+          # A branch stays a branch. The host is administered by hand as well as from here —
+          # leaving it on a detached HEAD would break a plain `git pull` on the server for
+          # whoever looks next. A tag or a raw SHA has no branch to be on, so it detaches.
+          if git rev-parse --verify --quiet "origin/${DEPLOY_REF}" >/dev/null; then
+            target="$(git rev-parse "origin/${DEPLOY_REF}")"
+            echo "Deploying branch ${DEPLOY_REF} = ${target}"
+            git checkout -B "${DEPLOY_REF}" "${target}"
+          else
+            target="$(git rev-parse --verify "${DEPLOY_REF}")"
+            echo "Deploying ${DEPLOY_REF} = ${target} (detached)"
+            git checkout --detach "${target}"
+          fi
+          git --no-pager log -1 --format='%H %an %ad %s'
+          echo "::endgroup::"
+
+          echo "::group::Database backup"
+          # Best-effort and before the migration, not after. `make db-backup` needs Postgres to
+          # be accepting connections, which it is not on a first deploy — that is not a failure.
+          if [ "${SKIP_BACKUP}" = "true" ]; then
+            echo "Skipped by request."
+          elif docker compose ps --status running --services 2>/dev/null | grep -qx postgres; then
+            make db-backup
+          else
+            echo "Postgres is not running — nothing to back up yet."
+          fi
+          echo "::endgroup::"
+
+          echo "::group::Build and start"
+          # `make up` is database first, schema second, app third: it starts Postgres, waits for
+          # it, runs the migration as a one-off container, and only then brings up the stack
+          # with --build. A failed migration stops the deploy rather than leaving a server up
+          # answering 500s.
+          make up
+          echo "::endgroup::"
+
+          echo "::group::Container state"
+          docker compose ps
+          echo "::endgroup::"
+
+          echo "::group::Local health"
+          # Through the container Nginx on the loopback port, before the public check below.
+          # This separates "the stack is broken" from "the host Nginx or TLS is broken".
+          for i in $(seq 1 30); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: alexithymialovequantifier.voglerprojekte.com' http://127.0.0.1:8082/ || echo 000)"
+            if [ "${code}" = "200" ]; then echo "SPA on 127.0.0.1:8082 → 200"; break; fi
+            if [ "${i}" = "30" ]; then echo "SPA on 127.0.0.1:8082 → ${code} after 30 tries"; exit 1; fi
+            sleep 2
+          done
+
+          # No public health endpoint exists (docs/09-deployment.md §8 still lists /healthz as
+          # to-do), so this probes a protected route without a token. 401 is the backend
+          # answering correctly; 502 is Nginx unable to reach it.
+          code="$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: api.alexithymialovequantifier.voglerprojekte.com' http://127.0.0.1:8082/api/me || echo 000)"
+          case "${code}" in
+            401) echo "API on 127.0.0.1:8082 → 401 (backend is answering)" ;;
+            *)   echo "API on 127.0.0.1:8082 → ${code}, expected 401"; exit 1 ;;
+          esac
+          echo "::endgroup::"
+
+          echo "::group::Reclaim disk"
+          # --build leaves the previous image dangling every deploy, and these are ~100 MB each.
+          # Dangling only: nothing tagged and nothing in use is touched.
+          #
+          # The `until` filter is because this host runs other projects too (there is a second
+          # app on 8083). A week's grace means a deploy here cannot collect an intermediate
+          # image another project's build is still working with.
+          docker image prune -f --filter 'until=168h'
+          echo "::endgroup::"
+
+          echo "Deployed ${target}"
+          REMOTE
+
+      # From outside the host, so this covers DNS, the firewall, the host Nginx and the
+      # certificate as well as the stack. Separate step: a failure here means something
+      # different from a failure above, and the log should say which.
+      - name: Public health check
+        run: |
+          set -eu
+          app='https://alexithymialovequantifier.voglerprojekte.com'
+          api='https://api.alexithymialovequantifier.voglerprojekte.com'
+
+          code="$(curl -sS -o /dev/null -w '%{http_code}' "${app}/")"
+          echo "${app}/ → ${code}"
+          [ "${code}" = "200" ] || { echo "Expected 200 from the SPA."; exit 1; }
+
+          code="$(curl -sS -o /dev/null -w '%{http_code}' "${api}/api/me")"
+          echo "${api}/api/me → ${code}"
+          [ "${code}" = "401" ] || { echo "Expected 401 from an unauthenticated /api/me."; exit 1; }
+
+          echo "Both hostnames answer over TLS."

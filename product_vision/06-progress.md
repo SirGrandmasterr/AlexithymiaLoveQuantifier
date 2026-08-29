@@ -42,8 +42,8 @@ and whether the weights stay out of it entirely.
 | A10 | 6-A closeout: docs, QA, review | done | — | 2026-08-22 | **Slice 6-A ships.** Ten QA items on a real stack, three defects found and fixed, thirteen documents made true, a review pass and a simplify pass |
 | B1 | Day graph: the geometry | done | — | 2026-08-23 | Four pure functions and 62 tests; nothing renders, and nothing reaches the bundle yet |
 | B2 | Day graph: the component | done | — | 2026-08-23 | **Slice 6-B ships.** Hand-drawn SVG, mounted; 32 component tests; the tilt needed a floor and a smaller angle to be legible |
-| U1 | The user test | not started | | | Gate: decides whether G1/G2 are built at all |
-| C1 | Deployment: headers and the model channel | not started | | | |
+| U1 | The user test | **instrument built, run not done — the gate is open** | — | 2026-08-25 | `product_vision/eval/` holds the protocol, two tally sheets and a fixture proposal card. **No participant has seen any of it.** Nothing after B2 is decided by it yet |
+| C1 | Deployment: headers and the model channel | done | — | 2026-08-25 | Five headers, a `/models/` channel, `make models-fetch`; verified in four engines. **No `src/` or `backend/` file changed** |
 | C2 | Capture and the inference boundary | not started | | | |
 | C3 | Web Light-tier transcription + the Vault copy | not started | | | |
 | C4 | Android: microphone, plugin skeleton, tiers | not started | | | |
@@ -62,6 +62,7 @@ and whether the weights stay out of it entirely.
 
 | Date | Decision | Reasoning | Who |
 | :--- | :------- | :-------- | :-- |
+| 2026-08-25 | **The full user test is scheduled and run by the operator; the gate stays open until it is.** Not a self-run at n=1, not a reduced variant, and **C2 does not start early.** | U1 built the instrument and could not run it — five or six participants, four of them German-first, over eight days, with two facilitated sessions. Of the alternatives, n=1 cannot answer question 2 at all (a person cannot Wizard-of-Oz themselves) and cannot retire any feeling id under §10.1's n ≥ 5 rule, so it would close one of four decisions and leave the vocabulary exactly where it is; and starting C2 on an unrun gate spends the phase's expensive half on four unmade decisions, two of which are decisions to *not build* something large. | User |
 | 2026-08-22 | **docs/13 does not gate 6-A. The journal ships plaintext.** | Zero-knowledge encryption was *explored as an option and is not confirmed as a future feature.* It is therefore not "close" in the sense §12.3 means, and 6-A does not wait on it. The Vault page states the plaintext position in the journal's own words; the operator explicitly authorised adapting Vault sentences as needed. | User |
 | 2026-08-22 | **`person_fact` waits for 6-E — and 6-E is conditional.** | It is the one payload that is verbatim text *about a named third party* (§12.5, docs/13 §0). A1–A4 still build the `kind` and the server still accepts it; **no UI writes one** until the envelope lands. Because encryption is unconfirmed, the honest reading is that `person_fact` is deferred indefinitely, not merely by one slice. | User |
 
@@ -78,6 +79,11 @@ Everything the design document marked `(verify)`, as it gets measured. Device, b
 
 | Date | What | Value | Where measured | Design doc updated? |
 | :--- | :--- | :---- | :------------- | :------------------ |
+| 2026-08-25 | **Whisper tiny, the Light-tier transcriber — the §5.5 `(verify)` on its size** | **41 MB.** The two files transformers.js loads for `automatic-speech-recognition` are `encoder_model_quantized.onnx` (10,124,990 B) and `decoder_model_merged_quantized.onnx` (30,719,241 B) = **40.8 MB**; the tokeniser, the four configs, `vocab.json`, `merges.txt` and `normalizer.json` add 4.4 MB. With the Apache licence text the whole set is **45,245,009 B over 13 files**. Comfortably inside §5.5's guessed 40–75 MB, and small enough that the Light tier is a real floor rather than a second big download | `make models-fetch`, against `onnx-community/whisper-tiny` rev `ff41770` | Yes — §5.5 carries the measurement in both places it guessed |
+| 2026-08-25 | **That `Cross-Origin-Resource-Policy` on `/uploads/` is what keeps avatars loading under COEP — a matched pair, not an assertion** | Two responses from the same Nginx, requested cross-origin by the same document, differing only in one header: `/uploads/<avatar>.jpg` (**CORP present**) **loaded**; `/vite.svg`, served by `location /` which sets no CORP, was **blocked** with `net::ERR_BLOCKED_BY_RESPONSE.NotSameOriginAfterDefaultedToSameOriginByCoep`. The negative control is what makes this evidence rather than a green tick | A throwaway `nginx:alpine` on :8099 sending COOP/COEP and **no CSP of its own**, loading images from `127.0.0.1:8082` | Yes — §5.6 now says what does and does not reproduce |
+| 2026-08-25 | **Cross-origin isolation and WASM, in four engines** | `crossOriginIsolated === true`, `SharedArrayBuffer` defined, an 8-byte module compiled, a real module instantiated and called (`f() = 42`), and `new WebAssembly.Memory({shared:true})` returning a `SharedArrayBuffer` — **all four engines, 10 pass / 0 fail each** | Chrome 151, Edge 151, Firefox (Gecko), and Chromium 148 in the Electron pane, against the real stack | n/a — not a `(verify)`, but the evidence C3's runtime choice rests on |
+| 2026-08-25 | **The microphone is no longer forbidden by the edge** | `document.featurePolicy.allowsFeature('microphone') === true` in Chrome and Edge — a direct read of the header rather than of a user's answer. `getUserMedia({audio:true})` reached the device layer in all four engines (granted against a fake device; `NotAllowedError` with no policy wording where none was configured). Firefox reports `INFO`: Gecko exposes no `featurePolicy` API, so the behavioural probe is the only reading available there | The self-test page, on the app's own origin under the real headers | Yes — §5.6 records the change as shipped |
+| 2026-08-25 | **Main-chunk size after C1** | **914.65 kB raw / 279.98 kB gzip — byte-identical to B2.** Expected and worth stating: C1 changed no `src/` file, and the 45 MB of weights it made servable are in a Docker volume, not a bundle. This is still the yardstick C3 and D3 are measured against | `npx vite build`, this machine | n/a — not a `(verify)` |
 | 2026-08-22 | Baseline main-chunk size, pre-journal | 813.17 kB raw / 250.38 kB gzip | `npx vite build`, this machine | n/a — baseline, not a `(verify)` |
 | 2026-08-22 | Main-chunk size after A4 — the first bundle movement of the phase | 815.15 kB raw / 251.19 kB gzip (**+1.98 kB / +0.81 kB gzip**), from `buildJournalCSV` and the changed Vault copy | `npx vite build`, this machine | n/a — not a `(verify)`, but the number C3 and D3 are measured against |
 | 2026-08-22 | Main-chunk size after A5, the first **frontend** slice | 815.15 kB raw / 251.19 kB gzip — **unchanged from A4**. Nothing imports `journal.js` yet, so it tree-shakes out entirely | `npx vite build`, this machine | n/a — not a `(verify)` |
@@ -102,6 +108,12 @@ Everything the design document marked `(verify)`, as it gets measured. Device, b
 
 | From | Item | Where it should land |
 | :--- | :--- | :------------------- |
+| C1 | **`worker-src 'self'` refuses a Worker built from a `blob:` URL** — measured, in Chromium: *"Creating a worker from 'blob:...' violates the following Content Security Policy directive: worker-src 'self'"*. Several WASM runtimes, onnxruntime-web among them, spawn their worker from an object URL. C1 did **not** widen the directive: the prompt said `worker-src 'self'`, and widening a policy for a runtime nobody has chosen yet is guessing. | **C3**, which picks the runtime and will find out in ten minutes whether it needs this. Two options, and the first is better: configure the bundler to emit real worker files (Vite does this natively), or widen to `worker-src 'self' blob:` — a real widening that wants a stated reason in the commit |
+| C1 | **A model URL carries no content hash, so `Cache-Control: max-age=31536000` outlives a re-pin.** If an operator changes `WHISPER_TINY_REV` in the Makefile, the bytes at `/models/onnx-community/whisper-tiny/config.json` change while the path does not, and a client holding a year-long cache entry keeps the old file. C1 left `immutable` **off** for exactly this reason, so a reload can still revalidate and the ETag makes that a 304 — but a client that never reloads never asks. | **C3 or D3**, whichever first re-pins a revision. The clean fix is to put the revision in the served path; the cheap one is a `?v=` the loader appends. Not worth building before a second revision exists |
+| C1 | **`docs/02-architecture.md` and `src/mobile/serverUrl.js` both say the Go service ships no CORS middleware. It does** — `backend/internal/handlers/cors.go`, and every `/uploads/` response carries `Access-Control-Allow-Origin: *`, visible in the `curl -I` output C1 captured. Out of C1's scope fence (it touches neither file and changes no CORS behaviour), so it is recorded rather than fixed. | Any session that touches the CORS path or `docs/02`. It is a two-line doc correction, but check *why* the middleware is there before writing the sentence |
+| C1 | **Preamble §2.4 says `npm test` is 22 files / 511 tests; it is 24 files / 609** as of B2. Not corrected here, because `06-implementation-prompts.md` already carries uncommitted edits from U1 and entangling a second session's change with them helps nobody. | Whichever session next edits that file deliberately, or Z at closeout |
+| C1 | **`make models-fetch` before the first `make up` makes Compose warn on every subsequent `up`**: *volume "love-metrics-models" already exists but was not created by Docker Compose*. The volume is used and served correctly either way. Not fixed: `external: true` would make the volume a hard prerequisite of `up` and break the documented bare-`docker compose up` path, which is a worse trade than a warning line. | Nowhere, unless it becomes annoying. Documented in `docs/09-deployment.md` §2 so it is not rediscovered as a fault |
+| U1 | **The user test itself has not been run.** The instrument exists — `eval/user-test-protocol.md`, two tally sheets, `eval/proposal-card.html` — and running it needs five or six people, four of them German-first, over eight days, with two facilitated sessions. That is not something a session at a keyboard can produce, and inventing numbers for it would be worse than leaving the gate open. **Four decisions are unmade: the feeling vocabulary's membership and its valence/energy constants, the ritual's length, whether the proposal card is built at all, and whether 6-G is built at all.** | **U1, re-run by the operator with real participants.** Then a dated `eval/user-test-report-YYYY-MM-DD.md`, the constant changes it justifies, §5.3 and §12.5 rewritten from draft to result, and the C/D/G prompts updated. C2 does not start before that |
 | S0 | **Closed by A10.** Preamble §2.4 and Appendix B item 9 now say six, and add that `backend/**/uploads/` is gitignored so the untracked leftovers need no attention at all — while a stray `backend/alexithymia.db` **does**, because it is untracked *and* un-ignored. | — |
 | S0 | **Closed by A10.** Preamble §2.4 now states that `gofmt -l .` can never be empty on this checkout, says not to run `gofmt -w .`, and carries the line-ending-insensitive walk inline — with the addition that `git ls-files` will not see the `.go` files your own session created, so add them to the list. | — |
 | S0 | **Closed by A10.** Preamble §2.4 now reads 22 files / 511 tests in ~20 s, which is what this machine does at the 6-A closeout. | — |
@@ -139,6 +151,76 @@ Everything the design document marked `(verify)`, as it gets measured. Device, b
 
 Things a future session would otherwise rediscover the hard way.
 
+- **An avatar loading under COEP on a stock Compose stack proves nothing about CORP, and C1's
+  first attempt at the check was wrong.** On the web `getServerUrl()` returns `''`
+  (`src/mobile/serverUrl.js`), so avatars are same-origin relative paths and COEP never applies
+  to them — the check passes identically with the CORP header deleted. Worse, the obvious fix of
+  requesting the avatar from `127.0.0.1` instead of `localhost` is refused by **CSP `img-src`**
+  one layer earlier, which reads as a COEP failure and is not one. To exercise CORP you need a
+  document that is cross-origin isolated and has **no CSP of its own**; C1 used a throwaway
+  `nginx:alpine` on another port, and used `/vite.svg` (which sets no CORP) as the negative
+  control. **A check with no negative control is a check that cannot fail.**
+- **Any argument beginning with `/` is rewritten by Git Bash before `docker.exe` sees it.** This
+  bit C1 three times, and once silently: the remedy line printed by `scripts/models-fetch.sh`
+  was `docker run ... alpine rm -f /models/<file>`, MSYS rewrote the path to something under
+  `C:/Program Files/Git/`, and `rm -f` reported success for deleting nothing — so the file the
+  operator was told to delete was still there and the next run refused again, looking like a bug
+  in the verifier. The fixed form keeps the path inside `sh -c '...'` and drops `-f`. Named
+  volumes (`-v love-metrics-models:/models`) are safe because they have no leading slash;
+  `docker exec ... ls /app/uploads` and `curl -F "f=@/c/..."` are not. Use `MSYS_NO_PATHCONV=1`,
+  or keep the path off the argument list.
+- **`huggingface.co` is unreachable from this host and reachable from inside a container.** The
+  host gets `curl: (35) Send failure: Connection was reset` while `example.com`, the npm registry
+  and Docker Hub are all fine; the same request from `docker run alpine` succeeds. This is why
+  `make models-fetch` does its downloading inside a one-off container rather than on the host —
+  a design that is better anyway (it fills the volume directly, needs no host `curl` or
+  `sha256sum`, and works before the stack has ever been up), but the constraint is what forced it.
+- **A headless browser dumps the DOM at the load event and exits, so no async check survives.**
+  `--dump-dom` and `--screenshot` both fire at `load`; `--virtual-time-budget` keeps the process
+  alive but does **not** drive the media pipeline, so `getUserMedia` never settles under it at
+  any budget. Neither Edge nor Firefox has a delay flag. What worked: mirror every verdict into
+  `document.title`, run the browser **visible**, and read
+  `Get-Process <name> | Select MainWindowTitle` from PowerShell. Edge needs `--app=<url>` for the
+  page title to become the window title (otherwise it is the tab strip's). Firefox on this
+  machine produces **no file at all** for `--headless --screenshot` — no error, no output — and
+  `--width`/`--height` are not Firefox flags: it opens them as URLs, in a foreground tab that
+  hides the one you wanted.
+- **`add_header` replaces the inherited set; it never extends it.** A `location` that declares
+  even one `add_header` loses every server-level header. `/uploads/` already restated its set for
+  this reason and C1's `/models/` has to as well — which is also why COOP/COEP on the server
+  level do not reach either location, and why CORP had to be added to `/uploads/` explicitly
+  rather than inherited.
+- **The `/models/` location must never fall through to the SPA.** Without `try_files $uri =404`
+  a missing weight file is answered by `location /`'s `try_files ... /index.html` with **HTTP 200
+  and a page of HTML**, which arrives at a WASM runtime as a corrupt model rather than a missing
+  one. This is the same failure the `/uploads/` block was originally added to fix; it is now
+  guarded and the guard is asserted (`curl` on a missing model returns 404, and a directory
+  returns 404 rather than a listing).
+
+- **The U1 gate is open, and C2 is the session that must not step over it.** §12.4 is the reason
+  everything from 6-C onward exists in the order it does: the user test decides the feeling
+  vocabulary, the ritual's length, whether the proposal card is built, and whether 6-G is built.
+  U1 built the instrument (`product_vision/eval/`) and could not run it — running it needs five or
+  six people over eight days. **The absence of a `product_vision/eval/user-test-report-*.md` is
+  how you know.** A session that starts C2 on the strength of an unrun gate is spending the
+  phase's expensive half on four unmade decisions, and two of the four are decisions to *not
+  build* something large.
+- **`eval/proposal-card.html` is generated. Do not hand-edit it.** Its vocabulary is read out of
+  `src/constants/journal.js` at build time so a chip on the fixture is the same word in the same
+  colour as the app's. After any change to `FEELINGS`, run
+  `node product_vision/eval/build-proposal-card.mjs` — nothing in `npm test` catches the drift,
+  because the file is not part of the app and no suite reads it.
+- **The fixture card's copy is deliberately not in `JOURNAL_COPY`.** *This isn't it*, *Dashed
+  means not saved yet* and the German column live in `eval/proposal-card.template.html`, because
+  putting unshipped strings in `src/constants/journal.js` would have the forbidden-word walk
+  asserting copy for a screen the app does not have. **D2 moves them** when it builds the real
+  card, and the walk covers them from that point.
+- **`payload.duration_ms` on a ritual row is mount-to-last-answer, taken before the save.** The
+  ledger's A8 note that it read 29.8 s against a stopwatch's 17.2 s is about a *driven* run,
+  where the screen mounted long before the first synthetic tap. For a person navigating to
+  `/journal/ritual` the two are close, which is what makes it the only usable instrument at
+  23:00 — and §5 of the user-test protocol calibrates it per participant and per phone rather
+  than assuming either.
 - **`gofmt -l .` lists 15 files on a clean tree, and always will.** Every `.go` file the repo
   tracks is CRLF; `gofmt` normalises to LF, so it reports all of them. Formatting is genuinely
   clean. **Do not run `gofmt -w .`** — it rewrites 15 files end to end and buries your real
@@ -2057,3 +2139,160 @@ Both were found by looking at it, and both are now in §8.3 and `docs/06-fronten
 4. **`docs/12-android-app.md` §3.3's axis table has a fifth row now**, and the graph took the
    card stack's numbers deliberately — 45 px to claim, 12 px to yield — so two surfaces that
    take a horizontal drag on the same phone cannot disagree about how far a drag is.
+
+---
+
+**U1 — The user test** · 2026-08-25 · commit `<pending>`
+
+- **Shipped:** the instrument, not the result. `product_vision/eval/` is created and holds six
+  files: [`user-test-protocol.md`](eval/user-test-protocol.md) (a three-contact study — a
+  60–75 min session, a seven-day diary week, a 40 min closing session — with the decision rules
+  for all four gates **fixed before the run**), [`tally-feelings.md`](eval/tally-feelings.md)
+  and [`tally-triggers.md`](eval/tally-triggers.md), a generated fixture proposal card
+  ([`proposal-card.html`](eval/proposal-card.html), its
+  [template](eval/proposal-card.template.html) and its
+  [generator](eval/build-proposal-card.mjs)), a
+  [report template](eval/user-test-report-TEMPLATE.md), and a
+  [README](eval/README.md). Three sentences in
+  `06-emotional-journal.md` — §5.3, §12.4 and §12.5 — now name the instrument and say the run
+  has not happened. **No constant changed. No `src/` or `backend/` file changed.**
+- **Verified:** `npm test` **24 files / 609 tests green**, 28.9 s; `cd backend && go test ./...`
+  green (handlers 10.2 s). Both run before any edit, and nothing this session touched can move
+  either — the only files it created live under `product_vision/`. The fixture card was driven
+  end to end in a browser: 21 chips from the real constant, `stress` rendering `#f43f5e` with a
+  dashed border, and the §4.7 Lucie trace reproduced exactly — proposed `pleasure`/`rapport`/
+  `stress`, kept the first two, `stress` replaced from the grid by `irritation`, **acceptance
+  0.67**, logged with millisecond offsets.
+- **Measured:** nothing. This session resolved no `(verify)`, and that is the honest entry: the
+  four numbers §12.4 asks for come from people, and no person has seen any of this.
+- **Deferred: the run itself, and with it all four decisions.** See *Deferred and follow-ups*.
+  The vocabulary is still a draft, `RITUAL_QUESTIONS` is untouched, D2 is neither confirmed nor
+  cancelled, and 6-G is neither built nor dropped. §5.3 and §12.5 were **not** rewritten from
+  *"a first draft for the user test to correct"* to *"what the test produced, dated"*, because
+  no test produced anything — the prompt's steps 4 and 5 are conditional on step 2, and step 2
+  did not happen.
+- **Next session should know:** the four warnings added above, of which the first is the one
+  that matters: **the gate is open, and the absence of `eval/user-test-report-*.md` is how you
+  know.** C2 is next in the table and it is the session §12.4 exists to sit in front of.
+
+### Why the fixture card is a web page and not the A7 composer, and not paper
+
+The U1 prompt allows either *"the A7 composer with a hard-coded proposal"* or *"a printed
+card"*, and asks which. Neither was taken, and the protocol's §7 gives the reasoning in full;
+the short form:
+
+- **The composer has no proposal card in it.** There is no transcript, no *pre-selected but not
+  yet saved* dashed state, no *This isn't it* — §4.4 is a design and **D2** is the session that
+  builds it. Reaching for the composer means building most of D2 inside U1, and it means putting
+  unshipped strings into `JOURNAL_COPY`, where the forbidden-word walk would then be asserting
+  copy for a screen the app does not have.
+- **Paper cannot produce question 2's number.** An acceptance rate is a count of taps, and the
+  single most decisive one — whether the first move was a *confirm* or the *add* chip — is
+  exactly what a facilitator's memory is worst at. The fixture logs every tap with a millisecond
+  offset and computes the rate itself.
+- **What keeps it from being a mock-up** is that the twenty-one words, their labels, glosses and
+  colours are generated from `src/constants/journal.js`, so a chip on the card is the same word
+  in the same colour as the app's; the chip shape, the dashed outline, the `·`/`··`/`···`
+  button, the ≈ control, the *about* row and the exclusivity of `unclear` are matched against
+  `CheckinComposer.jsx`. What is not the app is the sheet's frame — hand-written CSS, because it
+  is a research instrument and re-rendering the build pipeline for it buys nothing a participant
+  can see.
+
+### Three things the protocol had to decide that neither §12.4 nor the prompt settled
+
+1. **The valence and energy constants had no instrument at all.** §12.4 question 3 asks which
+   words are never chosen and which are missing — a *membership* question — while the U1 prompt's
+   decision table asks for *"the feeling vocabulary's final membership **and the valence/energy
+   constants**"* from the same tally. A use count cannot produce a coordinate. The protocol adds
+   a printed **affect grid** card sort (§9, S1 pass 2): the participant places the words they use
+   on an unnumbered two-axis grid, and the median placement moves a constant only when it is more
+   than 0.3 (valence) or 0.25 (energy) from the authored one. Without it, the membership would be
+   settled while the two numbers behind every branch of the day graph stayed authored from
+   nothing.
+2. **A Wizard-of-Oz proposer is a ceiling, not an estimate.** A facilitator who heard the
+   sentence and watched the face that said it will beat a 2-billion-parameter model working from
+   a transcript. So question 2 is run in **two conditions** — clean, and one word deliberately
+   swapped for its neighbour on the same axis — three cards per participant on a fixed schedule,
+   and the two rates are never pooled. The model sits between them. And a **participant who does
+   not notice the swapped word is a worse outcome than one who fixes it**: that is a card writing
+   a word into the record the user did not choose, which is the invariant-15 failure §4.4 exists
+   to prevent, so it is disqualifying on its own regardless of the acceptance rate.
+3. **§5.8's gate has four outcomes, not two.** *"If people do not reuse triggers and do not
+   search, it is not built"* reads as a coin flip, but the two halves of 6-G have very different
+   costs: normalising trigger labels embeds a few dozen short strings, while recall embeds every
+   entry a user has ever written and is what the 200–300 MB download and the re-embed on model
+   change are for. The protocol's §10.4 therefore admits a **split** outcome — labels fragment,
+   nobody searches — under which G1 is re-scoped and G2 is deferred. On the evidence of how
+   people talk about their own notes, that is the outcome to expect, and the design document does
+   not yet name it.
+
+---
+
+**C1 — Deployment: headers and the model channel** · 2026-08-25 · commit `<uncommitted>`
+
+- **Shipped:** the edge stops forbidding the microphone and WebAssembly, and model weights have
+  a place to be served from. [`nginx.conf`](../nginx.conf): `Permissions-Policy` →
+  `microphone=(self)`; CSP `script-src` gains `'wasm-unsafe-eval'`; `worker-src 'self'` stated;
+  `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` at
+  the server level; `Cross-Origin-Resource-Policy: cross-origin` on `/uploads/`; and a new
+  `/models/` location over the `models_data` volume with a one-year cache lifetime, exact
+  `Content-Length`, ranges on, `gzip off`, and `try_files $uri =404`. **`connect-src` is
+  untouched.** [`docker-compose.yml`](../docker-compose.yml) declares `models_data` (named
+  `love-metrics-models`) and mounts it **read-only** at `/srv/models`.
+  [`Makefile`](../Makefile) gains `make models-fetch` with a 13-row manifest of pinned URLs and
+  SHA-256 sums; [`scripts/models-fetch.sh`](../scripts/models-fetch.sh) is the mechanism.
+  `docs/09-deployment.md` gains the volume, the target, the operator step and the header table.
+  **No `src/` or `backend/` file changed.**
+- **Verified:** `npm test` **24 files / 609 tests green**, 20.4 s; `cd backend && go test ./...`
+  green (handlers 10.0 s); `go vet` clean; the line-ending-insensitive `gofmt` walk empty;
+  `npx vite build` success at **914.65 kB / 279.98 kB gzip — byte-identical to B2**.
+  The stack was brought up with `make up` and driven for real.
+  - **`curl -I` on every changed surface.** All five header changes present on `/`;
+    `/uploads/` carries CORP with its sandbox CSP unchanged; `/models/config.json` returns
+    exact `Content-Length: 2243` with `Cache-Control: public, max-age=31536000`; the 10 MB
+    weight file returns `Content-Length: 10124990` and answers a `Range` request with `206` and
+    a correct `Content-Range`; **the bytes served over HTTP hash to the SHA-256 pinned in the
+    Makefile** — end to end, pin → volume → Nginx → wire; a missing model 404s and a directory
+    404s rather than listing.
+  - **Four engines, 10 pass / 0 fail each** — Chrome 151, Edge 151, Firefox, and Chromium 148 in
+    the Electron pane — against a self-test page served from the app's own origin under the real
+    headers. It is external, not inline, because `script-src 'self'` blocks inline script, which
+    made it check zero.
+  - **The avatar check, which is why C1 is its own session, came out in two parts.** The literal
+    check passes: a real avatar, uploaded through `POST /api/upload` by a real account, renders
+    on `/profile` under COEP in every engine. But it passes *for the wrong reason* — the web
+    build resolves avatars same-origin, so COEP never applies and the check would pass with the
+    CORP header deleted. The header was therefore verified separately as a matched pair (see
+    *Measured*): same Nginx, same requesting document, one response with CORP loaded and one
+    without it was blocked by COEP. **Both halves are in the ledger because the first one alone
+    would have been a green tick over an untested header.**
+  - **The app still functions.** All seven routes rendered with **zero console errors** and
+    `crossOriginIsolated === true` throughout; a **real check-in was written** through the
+    composer and rendered on the B2 day graph. `/vault` was rendered in Edge and in Firefox from
+    screenshots, showing live data.
+  - **`make models-fetch` was run four times.** A cold fetch of 13 files / 45,245,009 bytes, all
+    verified; a re-run reporting 13 cached and re-verifying every one; **a run after flipping a
+    single byte in the 10 MB encoder — same length, different hash — which refused, exited
+    non-zero, named the file, printed expected and actual, and overwrote nothing**; and a run
+    against a deliberately wrong pin, which deleted its partial and refused. A failed run leaves
+    the volume exactly as it found it: no `.part` files, no empty directories.
+- **Measured:** five rows above — Whisper tiny's size (**41 MB**, resolving a §5.5 `(verify)`),
+  the CORP matched pair, cross-origin isolation and WASM in four engines, the microphone policy
+  read, and the unchanged bundle.
+- **Corrected in the design document:** §5.5 said Whisper is **MIT**. MIT is the licence of
+  OpenAI's Whisper *code*; the weights are **Apache 2.0**. `make models-fetch` places the Apache
+  text beside them, pinned by URL and sum like any other row.
+- **Deferred:** nothing in scope was skipped. Five follow-ups recorded above, of which one is
+  C3's to act on immediately: **`worker-src 'self'` refuses a `blob:` Worker**, which is how
+  several WASM runtimes spawn theirs. C1 deliberately did not widen the directive.
+- **Left behind:** nothing. The self-test pages were removed from the frontend container, the
+  throwaway COEP probe container was deleted, and the probe account, its check-in and its two
+  avatar files were deleted from the database and the uploads volume — **which matters, because
+  this machine's `alexithymialovequantifier_postgres_data` holds the operator's real account**;
+  only user 9's rows were touched. The stack and the `love-metrics-models` volume (45 MB) are
+  left up; `make down` stops it.
+- **Next session should know:** the six warnings added above. The two with teeth are the CORP
+  one (**a check with no negative control is a check that cannot fail**) and the `blob:` Worker
+  finding, which lands on C3's desk. C2 is next in the table, and **the U1 gate is still open** —
+  C1 was safe to run ahead of it because it changes no user-visible behaviour and decides nothing
+  the user test decides.

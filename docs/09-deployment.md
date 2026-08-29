@@ -4,7 +4,7 @@
 
 ## 1. Compose topology
 
-[`docker-compose.yml`](../docker-compose.yml) — three services, two named volumes, two
+[`docker-compose.yml`](../docker-compose.yml) — three services, three named volumes, two
 networks.
 
 ```mermaid
@@ -20,6 +20,7 @@ graph LR
     end
     DB --- VOL["volume: postgres_data"]
     BE --- UPL["volume: uploads_data"]
+    FE --- MOD["volume: models_data (ro)<br/>served at /models/"]
 ```
 
 | Service | Container | Host → container | Networks | Image / build |
@@ -149,7 +150,8 @@ location ~ ^/api/(login|signup)$ {      # regex wins over the /api/ prefix below
 }
 
 location /api/     { proxy_pass $upstream$request_uri; }
-location /uploads/ { proxy_pass $upstream$request_uri; }   # + a sandbox CSP
+location /uploads/ { proxy_pass $upstream$request_uri; }   # + a sandbox CSP, + CORP
+location /models/  { alias /srv/models/; try_files $uri =404; }   # the models_data volume
 ```
 
 `try_files … /index.html` is what makes a refresh on `/profile` work instead of 404ing —
@@ -177,6 +179,52 @@ guess expensive for the *server* too (about a second of CPU), so the limit is as
 denial of service as it is about brute force.
 
 Still absent: gzip/brotli, cache headers for hashed assets, HTTP/2, and TLS.
+
+### Cross-origin isolation, and why `/uploads/` needed a header for it
+
+Phase 6 runs a transcriber on the user's own device, in WebAssembly. Four header changes make
+that possible, and one of them has a blast radius wider than the feature:
+
+| Header | Was | Is | Why |
+| :----- | :-- | :- | :-- |
+| `Permissions-Policy` | `microphone=()` | `microphone=(self)` | A policy denial rejects `getUserMedia` before the browser asks anyone, so the voice check-in could not even show its consent prompt. `(self)` restores the default; the user's answer still decides. `geolocation` and `camera` stay denied. |
+| CSP `script-src` | `'self'` | `'self' 'wasm-unsafe-eval'` | A bare `script-src 'self'` blocks WebAssembly compilation outright. `'wasm-unsafe-eval'` permits WASM **without** re-enabling `eval()` or `new Function()`. |
+| CSP `worker-src` | *(inherited)* | `'self'` | Already resolved to `'self'` through the `default-src` fallback; stated because the transcriber runs in a Worker and that should not have to be derived. |
+| `Cross-Origin-Opener-Policy` / `Cross-Origin-Embedder-Policy` | *(absent)* | `same-origin` / `require-corp` | Together they make the document *cross-origin isolated*, which is the only way a browser hands out `SharedArrayBuffer` — i.e. the only way a WASM build uses more than one core. |
+
+`connect-src` is unchanged and must stay that way: model weights come from this origin, never
+from a public model hub, and the Vault page tells the user exactly that.
+
+**COEP is the one to understand.** `require-corp` means every *cross-origin* subresource the
+page loads must carry a `Cross-Origin-Resource-Policy` header of its own, or the browser
+blocks it — with no HTTP error to read, because the response arrives and is then discarded.
+Avatars under `/uploads/` are cross-origin whenever the SPA and the API are on different
+hostnames, so that location now sends:
+
+```nginx
+add_header Cross-Origin-Resource-Policy "cross-origin" always;
+```
+
+`cross-origin` rather than `same-site`, because `same-site` would still block the Android
+WebView, whose document is served from `https://localhost` by Capacitor and shares no
+registrable domain with the server. It grants nothing new either: with no CORP header at all —
+which is what this location sent before — any origin could already embed these images. The
+containment for the real risk here (files validated only by the client's declared MIME type)
+is the `sandbox` CSP, and that is unchanged.
+
+Two things measured on 2026-08-25 that are easy to get wrong later:
+
+- **A same-origin deployment does not exercise CORP at all.** On the web `getServerUrl()`
+  returns `''`, so avatars resolve as same-origin relative paths and COEP never applies to
+  them. Verifying "avatars still load" on a stock Compose stack therefore proves nothing about
+  CORP. It was verified separately, against a second cross-origin-isolated document with no
+  CSP of its own: `/uploads/` (CORP present) loaded, and `/vite.svg` from the same origin
+  (no CORP) was blocked with
+  `net::ERR_BLOCKED_BY_RESPONSE.NotSameOriginAfterDefaultedToSameOriginByCoep`. The only
+  difference between those two responses is the header.
+- **The app's own CSP blocks cross-origin subresources before COEP is consulted.** `img-src`
+  lists `'self'` plus the two production hostnames over https and nothing else, which is what
+  keeps COEP's blast radius small: there is almost nothing cross-origin for it to break.
 
 ---
 
@@ -218,6 +266,67 @@ CMD ["./main"]
 - `alpine:latest` (not pinned) provides a shell for debugging; `scratch` or `distroless`
   would be smaller and safer since the binary is static. The mutable tag is still a
   reproducibility hole — it errs toward *patched*, which is why it has not been changed.
+
+### The model channel: `/models/` and `make models-fetch`
+
+On-device inference needs weights, and weights are large: the Light-tier transcriber is 41 MB
+and the Full-tier model is around 2.6 GB. They are **not** baked into the frontend image —
+an image layer carrying either would have to be rebuilt and re-pushed on every frontend
+change — and they are **not** fetched by the app from a public model hub, because
+`connect-src 'self'` and the Vault page both say every request goes to this app's own origin.
+
+Instead they live in a named volume, `models_data` (`love-metrics-models`), mounted **read-only**
+into the frontend container at `/srv/models` and served by Nginx at `/models/`. Nginx is the
+only reader; nothing in the stack can write there.
+
+**An empty volume is the normal state of a fresh deployment.** `/models/` simply 404s until
+the operator opts a model in. Nothing else in the app is affected.
+
+#### The operator step
+
+```bash
+make models-fetch
+```
+
+That is the whole thing. It creates the volume if needed, downloads every file of the selected
+model sets into it, and verifies each one against a SHA-256 pinned in the
+[`Makefile`](../Makefile). It is idempotent: a file already present and correct is left alone,
+so re-running it is also the integrity check.
+
+To opt into more than the default:
+
+```bash
+make models-fetch MODELS="whisper-tiny gemma-4-e2b"
+```
+
+The default is `whisper-tiny` — 41 MB, the Light-tier floor. Larger sets are opt-in by name,
+and a name the manifest does not describe is refused before anything downloads.
+
+| | |
+| :-- | :-- |
+| Where the pins live | `MODEL_MANIFEST` in the Makefile: one `set\|path\|url\|sha256` row per file |
+| Where the logic lives | [`scripts/models-fetch.sh`](../scripts/models-fetch.sh) |
+| How it runs | a one-off `alpine:3.20` container with the volume mounted — so it works before the stack has ever been up, and needs no `curl` or `sha256sum` on the host |
+| Licences | fetched and pinned like any other row, and placed **beside** the weights. Whisper tiny is an ONNX export of `openai/whisper-tiny` and is **Apache 2.0**, so `LICENSE.txt` lands next to it. EmbeddingGemma, when a later session adds it, is under the Gemma Terms of Use, which must accompany redistribution. |
+
+#### What a mismatch does
+
+It **fails, and does not repair itself.** A file already in the volume that does not match its
+pin is either corruption or tampering, and silently re-downloading it would erase the evidence
+of which. The run stops, names the file, prints expected and actual, and tells the operator how
+to delete it and try again. Nothing is overwritten. A freshly downloaded file that fails its
+pin has its partial deleted and the run stops the same way — with the pointed reminder that
+either the pin is wrong or the URL is no longer serving what it served when it was pinned, and
+that updating the pin without finding out which is not an option.
+
+Verified on 2026-08-25 by flipping a single byte in the 10 MB encoder file — same length,
+different hash — and confirming the next run refused it, exited non-zero, and left it in place.
+
+> ⚠️ Running `make models-fetch` **before** the first `make up` makes Compose print
+> `volume "love-metrics-models" already exists but was not created by Docker Compose` on every
+> subsequent `up`. It is a warning and nothing more: the volume is used, mounted and served
+> correctly either way. Running `make up` first avoids it, because Compose then creates the
+> volume with its own labels.
 
 ### Uploaded files survive container recreation
 
@@ -423,11 +532,105 @@ and forwards traffic to `127.0.0.1:8082`. This provides complete end-to-end TLS 
 
 ## 7. CI
 
-[`.github/workflows/playwright.yml`](../.github/workflows/playwright.yml) is the only
-workflow. It runs Playwright on push/PR to `main`/`master` and uploads the HTML report.
-Since neither server is started there, it cannot pass — see
-[Testing §3.2](08-testing.md#32-why-it-currently-fails). No image is built, pushed, or
-deployed by any automation; deployment is manual `docker-compose up`.
+Three workflows. Only one of them runs without being asked.
+
+| Workflow | Trigger | What it does |
+| :------- | :------ | :----------- |
+| [`playwright.yml`](../.github/workflows/playwright.yml) | push/PR to `main`/`master` | Runs Playwright and uploads the HTML report. **It cannot pass** — neither server is started there; see [Testing §3.2](08-testing.md#32-why-it-currently-fails). |
+| [`android-release.yml`](../.github/workflows/android-release.yml) | tag `v*`, or manual | Builds the APK and attaches it to a GitHub Release. |
+| [`deploy.yml`](../.github/workflows/deploy.yml) | manual only | Deploys to the production host over SSH. |
+
+### The Android release
+
+`android-release.yml` runs the frontend suite and a `vite build` first, then builds the APK
+through [`Dockerfile.android`](../Dockerfile.android) — the same file `make build-android`
+uses, with the same two build arguments. That is on purpose: `android/` is regenerated from
+the Capacitor template inside the image on every run, so the artefact depends on
+`package-lock.json` and the Dockerfile rather than on any machine's local state, and a CI
+build that took a different path would give that up. If the Makefile's `build-android` recipe
+grows a third build argument, the workflow needs it too.
+
+`VITE_ANDROID_API_URL` defaults to `https://api.alexithymialovequantifier.voglerprojekte.com`
+in three places that must agree: `ANDROID_API_URL` in the [Makefile](../Makefile),
+`DEFAULT_NATIVE_URL` in [`src/mobile/serverUrl.js`](../src/mobile/serverUrl.js), and the
+workflow's `api_url` input. It is only a default — the in-app Server settings screen writes
+`localStorage` and wins, which is what makes one APK usable by anyone self-hosting.
+
+The APK is **debug-signed**, which installs from a browser download and cannot be uploaded to
+the Play Store. A release keystore is deliberately not in the repository or in an Actions
+secret; `make bundle-android KEYSTORE=...` is the path when someone decides otherwise.
+
+Tagging is the normal route:
+
+```bash
+git tag v1.0.0 && git push origin v1.0.0
+```
+
+A manual run with `release_tag` empty attaches the APK to the workflow run instead of
+publishing anything, which is how to test a build.
+
+### The deployment
+
+`deploy.yml` automates [`Setup Guide.md`](../Setup%20Guide.md) §4 and **nothing else**. It
+does not provision the host: Docker, the host Nginx site, the Certbot certificates and `.env`
+are set up once by hand. `.env` can never come from CI — it is git-ignored precisely so the
+database password and the JWT signing key live only on the host ([§6](#6-configuration-and-secrets)).
+
+On the host it updates the checkout, takes a database dump, runs `make up` — database first,
+schema second, app third, so a failed migration stops the deploy instead of leaving a server
+answering 500s — and then probes the stack twice: once on `127.0.0.1:8082` and once over TLS
+from the runner. Two checks rather than one because they fail differently: the first says the
+stack is broken, the second says the host Nginx, DNS or the certificate is.
+
+There is no `/healthz` yet ([§8](#8-production-readiness-checklist)), so the API probe asks an
+unauthenticated `GET /api/me` and expects **401** — the backend answering correctly. A `502`
+is Nginx unable to reach it.
+
+It **refuses to run against a dirty checkout** on the server unless `force_dirty` is set. A
+file edited by hand on the host is usually a fix made in a hurry, and discarding it silently is
+how it gets lost and rediscovered.
+
+Manual dispatch only, deliberately: the default branch is not a green-gated branch — the
+Playwright workflow that runs on it cannot pass — so deploying on push to `main` would be
+deploying on an unchecked signal.
+
+#### What it needs configured
+
+Repository **secrets**:
+
+| Name | What it is |
+| :--- | :--------- |
+| `DEPLOY_SSH_KEY` | Private half of a key whose public half is in the deploy user's `~/.ssh/authorized_keys`. Generate a dedicated one: `ssh-keygen -t ed25519 -C github-actions-deploy -f deploy_key -N ''` |
+| `DEPLOY_HOST_KEY` | The server's host key, so the runner pins it rather than trusting whatever answers on port 22: `ssh-keyscan -t ed25519 85.215.233.90` |
+
+Repository **variables** (optional; the defaults are in the workflow):
+
+| Name | Default | Verified on the host, 2026-08-29 |
+| :--- | :------ | :------------------------------- |
+| `DEPLOY_HOST` | `85.215.233.90` | Ubuntu 26.04, `ufw` allowing OpenSSH and Nginx Full |
+| `DEPLOY_USER` | `root` | There is no separate deploy user; the host is administered as root |
+| `DEPLOY_PATH` | `/root/projects/AlexithymiaLoveQuantifier` | **Not** the `/opt` that `Setup Guide.md` §4.1 suggests |
+
+The login needs Docker, `make`, `git` and `curl`, and its `git` needs to be able to reach
+GitHub — the checkout's `origin` is an SSH remote, so the host has its own key for that,
+separate from the one CI logs in with. All of that was verified present on 2026-08-29:
+Docker 29.1.3, Compose 2.40.3, GNU Make 4.4.1, git 2.53.0, and `git ls-remote origin`
+answering.
+
+Also verified, because the workflow's health checks assume them: the host Nginx serves both
+hostnames from a single TLS server block with a 301 from port 80, the Let's Encrypt
+certificate covers both names, `GET /` answers **200** and an unauthenticated `GET /api/me`
+answers **401** — on the loopback port and over TLS alike.
+
+**This host runs other projects.** There is a second app on `127.0.0.1:8083` behind the same
+Nginx. That is why the deploy's `docker image prune` carries an `until=168h` filter rather
+than collecting every dangling image on the box.
+
+The workflow declares the `production` environment, so required reviewers can be attached to it
+in the repository settings if a deploy should ever need approval.
+
+A branch deploys as a branch — `git checkout -B` — so a plain `git pull` on the server still
+works for whoever administers it by hand. A tag or a raw SHA detaches, having no branch to be on.
 
 ---
 

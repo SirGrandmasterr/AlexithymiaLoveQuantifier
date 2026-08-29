@@ -1524,6 +1524,11 @@ touch contract, and the design document's status line records 6-B as implemented
 
 *The gate. Everything after this is expensive; this is how you find out whether to spend it.*
 
+> **Half-run on 2026-08-25. The instrument exists; the run does not.** `product_vision/eval/`
+> holds the protocol, two tally sheets, a generated fixture proposal card and a report
+> template. Step 1 below is **done** — a re-run starts at step 2 and does not rebuild it. The
+> gate is still open, all four decisions are unmade, and the ledger says so.
+
 ▼▼▼ COPY FROM HERE ▼▼▼
 
 Read `product_vision/06-implementation-prompts.md` §2 and follow it for this entire session.
@@ -1539,7 +1544,10 @@ proposal card is worth building, and whether 6-G is built at all.
 
 **Build this**
 
-1. **`product_vision/eval/user-test-protocol.md`** — a runnable protocol, not a wish:
+1. **`product_vision/eval/user-test-protocol.md`** — a runnable protocol, not a wish.
+   **Written on 2026-08-25 and not run: read it rather than rewriting it, and change it only
+   where running it showed it to be wrong — its §10 decision rules are fixed in advance on
+   purpose, and a rule changed after the numbers are seen is not a rule.** It contains:
    - Participants, and the note that §12.4 question 8 requires **German first**: every recording
      in the participants' own language, before any English number is believed.
    - Tasks, in order, with what to observe and what to time.
@@ -1554,7 +1562,9 @@ proposal card is worth building, and whether 6-G is built at all.
    - A tally for question 4: how many distinct trigger labels a week produces, and how many are
      the same thing said differently. This is the number that decides 6-G.
 2. **Run it.** If the user cannot run it now, say so plainly and stop — do not proceed to C2 on
-   the strength of an unrun gate, and record in the ledger that the gate is open.
+   the strength of an unrun gate, and record in the ledger that the gate is open. *This is
+   what happened on 2026-08-25: the run needs five or six people, four of them German-first,
+   over eight days, with two facilitated sessions. It is the operator's to schedule.*
 3. **`product_vision/eval/user-test-report-YYYY-MM-DD.md`** — the results, question by question,
    with the raw tallies attached and each of the four decisions stated explicitly:
 

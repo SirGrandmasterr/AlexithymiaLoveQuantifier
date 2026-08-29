@@ -867,13 +867,20 @@ only waits for an HTTP response).
 
 ## 4. CI
 
-[`.github/workflows/playwright.yml`](../.github/workflows/playwright.yml) — the only
-workflow. On push/PR to `main` or `master`: checkout → Node `lts/*` → `npm ci` →
+[`.github/workflows/playwright.yml`](../.github/workflows/playwright.yml) — the only workflow
+that runs unasked. On push/PR to `main` or `master`: checkout → Node `lts/*` → `npm ci` →
 `npx playwright install --with-deps` → `npx playwright test` → upload `playwright-report/`
 for 30 days, 60-minute timeout.
 
-**Not in CI:** `vitest`, `go test`, `eslint`, `go vet`, and any Docker build. (`eslint` would
-fail anyway in the current checkout — see
+Two others exist and are triggered deliberately, not by pushing code
+([Deployment §7](09-deployment.md#7-ci)):
+[`android-release.yml`](../.github/workflows/android-release.yml) on a `v*` tag or manual
+dispatch, and [`deploy.yml`](../.github/workflows/deploy.yml) on manual dispatch only.
+**`android-release.yml` is the one place `vitest` runs in CI** — it gates the APK on
+`npm test` and `npx vite build`, because a release should not ship from a red tree.
+
+**Not run by any workflow on push:** `vitest`, `go test`, `eslint`, `go vet`, and any Docker
+build. (`eslint` would fail anyway in the current checkout — see
 [Known Issues](11-known-issues.md#npm-run-lint-is-broken-in-this-checkout).) Given that
 the only suite CI does run cannot pass in that environment, the pipeline is currently
 red-by-construction. The highest-value change is to add the two suites that *do* pass:
