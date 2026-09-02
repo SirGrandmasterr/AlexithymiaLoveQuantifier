@@ -3,7 +3,10 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import axios from 'axios';
-import Vault, { buildCSV, buildJournalCSV, describeBackend } from './Vault';
+import Vault, { AI_CLAIM, buildCSV, buildJournalCSV, describeBackend } from './Vault';
+import { JOURNAL_STORAGE_KEYS } from '../constants/journal';
+import { MAX_CLIP_MS, SILENCE_HOLD_MS } from '../journal/recorder';
+import * as tier from '../journal/inference/tier';
 import { SubjectsProvider } from '../context/SubjectsContext';
 
 vi.mock('axios');
@@ -214,24 +217,104 @@ describe('Vault page', () => {
         expect(screen.queryByText(/\d+ journal entr/)).not.toBeInTheDocument();
     });
 
-    it('states plainly that nothing is sent anywhere and nothing is encrypted', async () => {
+    /**
+     * The claims, verbatim, in both opt-in states.
+     *
+     * Verbatim and not fuzzy on purpose: this page is the one place in the app where the
+     * exact words are the feature, and a regex that passes on a paraphrase is a test that
+     * lets the paraphrase ship. §10.2 asks for seven claims across two states; C3 has six of
+     * the seven — the similar-entry answer arrives with 6-G, and adding it now would be
+     * asserting copy for a model that does not exist.
+     */
+    const claims = async () => {
         renderVault();
         await screen.findByText(/SQLite file/);
 
-        // The two claims that have to stay true of the code as written.
-        expect(screen.getByText(/Every request goes to this app's own origin/)).toBeInTheDocument();
-        expect(screen.getByText(/anyone with\s+access to the server can read it/)).toBeInTheDocument();
-        expect(screen.getByText(/There are none, by design/)).toBeInTheDocument();
+        expect(screen.getByText(/Every request goes to this app's own origin/)).toHaveTextContent(
+            "Nothing. Every request goes to this app's own origin — you can check that in your "
+            + "browser's network tab. There is no analytics, no telemetry, and no third-party "
+            + 'script. If you turn on voice check-ins, the speech and language model files are downloaded once, '
+            + 'from this same server, and run here.'
+        );
 
-        // 6-A stores the journal in the clear like everything else, and the sentence names it
+        // §4.2's numbers, read off the recorder's own constants rather than retyped.
+        expect(screen.getByText(/Only while the record button is lit/)).toHaveTextContent(
+            'Only while the record button is lit. There is no wake word, no background capture, '
+            + `and recording stops when you tap, after ${Math.round(SILENCE_HOLD_MS / 1000)} seconds `
+            + `of silence, or at ${Math.round(MAX_CLIP_MS / 1000)} seconds.`
+        );
+
+        // The journal is stored in the clear like everything else, and the sentence names it
         // in the journal's own words rather than leaving it under "notes" (Phase 6 §6.6). This
         // must not promise encryption later: docs/13 is an unconfirmed option, not a schedule.
         expect(screen.getByText(/Passwords are hashed/)).toHaveTextContent(
             'Passwords are hashed, but your notes, scores, and everything in the journal — the words '
-            + 'you tapped, what you typed, the people and things you named, and your answers to the '
-            + 'evening questions — are not.'
+            + 'you tapped, what you typed, the people and things you named, your answers to the '
+            + 'evening questions, and journal transcripts — are not.'
         );
+    };
+
+    /** The `**bold**` markers are formatting, not words; the page renders them as `<strong>`. */
+    const plain = (text) => text.replace(/\*\*/g, '');
+
+    it('states every privacy claim verbatim with voice off — the default', async () => {
+        await claims();
+        expect(screen.getByText(/None are running/)).toHaveTextContent(plain(AI_CLAIM.off));
+        // The "voice on" paragraphs must not be reachable in this state, and neither must any
+        // part of them: the page describes this device, not what the build can do.
+        expect(screen.queryByText(/Whisper tiny/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/Gemma/)).not.toBeInTheDocument();
     });
+
+    it('states the Full tier "voice on" paragraph verbatim — one model, named, with its licence', async () => {
+        window.localStorage.setItem(JOURNAL_STORAGE_KEYS.voice, 'true');
+        // The page asks the device as well as the key: a `true` alone is not enough, because
+        // jsdom cannot record and this page may only describe what is running here.
+        vi.spyOn(tier, 'detectTier').mockReturnValue('full');
+
+        await claims();
+        expect(screen.getByText(/One model, and it runs on this device/)).toHaveTextContent(plain(AI_CLAIM.on));
+        expect(screen.queryByText(/None are running/)).not.toBeInTheDocument();
+        // The Light tier's sentence describes two models. A Full-tier device runs one, and
+        // saying otherwise would be false in the direction this page exists to get right.
+        expect(screen.queryByText(/One small model writes the words down/)).not.toBeInTheDocument();
+    });
+
+    it('states the Light tier "voice on" paragraph verbatim — two models, both named', async () => {
+        // §5.5's Light tier is Whisper tiny for the words and Gemma 4 E2B for the tags, and
+        // §5.6 asks the Vault's model line to name every model and every licence. This is
+        // that sentence, on the device it is true of.
+        window.localStorage.setItem(JOURNAL_STORAGE_KEYS.voice, 'true');
+        vi.spyOn(tier, 'detectTier').mockReturnValue('light');
+
+        await claims();
+        expect(screen.getByText(/One small model writes the words down/))
+            .toHaveTextContent(plain(AI_CLAIM.onLight));
+        expect(screen.queryByText(/None are running/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/One model, and it runs on this device/)).not.toBeInTheDocument();
+    });
+
+    it('names a licence for every model it names, on both tiers', async () => {
+        // The §5.6 rule as an assertion rather than a reading: redistributing weights from
+        // the operator's own server needs the licence to travel with them, and the page that
+        // names the model is where the user is told which licence that is.
+        [AI_CLAIM.on, AI_CLAIM.onLight].forEach((claim) => {
+            if (claim.includes('Gemma 4 E2B')) expect(claim).toContain('Apache 2.0');
+            if (claim.includes('Whisper tiny')) expect(claim).toContain('Apache 2.0');
+        });
+        expect(AI_CLAIM.onLight).toContain('Whisper tiny and Gemma 4 E2B');
+    });
+
+    it('says a model is not running on a device that could not run one', async () => {
+        // The stale-`true` case: another browser on the same profile turned voice on. This
+        // page must still say none are running, because none are running *here*.
+        window.localStorage.setItem(JOURNAL_STORAGE_KEYS.voice, 'true');
+        vi.spyOn(tier, 'detectTier').mockReturnValue('text-only');
+
+        await claims();
+        expect(screen.getByText(/None are running/)).toBeInTheDocument();
+    });
+
 
     it('says "never" until an export has happened', async () => {
         renderVault();

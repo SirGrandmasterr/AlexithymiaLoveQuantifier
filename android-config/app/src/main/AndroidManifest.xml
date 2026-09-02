@@ -3,7 +3,7 @@
   Capacitor 8's generated manifest, plus the network and privacy configuration this app needs.
 
   Verbatim from node_modules/@capacitor/cli/assets/android-template.tar.gz except for the
-  four annotated changes below. See android-config/README.md for how to re-sync it after a
+  five annotated changes below. See android-config/README.md for how to re-sync it after a
   Capacitor upgrade — this is a whole-file replacement, so a new template's additions would
   otherwise be silently dropped.
 -->
@@ -26,6 +26,14 @@
           replicates that directory to Google Drive under the user's account. For an app whose
           Vault page tells people their data stays on their own server, copying it to a third
           party by default is a promise broken in the manifest.
+
+          Since Phase 6 the same directory also holds the journal's per-device settings
+          (which questions are asked, whether voice is on, the pinned tier), the journal's
+          outbox once it exists, and the speech model's weight files under files/models/.
+          None of that is the user's words — those are on the server, and the audio is never
+          written anywhere — but the settings say what the user asked this device to do, and
+          the model files are re-fetched from the configured server rather than restored
+          from a copy nobody verified.
 
           CHANGE 2 and 3 — networkSecurityConfig and usesCleartextTraffic.
 
@@ -79,4 +87,25 @@
       photo on the device" in exchange for nothing.
     -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!--
+      CHANGE 5 — RECORD_AUDIO, for the journal's voice check-ins (Phase 6, slice 6-C).
+
+      A runtime permission on every supported API level. It is requested at the first tap of
+      the microphone button and never at launch, for the same reason POST_NOTIFICATIONS is
+      requested when reminders are turned on: a permission prompt before the user has seen
+      what it is for is the reliable way to get it denied permanently. The request lives in
+      one place — the recorder's `requestStream`, through the journal plugin's
+      checkPermissions/requestPermissions — and the plugin's startCapture refuses to open
+      the device without the grant, so no code path can record without having asked. A
+      denial is not an error: the check-in falls through to typing and chips.
+
+      Deliberately absent: FOREGROUND_SERVICE and FOREGROUND_SERVICE_MICROPHONE. There is
+      no background capture to need them. Recording happens only while the button is lit,
+      stops on a tap, on two seconds of silence or at thirty seconds, and the plugin aborts
+      it the moment the activity pauses. A foreground service would let the microphone stay
+      open with the app hidden, which is exactly the claim the Vault page's "Does it listen?"
+      answer says this app never makes.
+    -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 </manifest>

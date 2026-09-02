@@ -4,6 +4,9 @@ import { ChevronLeft, ChevronRight, Info, Loader2, NotebookPen, Trash2 } from 'l
 import { useJournal } from '../context/JournalContext';
 import { useDiscretion } from '../context/DiscretionContext';
 import CheckinComposer, { CheckinButton, CheckinFab, chipClass } from './CheckinComposer';
+import { useVoiceAvailability } from './VoiceCheckin';
+import { buildContext } from '../journal/inference';
+import { useSubjects } from '../context/SubjectsContext';
 // The extension is deliberate: `dayGraph.js` (the geometry) and `DayGraph.jsx` (the drawing)
 // differ only in case, this filesystem does not, and Vite resolves `.js` before `.jsx` — so
 // a bare `'./DayGraph'` silently imports the geometry module and renders `undefined`.
@@ -491,14 +494,14 @@ const MonthStrip = ({ day }) => {
     );
 };
 
-const DayHeader = ({ day, today, onCompose }) => (
+const DayHeader = ({ day, today, onCompose, voice }) => (
     <header className="space-y-4">
         {/* The strip and the primary button share a row, so the button lands in the corner
             the dashboard puts *New Analysis* in (§9.2). Below `md` it is not rendered at
             all — there the way in is the round button over the bottom bar. */}
         <div className="flex items-start justify-between gap-4">
             <MonthStrip day={day} />
-            <CheckinButton onOpen={onCompose} />
+            <CheckinButton onOpen={onCompose} voice={voice} />
         </div>
 
         <div className="flex items-center justify-between gap-3">
@@ -581,9 +584,23 @@ export default function Journal() {
     const { day: dayParam } = useParams();
     const navigate = useNavigate();
     const {
-        entries, entriesForDay, loading, loadError, dismissLoadError, loadRange
+        entries, entriesForDay, triggers, loading, loadError, dismissLoadError, loadRange
     } = useJournal();
-    const [composing, setComposing] = useState(false);
+    const { relationships } = useSubjects();
+    // `null`, `'chips'` or `'voice'` — which way in was taken, not merely that one was.
+    const [composing, setComposing] = useState(null);
+
+    // Whether this screen offers a microphone at all: the device has to be able to run
+    // the transcriber, the user has to have turned it on, and discretion mode replaces it
+    // with the keyboard outright (§4.4, §9.6).
+    const voice = useVoiceAvailability();
+
+    // The closed vocabularies plus this user's own names and labels — and never an id
+    // (§5.1). Built here because this is the screen that holds both lists.
+    const proposalContext = useMemo(
+        () => buildContext({ relationships, triggers, language: voice.language }),
+        [relationships, triggers, voice.language]
+    );
     // Which check-in the graph is pointing at. Cleared by the day change below, because a row
     // id from yesterday is not on this screen.
     const [openedCheckin, setOpenedCheckin] = useState(null);
@@ -629,12 +646,17 @@ export default function Journal() {
 
     return (
         <Frame>
-            <DayHeader day={day} today={today} onCompose={() => setComposing(true)} />
+            <DayHeader day={day} today={today} onCompose={setComposing} voice={voice.showMicrophone} />
 
-            <CheckinFab onOpen={() => setComposing(true)} />
+            <CheckinFab onOpen={setComposing} voice={voice.showMicrophone} />
 
             {composing && (
-                <CheckinComposer onClose={() => setComposing(false)} onSaved={followSavedEntry} />
+                <CheckinComposer
+                    mode={composing}
+                    context={proposalContext}
+                    onClose={() => setComposing(null)}
+                    onSaved={followSavedEntry}
+                />
             )}
 
             {loadError && <LoadFailed message={loadError} onDismiss={dismissLoadError} />}

@@ -4,12 +4,14 @@ import userEvent from '@testing-library/user-event';
 import axios from 'axios';
 
 import Profile from './Profile';
+import { PROPOSAL_MODEL, formatBytes, setBytes, setLabel, tierModels } from '../journal/inference/models';
 import {
     DEFAULT_RITUAL_TIME,
     JOURNAL_COPY,
     JOURNAL_STORAGE_KEYS,
     MAX_OPTIONAL_QUESTIONS,
     RITUAL_QUESTIONS,
+    TRANSCRIPTION_LANGUAGES,
     fillCopy,
     optionalQuestions
 } from '../constants/journal';
@@ -18,6 +20,7 @@ import {
     readOptionalQuestions,
     readRitualSetting
 } from '../constants/journalSettings';
+import { setNativeTierReport } from '../journal/inference/tier';
 
 vi.mock('axios');
 
@@ -60,7 +63,11 @@ describe('the Journal settings section', () => {
         expect(control('ask-who')).toBeInTheDocument();
         expect(document.querySelectorAll('[data-question]')).toHaveLength(optionalQuestions().length);
 
-        // The five settings whose features do not exist yet (6-C, 6-D, 6-G).
+        // Absent here for two different reasons, and the difference matters: embeddings has
+        // no feature yet (6-G); voice, transcripts, language and — since D2 — suggestions are
+        // the voice block, which a plain jsdom run cannot render because it is not a secure
+        // context with a microphone. The Android block below renders it, and asserts the
+        // suggestions toggle there.
         [
             JOURNAL_COPY.settings.voice.label,
             JOURNAL_COPY.settings.suggestions.label,
@@ -215,7 +222,20 @@ const allowed = new Set([
     ...RITUAL_QUESTIONS.flatMap(question => [question.text, question.note]),
     fillCopy(JOURNAL_COPY.settings.ritual.description, { time: DEFAULT_RITUAL_TIME }),
     fillCopy(JOURNAL_COPY.settings.questions.description, { max: MAX_OPTIONAL_QUESTIONS }),
-    fillCopy(JOURNAL_COPY.settings.questions.atLimit, { max: MAX_OPTIONAL_QUESTIONS })
+    fillCopy(JOURNAL_COPY.settings.questions.atLimit, { max: MAX_OPTIONAL_QUESTIONS }),
+    // C3's two, for every tier name, because which one renders depends on what the test
+    // environment reports about itself — jsdom has no MediaRecorder, so it reads
+    // `text-only`, and a change to that should not be able to slip a bare string in.
+    ...Object.values(JOURNAL_COPY.settings.tier.names).flatMap(tier => [
+        fillCopy(JOURNAL_COPY.settings.tier.detected, { tier }),
+        fillCopy(JOURNAL_COPY.settings.tier.pinned, { tier })
+    ]),
+    ...['full', 'light'].flatMap(tier => [true, false].map((native) => {
+        const models = tierModels(tier, { native });
+        return fillCopy(JOURNAL_COPY.settings.voice.size, {
+            label: setLabel(models), size: formatBytes(setBytes(models))
+        });
+    }))
 ]);
 
 const wordsInSection = () => [...section().querySelectorAll('*')]
@@ -235,5 +255,104 @@ describe('no bare strings in the Journal section (Appendix B item 3)', () => {
         // The guard: an empty section would satisfy the assertion below while proving nothing.
         expect(wordsInSection().length).toBeGreaterThan(10);
         expect(wordsInSection().filter(text => !allowed.has(text))).toEqual([]);
+    });
+});
+
+/* ------------------------------------------------------------------------------------ */
+/* C4: on Android                                                                        */
+/* ------------------------------------------------------------------------------------ */
+
+const platformState = vi.hoisted(() => ({ native: false }));
+
+vi.mock('../mobile/platform', async (importOriginal) => ({
+    ...(await importOriginal()),
+    isNative: () => platformState.native
+}));
+
+vi.mock('../mobile/journalPlugin', async (importOriginal) => ({
+    ...(await importOriginal()),
+    // The shell primes the report; here the test sets it directly and the prime is a no-op.
+    primeNativeTier: vi.fn(async () => null),
+    createNativeDownloader: () => ({
+        getSnapshot: () => ({ state: 'idle' }),
+        subscribe: () => () => { },
+        start: async () => false,
+        cancel: () => { },
+        isDownloaded: async () => false,
+        remove: async () => true
+    })
+}));
+
+describe('on Android', () => {
+    beforeEach(() => {
+        platformState.native = true;
+        setNativeTierReport({ totalMemoryBytes: 7.6 * 1024 ** 3, lowRamDevice: false });
+    });
+    afterEach(() => {
+        platformState.native = false;
+        setNativeTierReport(null);
+    });
+
+    const names = JOURNAL_COPY.settings.tier.names;
+
+    it('reports the tier from the phone\'s memory, says the number, and lets it be pinned down', async () => {
+        await renderProfile();
+
+        expect(screen.getByText(JOURNAL_COPY.settings.tier.descriptionNative)).toBeInTheDocument();
+        expect(screen.getByText(fillCopy(JOURNAL_COPY.settings.tier.detected, { tier: names.full }))).toBeInTheDocument();
+        expect(screen.getByText(fillCopy(JOURNAL_COPY.settings.tier.memory, { gb: 8 }))).toBeInTheDocument();
+        expect(control('voice')).toBeInTheDocument();
+
+        await userEvent.selectOptions(control('tier'), 'light');
+        expect(screen.getByText(fillCopy(JOURNAL_COPY.settings.tier.pinned, { tier: names.light }))).toBeInTheDocument();
+        expect(control('voice')).toBeInTheDocument();
+
+        await userEvent.selectOptions(control('tier'), 'text-only');
+        expect(control('voice')).toBeNull();
+        expect(screen.getByText(JOURNAL_COPY.empty.voiceUnavailable)).toBeInTheDocument();
+    });
+
+    it('offers Show suggestions only under a voice that is on, on by default, and names the model', async () => {
+        await renderProfile();
+        expect(control('suggestions')).toBeNull();
+
+        await userEvent.click(control('voice'));
+        expect(control('voice')).toHaveAttribute('aria-pressed', 'true');
+        expect(control('suggestions')).toBeInTheDocument();
+        expect(control('suggestions')).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByText(JOURNAL_COPY.settings.suggestions.description)).toBeInTheDocument();
+        // Invariant 2e, on the profile screen. Until D3 this said that nothing on this
+        // device proposes anything — the sentence a toggle called *suggestions* owes its
+        // reader when there is no model behind it. There is one now, and the line names it
+        // and its licence rather than leaving the label to imply what it likes.
+        expect(screen.getByText(fillCopy(JOURNAL_COPY.settings.suggestions.model, {
+            label: PROPOSAL_MODEL.label, licence: PROPOSAL_MODEL.licence
+        }))).toBeInTheDocument();
+
+        await userEvent.click(control('suggestions'));
+        expect(control('suggestions')).toHaveAttribute('aria-pressed', 'false');
+        expect(JSON.parse(localStorage.getItem('alq:journal-suggestions'))).toBe(false);
+
+        await userEvent.click(control('voice'));
+        expect(control('suggestions')).toBeNull();
+    });
+
+    it('says nothing the forbidden-word walk cannot reach', async () => {
+        await renderProfile();
+        // The voice block renders here, which it cannot in a plain jsdom run: the language
+        // pin's options are the two-letter codes, a vocabulary rather than copy.
+        const allowedHere = new Set([
+            ...allowed,
+            ...TRANSCRIPTION_LANGUAGES,
+            fillCopy(JOURNAL_COPY.settings.tier.memory, { gb: 8 }),
+            // Two filled templates: the model line under the suggestions toggle and the
+            // download line, both built from `JOURNAL_COPY` with names and sizes dropped in.
+            // The template is in the walk; the model's name and the byte count are not copy.
+            fillCopy(JOURNAL_COPY.settings.suggestions.model, {
+                label: PROPOSAL_MODEL.label, licence: PROPOSAL_MODEL.licence
+            })
+        ]);
+        expect(wordsInSection().length).toBeGreaterThan(10);
+        expect(wordsInSection().filter(text => !allowedHere.has(text))).toEqual([]);
     });
 });

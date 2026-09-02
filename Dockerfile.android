@@ -23,6 +23,11 @@ FROM node:22-alpine AS web
 WORKDIR /app
 
 COPY package.json package-lock.json ./
+# The journal's native plugin is a `file:` dependency (plugins/alq-journal), and `npm ci`
+# needs the directory to exist before it runs — a lockfile that names a path the context
+# does not yet hold fails with an unhelpful ENOENT. Copied on its own line so the install
+# layer is still cached against the lockfile and the plugin, not against every source file.
+COPY plugins ./plugins
 # `npm ci` rather than `npm install`: the lockfile is the input that makes this reproducible.
 # (The frontend Dockerfile still uses `npm install` — see docs/09-deployment.md §2.)
 RUN npm ci
@@ -105,8 +110,10 @@ RUN yes | sdkmanager --licenses > /dev/null 2>&1 || true \
 WORKDIR /app
 
 # node_modules is needed in this stage too: `cap add android` copies the native project out of
-# node_modules/@capacitor/android, and each plugin contributes its own Gradle module.
+# node_modules/@capacitor/android, and each plugin contributes its own Gradle module — the
+# journal plugin among them, which is why plugins/ is copied before the install here as well.
 COPY package.json package-lock.json ./
+COPY plugins ./plugins
 RUN npm ci
 
 COPY capacitor.config.json ./

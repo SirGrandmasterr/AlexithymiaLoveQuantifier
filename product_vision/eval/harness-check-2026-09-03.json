@@ -1,0 +1,4104 @@
+{
+  "date": "2026-09-03",
+  "environment": {
+    "platform": "win32",
+    "arch": "x64",
+    "node": "v22.14.0",
+    "commit": "aff6f28"
+  },
+  "suite": {
+    "cases": 120,
+    "pairs": 60,
+    "en": 60,
+    "de": 59,
+    "other": 1,
+    "ambiguityCases": 20,
+    "clips": 0,
+    "speakers": 0,
+    "suiteSha": null,
+    "promptVersion": 1,
+    "feelingIds": 21
+  },
+  "runs": [
+    {
+      "candidate": {
+        "id": "reference",
+        "tier": "none",
+        "label": "The golden references themselves — a self-check of the harness",
+        "model": null,
+        "packaging": null,
+        "modelSet": null,
+        "file": null,
+        "runtime": "reference",
+        "mode": "text",
+        "transcriber": null,
+        "grammar": "PROPOSAL_SCHEMA",
+        "appRuntimeId": null,
+        "device": "wherever the harness runs; no weights are loaded",
+        "isDefaultFor": null,
+        "caveat": "Not a model. This candidate answers every case with the hand-written reference from the golden suite, so a perfect score means the harness arithmetic is wired up — and means nothing whatever about any model."
+      },
+      "revision": null,
+      "runner": {
+        "command": "(none)",
+        "note": "no process is started and no weights are read"
+      },
+      "overall": {
+        "clips": 120,
+        "casesFullyOk": 120,
+        "mustIncludeTotal": 126,
+        "mustIncludeHit": 126,
+        "mustIncludeRecall": 1,
+        "mustNotIncludeTotal": 96,
+        "mustNotViolations": 0,
+        "mustNotViolationRate": 0,
+        "ambiguityCases": 20,
+        "ambiguityCorrect": 20,
+        "ambiguityAccuracy": 1,
+        "ambiguityAccuracyAllCases": 1,
+        "newTriggerCases": 11,
+        "newTriggerHit": 11,
+        "knownTriggerCases": 14,
+        "knownTriggerHit": 14
+      },
+      "gate": {
+        "criteria": [
+          {
+            "name": "must-include recall",
+            "statement": "≥ 0.8",
+            "actual": 1,
+            "pass": true,
+            "detail": "126/126 required ids present"
+          },
+          {
+            "name": "must-not-include rate",
+            "statement": "≤ 0.05",
+            "actual": 0,
+            "pass": true,
+            "detail": "0/96 forbidden ids proposed"
+          },
+          {
+            "name": "ambiguity accuracy",
+            "statement": "≥ 0.9 of the ambiguity cases",
+            "actual": 1,
+            "pass": true,
+            "detail": "20/20 non-\"none\" cases correct"
+          },
+          {
+            "name": "German WER margin (clean)",
+            "statement": "de − en ≤ 0.05 absolute",
+            "actual": null,
+            "pass": null,
+            "detail": "not measured — one language has no clean clips"
+          }
+        ],
+        "thresholds": {
+          "mustIncludeRecall": 0.8,
+          "mustNotViolationRate": 0.05,
+          "ambiguityAccuracy": 0.9,
+          "germanWerMargin": 0.05
+        },
+        "passed": false,
+        "failed": [],
+        "unmeasured": [
+          "German WER margin (clean)"
+        ],
+        "verdict": "incomplete"
+      },
+      "wer": [
+        {
+          "language": "de",
+          "condition": "text",
+          "wer": 0,
+          "meanWer": 0,
+          "clips": 59,
+          "referenceWords": 916,
+          "errors": 0,
+          "withCeiling": 0,
+          "overCeiling": 0
+        },
+        {
+          "language": "en",
+          "condition": "text",
+          "wer": 0,
+          "meanWer": 0,
+          "clips": 60,
+          "referenceWords": 895,
+          "errors": 0,
+          "withCeiling": 0,
+          "overCeiling": 0
+        },
+        {
+          "language": "fr",
+          "condition": "text",
+          "wer": 0,
+          "meanWer": 0,
+          "clips": 1,
+          "referenceWords": 7,
+          "errors": 0,
+          "withCeiling": 0,
+          "overCeiling": 0
+        }
+      ],
+      "perId": [
+        {
+          "id": "anger",
+          "truePositive": 6,
+          "falsePositive": 0,
+          "falseNegative": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "support": 6
+        },
+        {
+          "id": "anxiety",
+          "truePositive": 14,
+          "falsePositive": 0,
+          "falseNegative": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "support": 14
+        },
+        {
+          "id": "boredom",
+          "truePositive": 4,
+          "falsePositive": 0,
+          "falseNegative": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "support": 4
+        },
+        {
+          "id": "calm",
+          "truePositive": 7,
+          "falsePositive": 0,
+          "falseNegative": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "support": 7
+        },
+        {
+          "id": "curiosity",
+          "truePositive": 4,
+          "falsePositive": 0,
+          "falseNegative": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "support": 4
+        },
+        {
+          "id": "excitement",
+          "truePositive": 4,
+          "falsePositive": 0,
+          "falseNegative": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "support": 4
+        },
+        {
+          "id": "gratitude",
+          "truePositive": 8,
+          "falsePositive": 0,
+          "falseNegative": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "support": 8
+        },
+        {
+          "id": "irritation",
+          "truePositive": 12,
+          "falsePositive": 0,
+          "falseNegative": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "support": 12
+        },
+        {
+          "id": "joy",
+          "truePositive": 3,
+          "falsePositive": 0,
+          "falseNegative": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "support": 3
+        },
+        {
+          "id": "loneliness",
+          "truePositive": 4,
+          "falsePositive": 0,
+          "falseNegative": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "support": 4
+        },
+        {
+          "id": "longing",
+          "truePositive": 6,
+          "falsePositive": 0,
+          "falseNegative": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "support": 6
+        },
+        {
+          "id": "neutral",
+          "truePositive": 6,
+          "falsePositive": 0,
+          "falseNegative": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "support": 6
+        },
+        {
+          "id": "overwhelm",
+          "truePositive": 2,
+          "falsePositive": 0,
+          "falseNegative": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "support": 2
+        },
+        {
+          "id": "pleasure",
+          "truePositive": 10,
+          "falsePositive": 0,
+          "falseNegative": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "support": 10
+        },
+        {
+          "id": "pride",
+          "truePositive": 6,
+          "falsePositive": 0,
+          "falseNegative": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "support": 6
+        },
+        {
+          "id": "rapport",
+          "truePositive": 8,
+          "falsePositive": 0,
+          "falseNegative": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "support": 8
+        },
+        {
+          "id": "sadness",
+          "truePositive": 8,
+          "falsePositive": 0,
+          "falseNegative": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "support": 8
+        },
+        {
+          "id": "shame",
+          "truePositive": 8,
+          "falsePositive": 0,
+          "falseNegative": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "support": 8
+        },
+        {
+          "id": "stress",
+          "truePositive": 10,
+          "falsePositive": 0,
+          "falseNegative": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "support": 10
+        },
+        {
+          "id": "tiredness",
+          "truePositive": 6,
+          "falsePositive": 0,
+          "falseNegative": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "support": 6
+        },
+        {
+          "id": "unclear",
+          "truePositive": 4,
+          "falsePositive": 0,
+          "falseNegative": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "support": 4
+        }
+      ],
+      "latency": {
+        "median": null,
+        "p90": null,
+        "slowest": null
+      },
+      "memory": {
+        "peakBytes": null,
+        "how": "not measured; no process was started, or the platform gave no reading"
+      },
+      "rows": [
+        {
+          "case": "lucie.en",
+          "pair": "lucie",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "pleasure",
+              "rapport",
+              "stress"
+            ],
+            "actual": [
+              "pleasure",
+              "rapport",
+              "stress"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "lucie.de",
+          "pair": "lucie",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "pleasure",
+              "rapport",
+              "stress"
+            ],
+            "actual": [
+              "pleasure",
+              "rapport",
+              "stress"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "negation.en",
+          "pair": "negation",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "tiredness"
+            ],
+            "actual": [
+              "tiredness"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "negation.de",
+          "pair": "negation",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "tiredness"
+            ],
+            "actual": [
+              "tiredness"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "two-people.en",
+          "pair": "two-people",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "rapport",
+              "pleasure"
+            ],
+            "actual": [
+              "rapport",
+              "pleasure"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "two-people.de",
+          "pair": "two-people",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "rapport",
+              "pleasure"
+            ],
+            "actual": [
+              "rapport",
+              "pleasure"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "known-trigger.en",
+          "pair": "known-trigger",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "stress"
+            ],
+            "actual": [
+              "stress"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "known-trigger.de",
+          "pair": "known-trigger",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "stress"
+            ],
+            "actual": [
+              "stress"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "new-trigger.en",
+          "pair": "new-trigger",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "anxiety"
+            ],
+            "actual": [
+              "anxiety"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "new-trigger.de",
+          "pair": "new-trigger",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "anxiety"
+            ],
+            "actual": [
+              "anxiety"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "no-feeling.en",
+          "pair": "no-feeling",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "feeling",
+            "actual": "feeling"
+          },
+          "feelings": {
+            "expected": [],
+            "actual": []
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "no-feeling.de",
+          "pair": "no-feeling",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "feeling",
+            "actual": "feeling"
+          },
+          "feelings": {
+            "expected": [],
+            "actual": []
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "unclear.en",
+          "pair": "unclear",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "unclear"
+            ],
+            "actual": [
+              "unclear"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "unclear.de",
+          "pair": "unclear",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "unclear"
+            ],
+            "actual": [
+              "unclear"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "target.en",
+          "pair": "target",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "target",
+            "actual": "target"
+          },
+          "feelings": {
+            "expected": [
+              "anxiety"
+            ],
+            "actual": [
+              "anxiety"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "target.de",
+          "pair": "target",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "target",
+            "actual": "target"
+          },
+          "feelings": {
+            "expected": [
+              "anxiety"
+            ],
+            "actual": [
+              "anxiety"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "conflict.en",
+          "pair": "conflict",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "conflict",
+            "actual": "conflict"
+          },
+          "feelings": {
+            "expected": [
+              "irritation",
+              "sadness"
+            ],
+            "actual": [
+              "irritation",
+              "sadness"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "conflict.de",
+          "pair": "conflict",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "conflict",
+            "actual": "conflict"
+          },
+          "feelings": {
+            "expected": [
+              "irritation",
+              "sadness"
+            ],
+            "actual": [
+              "irritation",
+              "sadness"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "fact.en",
+          "pair": "fact",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "rapport"
+            ],
+            "actual": [
+              "rapport"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "fact.de",
+          "pair": "fact",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "rapport"
+            ],
+            "actual": [
+              "rapport"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "tag-conflict.en",
+          "pair": "tag-conflict",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "anger"
+            ],
+            "actual": [
+              "anger"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "tag-conflict.de",
+          "pair": "tag-conflict",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "anger"
+            ],
+            "actual": [
+              "anger"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "neutral.en",
+          "pair": "neutral",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "neutral"
+            ],
+            "actual": [
+              "neutral"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "neutral.de",
+          "pair": "neutral",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "neutral"
+            ],
+            "actual": [
+              "neutral"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "gratitude.en",
+          "pair": "gratitude",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "gratitude"
+            ],
+            "actual": [
+              "gratitude"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "gratitude.de",
+          "pair": "gratitude",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "gratitude"
+            ],
+            "actual": [
+              "gratitude"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "intensity-low.en",
+          "pair": "intensity-low",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "boredom"
+            ],
+            "actual": [
+              "boredom"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "intensity-low.de",
+          "pair": "intensity-low",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "boredom"
+            ],
+            "actual": [
+              "boredom"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "intensity-high.en",
+          "pair": "intensity-high",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "overwhelm"
+            ],
+            "actual": [
+              "overwhelm"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "intensity-high.de",
+          "pair": "intensity-high",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "overwhelm"
+            ],
+            "actual": [
+              "overwhelm"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "longing.en",
+          "pair": "longing",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "longing"
+            ],
+            "actual": [
+              "longing"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "longing.de",
+          "pair": "longing",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "longing"
+            ],
+            "actual": [
+              "longing"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "new-person.en",
+          "pair": "new-person",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "pleasure"
+            ],
+            "actual": [
+              "pleasure"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "new-person.de",
+          "pair": "new-person",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "pleasure"
+            ],
+            "actual": [
+              "pleasure"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "forbidden-in-transcript.en",
+          "pair": "forbidden-in-transcript",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "shame"
+            ],
+            "actual": [
+              "shame"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "forbidden-in-transcript.de",
+          "pair": "forbidden-in-transcript",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "shame"
+            ],
+            "actual": [
+              "shame"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "other-language.en",
+          "pair": "other-language",
+          "language": "fr",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "joy"
+            ],
+            "actual": [
+              "joy"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "other-language.de",
+          "pair": "other-language",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "calm"
+            ],
+            "actual": [
+              "calm"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "six-feelings.en",
+          "pair": "six-feelings",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "excitement",
+              "pride",
+              "gratitude",
+              "calm",
+              "curiosity"
+            ],
+            "actual": [
+              "excitement",
+              "pride",
+              "gratitude",
+              "calm",
+              "curiosity"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "six-feelings.de",
+          "pair": "six-feelings",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "excitement",
+              "pride",
+              "gratitude",
+              "calm",
+              "curiosity"
+            ],
+            "actual": [
+              "excitement",
+              "pride",
+              "gratitude",
+              "calm",
+              "curiosity"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "said-calmly.en",
+          "pair": "said-calmly",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "anger"
+            ],
+            "actual": [
+              "anger"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "said-calmly.de",
+          "pair": "said-calmly",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "anger"
+            ],
+            "actual": [
+              "anger"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "self-evaluation.en",
+          "pair": "self-evaluation",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "shame"
+            ],
+            "actual": [
+              "shame"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "self-evaluation.de",
+          "pair": "self-evaluation",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "shame"
+            ],
+            "actual": [
+              "shame"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "mark-me.en",
+          "pair": "mark-me",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "feeling",
+            "actual": "feeling"
+          },
+          "feelings": {
+            "expected": [],
+            "actual": []
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "mark-me.de",
+          "pair": "mark-me",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "feeling",
+            "actual": "feeling"
+          },
+          "feelings": {
+            "expected": [],
+            "actual": []
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "ignore-list.en",
+          "pair": "ignore-list",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "feeling",
+            "actual": "feeling"
+          },
+          "feelings": {
+            "expected": [],
+            "actual": []
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "ignore-list.de",
+          "pair": "ignore-list",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "feeling",
+            "actual": "feeling"
+          },
+          "feelings": {
+            "expected": [],
+            "actual": []
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "fact-no-feeling.en",
+          "pair": "fact-no-feeling",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "feeling",
+            "actual": "feeling"
+          },
+          "feelings": {
+            "expected": [],
+            "actual": []
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "fact-no-feeling.de",
+          "pair": "fact-no-feeling",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "feeling",
+            "actual": "feeling"
+          },
+          "feelings": {
+            "expected": [],
+            "actual": []
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "two-people-two-feelings.en",
+          "pair": "two-people-two-feelings",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "pride",
+              "irritation"
+            ],
+            "actual": [
+              "pride",
+              "irritation"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "two-people-two-feelings.de",
+          "pair": "two-people-two-feelings",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "pride",
+              "irritation"
+            ],
+            "actual": [
+              "pride",
+              "irritation"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "trigger-and-person.en",
+          "pair": "trigger-and-person",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "stress"
+            ],
+            "actual": [
+              "stress"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "trigger-and-person.de",
+          "pair": "trigger-and-person",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "stress"
+            ],
+            "actual": [
+              "stress"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "trip.en",
+          "pair": "trip",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "joy"
+            ],
+            "actual": [
+              "joy"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "trip.de",
+          "pair": "trip",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "joy"
+            ],
+            "actual": [
+              "joy"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "alone.en",
+          "pair": "alone",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "loneliness"
+            ],
+            "actual": [
+              "loneliness"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "alone.de",
+          "pair": "alone",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "loneliness"
+            ],
+            "actual": [
+              "loneliness"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "rambling.en",
+          "pair": "rambling",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "boredom"
+            ],
+            "actual": [
+              "boredom"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "rambling.de",
+          "pair": "rambling",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "boredom"
+            ],
+            "actual": [
+              "boredom"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "short-utterance.en",
+          "pair": "short-utterance",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "tiredness"
+            ],
+            "actual": [
+              "tiredness"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "short-utterance.de",
+          "pair": "short-utterance",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "tiredness"
+            ],
+            "actual": [
+              "tiredness"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "filler-heavy.en",
+          "pair": "filler-heavy",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "anxiety"
+            ],
+            "actual": [
+              "anxiety"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "filler-heavy.de",
+          "pair": "filler-heavy",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "anxiety"
+            ],
+            "actual": [
+              "anxiety"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "fast-list.en",
+          "pair": "fast-list",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "stress"
+            ],
+            "actual": [
+              "stress"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "fast-list.de",
+          "pair": "fast-list",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "stress"
+            ],
+            "actual": [
+              "stress"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "long-run-on.en",
+          "pair": "long-run-on",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "longing",
+              "sadness"
+            ],
+            "actual": [
+              "longing",
+              "sadness"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "long-run-on.de",
+          "pair": "long-run-on",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "longing",
+              "sadness"
+            ],
+            "actual": [
+              "longing",
+              "sadness"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "code-switch.en",
+          "pair": "code-switch",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "sadness"
+            ],
+            "actual": [
+              "sadness"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "code-switch.de",
+          "pair": "code-switch",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "sadness"
+            ],
+            "actual": [
+              "sadness"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "numbers.en",
+          "pair": "numbers",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "tiredness"
+            ],
+            "actual": [
+              "tiredness"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "numbers.de",
+          "pair": "numbers",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "tiredness"
+            ],
+            "actual": [
+              "tiredness"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "quiet-voice.en",
+          "pair": "quiet-voice",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "shame"
+            ],
+            "actual": [
+              "shame"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "quiet-voice.de",
+          "pair": "quiet-voice",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "shame"
+            ],
+            "actual": [
+              "shame"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "emphatic.en",
+          "pair": "emphatic",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "anger"
+            ],
+            "actual": [
+              "anger"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "emphatic.de",
+          "pair": "emphatic",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "anger"
+            ],
+            "actual": [
+              "anger"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "name-unfamiliar.en",
+          "pair": "name-unfamiliar",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "curiosity"
+            ],
+            "actual": [
+              "curiosity"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "name-unfamiliar.de",
+          "pair": "name-unfamiliar",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "curiosity"
+            ],
+            "actual": [
+              "curiosity"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "place-names.en",
+          "pair": "place-names",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "anxiety"
+            ],
+            "actual": [
+              "anxiety"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "place-names.de",
+          "pair": "place-names",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "anxiety"
+            ],
+            "actual": [
+              "anxiety"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "colloquial.en",
+          "pair": "colloquial",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "target",
+            "actual": "target"
+          },
+          "feelings": {
+            "expected": [
+              "irritation"
+            ],
+            "actual": [
+              "irritation"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "colloquial.de",
+          "pair": "colloquial",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "target",
+            "actual": "target"
+          },
+          "feelings": {
+            "expected": [
+              "irritation"
+            ],
+            "actual": [
+              "irritation"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "abbreviations.en",
+          "pair": "abbreviations",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "calm"
+            ],
+            "actual": [
+              "calm"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "abbreviations.de",
+          "pair": "abbreviations",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "calm"
+            ],
+            "actual": [
+              "calm"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "mixed-same-person.en",
+          "pair": "mixed-same-person",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "gratitude",
+              "loneliness"
+            ],
+            "actual": [
+              "gratitude",
+              "loneliness"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "mixed-same-person.de",
+          "pair": "mixed-same-person",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "gratitude",
+              "loneliness"
+            ],
+            "actual": [
+              "gratitude",
+              "loneliness"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "third-party-feeling.en",
+          "pair": "third-party-feeling",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "neutral"
+            ],
+            "actual": [
+              "neutral"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "third-party-feeling.de",
+          "pair": "third-party-feeling",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "neutral"
+            ],
+            "actual": [
+              "neutral"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "hypothetical.en",
+          "pair": "hypothetical",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "anxiety"
+            ],
+            "actual": [
+              "anxiety"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "hypothetical.de",
+          "pair": "hypothetical",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "anxiety"
+            ],
+            "actual": [
+              "anxiety"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "past-tense.en",
+          "pair": "past-tense",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "calm"
+            ],
+            "actual": [
+              "calm"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "past-tense.de",
+          "pair": "past-tense",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "calm"
+            ],
+            "actual": [
+              "calm"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "flat-question.en",
+          "pair": "flat-question",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "unclear"
+            ],
+            "actual": [
+              "unclear"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "flat-question.de",
+          "pair": "flat-question",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "unclear"
+            ],
+            "actual": [
+              "unclear"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "two-triggers.en",
+          "pair": "two-triggers",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "stress",
+              "anxiety"
+            ],
+            "actual": [
+              "stress",
+              "anxiety"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "two-triggers.de",
+          "pair": "two-triggers",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "stress",
+              "anxiety"
+            ],
+            "actual": [
+              "stress",
+              "anxiety"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "tag-reconciliation.en",
+          "pair": "tag-reconciliation",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "rapport",
+              "gratitude"
+            ],
+            "actual": [
+              "rapport",
+              "gratitude"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "tag-reconciliation.de",
+          "pair": "tag-reconciliation",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "rapport",
+              "gratitude"
+            ],
+            "actual": [
+              "rapport",
+              "gratitude"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "tag-distance.en",
+          "pair": "tag-distance",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "longing"
+            ],
+            "actual": [
+              "longing"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "tag-distance.de",
+          "pair": "tag-distance",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "longing"
+            ],
+            "actual": [
+              "longing"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "tag-milestone.en",
+          "pair": "tag-milestone",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "pride"
+            ],
+            "actual": [
+              "pride"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "tag-milestone.de",
+          "pair": "tag-milestone",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "pride"
+            ],
+            "actual": [
+              "pride"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "tag-life-change.en",
+          "pair": "tag-life-change",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "excitement",
+              "anxiety"
+            ],
+            "actual": [
+              "excitement",
+              "anxiety"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "tag-life-change.de",
+          "pair": "tag-life-change",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "excitement",
+              "anxiety"
+            ],
+            "actual": [
+              "excitement",
+              "anxiety"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "tag-routine.en",
+          "pair": "tag-routine",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "neutral"
+            ],
+            "actual": [
+              "neutral"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "tag-routine.de",
+          "pair": "tag-routine",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "neutral"
+            ],
+            "actual": [
+              "neutral"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "fact-unnamed.en",
+          "pair": "fact-unnamed",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "pleasure"
+            ],
+            "actual": [
+              "pleasure"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "fact-unnamed.de",
+          "pair": "fact-unnamed",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "pleasure"
+            ],
+            "actual": [
+              "pleasure"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "spoken-injection.en",
+          "pair": "spoken-injection",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "feeling",
+            "actual": "feeling"
+          },
+          "feelings": {
+            "expected": [],
+            "actual": []
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "spoken-injection.de",
+          "pair": "spoken-injection",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "feeling",
+            "actual": "feeling"
+          },
+          "feelings": {
+            "expected": [],
+            "actual": []
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "intensity-words.en",
+          "pair": "intensity-words",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "irritation"
+            ],
+            "actual": [
+              "irritation"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "intensity-words.de",
+          "pair": "intensity-words",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "irritation"
+            ],
+            "actual": [
+              "irritation"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "snapped.en",
+          "pair": "snapped",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "shame",
+              "irritation"
+            ],
+            "actual": [
+              "shame",
+              "irritation"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "snapped.de",
+          "pair": "snapped",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "shame",
+              "irritation"
+            ],
+            "actual": [
+              "shame",
+              "irritation"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "not-in-vocabulary.en",
+          "pair": "not-in-vocabulary",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "feeling",
+            "actual": "feeling"
+          },
+          "feelings": {
+            "expected": [],
+            "actual": []
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "not-in-vocabulary.de",
+          "pair": "not-in-vocabulary",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "feeling",
+            "actual": "feeling"
+          },
+          "feelings": {
+            "expected": [],
+            "actual": []
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "target-two-people.en",
+          "pair": "target-two-people",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "target",
+            "actual": "target"
+          },
+          "feelings": {
+            "expected": [
+              "irritation"
+            ],
+            "actual": [
+              "irritation"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "target-two-people.de",
+          "pair": "target-two-people",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "target",
+            "actual": "target"
+          },
+          "feelings": {
+            "expected": [
+              "irritation"
+            ],
+            "actual": [
+              "irritation"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "two-halves.en",
+          "pair": "two-halves",
+          "language": "en",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "sadness",
+              "pleasure"
+            ],
+            "actual": [
+              "sadness",
+              "pleasure"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        },
+        {
+          "case": "two-halves.de",
+          "pair": "two-halves",
+          "language": "de",
+          "condition": "text",
+          "speaker": null,
+          "clip": null,
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "sadness",
+              "pleasure"
+            ],
+            "actual": [
+              "sadness",
+              "pleasure"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": null,
+          "over_ceiling": false,
+          "ms": 0,
+          "peak_bytes": null,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": "golden reference"
+        }
+      ]
+    }
+  ]
+}

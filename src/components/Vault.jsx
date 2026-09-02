@@ -4,6 +4,9 @@ import { Archive, Download, Upload, Loader2, ShieldCheck, Lock, Info } from 'luc
 import { useSubjects } from '../context/SubjectsContext';
 import { CATEGORIES } from '../constants/categories';
 import { hashPassphrase, readLockHash, setLockHash, isLockAvailable } from './AppLock';
+import { readVoiceSetting } from '../constants/journalSettings';
+import { canTranscribe, detectTier, TIERS } from '../journal/inference/tier';
+import { MAX_CLIP_MS, SILENCE_HOLD_MS } from '../journal/recorder';
 
 /**
  * The Vault: what is stored, how to take it with you, and how to put it back.
@@ -15,6 +18,70 @@ import { hashPassphrase, readLockHash, setLockHash, isLockAvailable } from './Ap
  */
 
 const LAST_EXPORT_KEY = 'alq:last-export-at';
+
+/**
+ * The §10.2 variants of *What about AI features?*, chosen by what **this device** has been
+ * asked to do — read from the same `localStorage` key the settings screen writes, the way
+ * `remindersEnabled()` is read.
+ *
+ * **D3 restored the full paragraph, which C3 had deliberately narrowed.** Until this commit
+ * the app had no proposal model: it wrote words down and handed them to the same chips the
+ * user had always tapped, so the *voice on* variant said *"it proposes nothing"* — §10.2's
+ * paragraph with every suggestion clause removed, because a Vault sentence the code cannot
+ * support is the one thing invariant 2e forbids absolutely. The model now exists, the card
+ * that renders its proposals exists, and every clause below is true of the code as written.
+ *
+ * **Three variants and not two, because the Light tier is genuinely two models** (§5.5, §5.1).
+ * A Full-tier device runs one audio-native pass; a Light-tier device runs Whisper tiny for the
+ * words and Gemma 4 E2B for the tags. Saying *"one model"* on a device running two would be
+ * false in the direction that matters most on this page — the number of models is exactly the
+ * kind of thing this section exists to state — so the Light tier gets §10.2's own alternative
+ * sentence, and both name every model and its licence (§5.6).
+ *
+ * Exported so `Vault.test.jsx` can assert all three verbatim, which is what keeps them honest.
+ */
+
+export const AI_CLAIM = {
+    off: 'None are running. The journal can write down a voice note and suggest what it was '
+        + 'about using a model that runs **on this device only**; it is off until you turn it '
+        + 'on in your profile. Right now nothing here infers, scores, or interprets on your '
+        + 'behalf — every number in this app is one you set yourself, and every journal entry '
+        + 'is one you wrote or tapped.',
+
+    on: 'One model, and it runs on this device: Gemma 4 E2B, open weights under the Apache '
+        + '2.0 licence, downloaded once from this server. It **writes down** a voice note — '
+        + 'the audio is never saved and never sent — and **suggests** feelings, people and '
+        + 'triggers to tag from what was said. It is asked only what you said, never how you '
+        + 'sounded. Every suggestion waits for you to confirm, change, or discard it — '
+        + '**nothing it proposes is saved on its own**, and it never touches your love '
+        + 'snapshots. It switches off in your profile at any time.',
+
+    onLight: 'One small model writes the words down and a second one suggests tags; both run '
+        + 'on this device: Whisper tiny and Gemma 4 E2B, open weights under the Apache 2.0 '
+        + 'licence, downloaded once from this server. They **write down** a voice note — the '
+        + 'audio is never saved and never sent — and **suggest** feelings, people and triggers '
+        + 'to tag from what was said. They are asked only what you said, never how you '
+        + 'sounded. Every suggestion waits for you to confirm, change, or discard it — '
+        + '**nothing they propose is saved on its own**, and they never touch your love '
+        + 'snapshots. They switch off in your profile at any time.'
+};
+
+/** Which of the two *voice on* paragraphs describes this device. */
+export const aiClaimFor = (tier) => (tier === TIERS.light ? AI_CLAIM.onLight : AI_CLAIM.on);
+
+/** The `**bold**` runs §10.2 writes, rendered without a markdown dependency for two words. */
+const emphasised = (text) => text.split(/\*\*(.+?)\*\*/g).map((part, index) => (
+    index % 2 === 1 ? <strong key={index} className="font-medium text-slate-700">{part}</strong> : part
+));
+
+/**
+ * Whether a model is on **on this device**, which is the only thing this page may claim.
+ *
+ * It asks the tier as well as the key, and both have to agree, so a `true` written by a
+ * better browser on the same profile cannot make this page describe a model that is not
+ * running here.
+ */
+export const voiceIsOn = () => readVoiceSetting(canTranscribe(detectTier()));
 
 const readLastExport = () => {
     try {
@@ -193,6 +260,12 @@ export default function Vault() {
     const fileInput = useRef(null);
 
     const [lockSet, setLockSet] = useState(() => Boolean(readLockHash()));
+    // Read once, like the lock hash beside it: the settings screen is a different route,
+    // so this page is remounted after any change that could move it.
+    const [voiceOn] = useState(voiceIsOn);
+    // Which paragraph describes this device: one model on the Full tier, two on the Light
+    // one. Read once, like every other fact on this page.
+    const [voiceTier] = useState(() => detectTier());
     const [passphrase, setPassphrase] = useState('');
 
     useEffect(() => {
@@ -426,14 +499,28 @@ export default function Vault() {
                             <dd className="text-slate-600 mt-1">
                                 Nothing. Every request goes to this app's own origin — you can check that in
                                 your browser's network tab. There is no analytics, no telemetry, and no
-                                third-party script.
+                                third-party script.{' '}
+                                <span className="font-medium text-slate-700">
+                                    If you turn on voice check-ins, the speech and language model files
+                                    are downloaded once, from this same server, and run here.
+                                </span>
                             </dd>
                         </div>
                         <div>
                             <dt className="font-medium text-slate-800">What about AI features?</dt>
+                            <dd className="text-slate-600 mt-1" data-ai-claim={voiceOn ? 'on' : 'off'}>
+                                {emphasised(voiceOn ? aiClaimFor(voiceTier) : AI_CLAIM.off)}
+                            </dd>
+                        </div>
+                        <div>
+                            {/* The numbers come from the recorder's own constants, so this
+                                sentence cannot describe a machine the code stopped being. */}
+                            <dt className="font-medium text-slate-800">Does it listen?</dt>
                             <dd className="text-slate-600 mt-1">
-                                There are none, by design. Nothing here infers, scores, or interprets on your
-                                behalf — every number in this app is one you set yourself.
+                                Only while the record button is lit. There is no wake word, no background
+                                capture, and recording stops when you tap, after{' '}
+                                {Math.round(SILENCE_HOLD_MS / 1000)} seconds of silence, or at{' '}
+                                {Math.round(MAX_CLIP_MS / 1000)} seconds.
                             </dd>
                         </div>
                         <div>
@@ -442,8 +529,8 @@ export default function Vault() {
                                 No. The database is a plain file (or your Postgres instance); anyone with
                                 access to the server can read it. Passwords are hashed, but your notes,
                                 scores, and everything in the journal — the words you tapped, what you typed,
-                                the people and things you named, and your answers to the evening questions —
-                                are not. Protecting the machine is the protection.
+                                the people and things you named, your answers to the evening questions, and
+                                journal transcripts — are not. Protecting the machine is the protection.
                             </dd>
                         </div>
                     </dl>

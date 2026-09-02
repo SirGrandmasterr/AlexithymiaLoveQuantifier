@@ -1,0 +1,13 @@
+{
+  "_note": "The fixture user of §4.7: three relationships and two triggers. `en` is the design document's example verbatim; `de` is the same person keeping the journal in German, whose trigger labels are therefore German — *work* and *Arbeit* are two triggers until the embedding index (§4.5b) can say otherwise. Each case in transcripts.json names the context it was proposed in. Pass one of these to `buildContext` to get the object `buildPrompt` and `validateProposal` take.",
+  "en": {
+    "relationships": [{ "name": "Alex" }, { "name": "Lucie" }, { "name": "Sam" }],
+    "triggers": [{ "label": "work" }, { "label": "the move" }],
+    "language": "en"
+  },
+  "de": {
+    "relationships": [{ "name": "Alex" }, { "name": "Lucie" }, { "name": "Sam" }],
+    "triggers": [{ "label": "Arbeit" }, { "label": "der Umzug" }],
+    "language": "de"
+  }
+}

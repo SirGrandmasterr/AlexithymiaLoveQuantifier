@@ -56,3 +56,8 @@ backend/**/uploads/
 *.keystore
 *.jks
 local.properties
+
+# The journal plugin's Gradle module (plugins/alq-journal/android) is built in place when the
+# generated project references it, and leaves its build output beside the source.
+/plugins/*/android/build/
+/plugins/*/android/.gradle/

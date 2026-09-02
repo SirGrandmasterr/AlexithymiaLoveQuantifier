@@ -59,7 +59,7 @@ Breaking any of these produces a silent or confusing failure rather than a clean
 | 12 | **`PUT /api/subjects/:id` is a partial merge.** | Absent field = unchanged; present field = written, including `""`/`[]`. Keep `UpdateSubjectInput`'s fields pointers — turning one back into a value type silently reinstates the description-wipe bug. |
 | 13 | **Never silently discard bad input.** | Validation failures return a 400 naming the field. A handler that "just ignores" a malformed value is how the old date bug survived. |
 | 14 | **Absent ≠ zero, and absent ≠ false** — in `stats`, and now in every journal payload. | A missing `stats` key means the category was skipped. Read it with a presence check (`isScored`), never `stats[id] \|\| 0`. The journal extends the rule to booleans and to whole keys: a skipped ritual question is **absent from `answers`**, never `false`; a check-in with no strength in it omits `intensity` rather than writing a middle number; `uncertain` is written only when it is `true`. The Go validators mirror this with pointer fields (`Intensity *int`, `Uncertain *bool`), so nil and zero stay distinguishable — see trap 13. |
-| 15 | **The user authors every number.** | The guided-scoring band is a suggestion drawn on the track; only an explicit "Use N" click moves the slider. No code path may write a score the user did not confirm. |
+| 15 | **The user authors every number.** | The guided-scoring band is a suggestion drawn on the track; only an explicit "Use N" click moves the slider. No code path may write a score the user did not confirm. **The proposal card (6-D) is the same rule made visible**: a model's proposal is a dashed chip, the save body is built from the card's *confirmed* state by `confirmedPicked` ([Frontend §2ea](06-frontend.md)), and the model's output travels beside it as provenance the server never reads as input — it validates ids, not opinions. |
 | 16 | **Guide answers store the scale *index* (0-3), not its value (0/35/70/100).** | The band arithmetic maps index → value through `GUIDE_SCALE`. Confusing them yields a band that looks reasonable and is wrong. |
 | 17 | **The subject list lives in `SubjectsContext`.** | Fetching it again in a screen re-introduces the stale-copy bug the context exists to kill. Use `useSubjects()`. `JournalContext` is the second context, not a second store: it holds journal entries and **reads** the people from `useSubjects()`, which is why it is mounted inside `SubjectsProvider`. |
 | 18 | **Radar axis order is `CATEGORIES` order, always.** | A Love Shape is only recognisable if a given category sits at the same angle every time. Do not sort the shape data. |
@@ -148,6 +148,27 @@ Ranked by how much time they waste.
     the graph's legend — so `screen.getByText('connectedness')` throws *"Found multiple
     elements"*. Both are correct; the test has to say which it means.
     `Journal.test.jsx`'s `rows()` helper is the scoped-query pattern to copy.
+17. **On Android, the permission prompt pauses the app.** The runtime-permission dialog is an
+    activity of its own, so the first tap of the microphone fires Capacitor's `appStateChange`
+    with `isActive: false` — the exact signal `watchLifecycle` treats as "throw the audio
+    away". A recorder in `requesting` has captured nothing, and discarding it there cancels
+    the request the user is in the middle of granting; `recorder.js` therefore leaves that one
+    state alone on native platforms. Any new listener for "the app went to the background"
+    that touches the journal has to make the same distinction, and a test that fakes
+    `appStateChange` during `requesting` is how to know it does.
+18. **A `tap()` on the recorder is ignored while the permission prompt is up.** The button
+    contract dispatches on state and `requesting` is deliberately a no-op, so a test that
+    "taps again to cancel" during the prompt asserts nothing; `stop()` is what cancels a
+    pending request, and it is what the discard button and the lock call.
+19. **A model's output is safe only after `propose`, and the transcript is the one slot the
+    filter leaves alone.** `validateProposal` ([Frontend §4bm](06-frontend.md)) runs inside
+    `propose` on everything a runtime returns, so a component that calls a runtime's own
+    `propose` directly — or reads anything off a result but `proposal` and `provenance` —
+    has stepped around the only thing standing between a model's `label` and a chip. The
+    reverse mistake is as easy: the forbidden list is read over `label` and `text`, **never
+    over `transcript`**, because that is the user's own sentence and a journal that censors
+    *bad* out of it is not a record. A test asserts both directions in the same case; if
+    you add a filter and the transcript case goes red, the filter is wrong, not the test.
 
 ---
 

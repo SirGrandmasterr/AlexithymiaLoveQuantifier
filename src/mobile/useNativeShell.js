@@ -4,6 +4,7 @@ import { App as CapacitorApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Keyboard } from '@capacitor/keyboard';
 import { isNative } from './platform';
+import { primeNativeTier } from './journalPlugin';
 
 /** Routes from which "back" means "leave the app" rather than "go up". */
 const ROOT_ROUTES = new Set(['/', '/login']);
@@ -39,6 +40,15 @@ export default function useNativeShell() {
 
         return () => { handle.then((listener) => listener.remove()); };
     }, [navigate, location.pathname]);
+
+    // What this device can run (§5.5). One read of the memory report through the journal
+    // plugin, so the settings screen and the Vault page have the number before they are
+    // reached. It asks for no permission and opens no device — the microphone is asked for
+    // on the first tap of the button and nowhere else.
+    useEffect(() => {
+        if (!isNative()) return;
+        primeNativeTier();
+    }, []);
 
     // The status bar. The app is light-on-white (`bg-slate-50`), so the icons must be dark —
     // `Style.Light` in this API means "light background, dark content", which reads backwards

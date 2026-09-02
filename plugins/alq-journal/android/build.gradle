@@ -1,0 +1,82 @@
+// The journal plugin's Android module.
+//
+// A local Capacitor plugin rather than files overlaid onto the generated project: `npx cap
+// sync android` finds the @CapacitorPlugin class in this module and registers it, and this
+// file — not the regenerated `android/app/build.gradle` — owns the plugin's one dependency.
+// The shape is the one every @capacitor/* plugin ships (compare
+// node_modules/@capacitor/haptics/android/build.gradle), so a Capacitor bump that changes
+// the template does not have to be re-derived here.
+
+ext {
+    junitVersion = project.hasProperty('junitVersion') ? rootProject.ext.junitVersion : '4.13.2'
+    androidxAppCompatVersion = project.hasProperty('androidxAppCompatVersion') ? rootProject.ext.androidxAppCompatVersion : '1.7.1'
+}
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.13.0'
+    }
+}
+
+apply plugin: 'com.android.library'
+
+android {
+    namespace = "com.thinkmusic.alexithymia.journal"
+    compileSdk = project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 36
+    defaultConfig {
+        minSdkVersion project.hasProperty('minSdkVersion') ? rootProject.ext.minSdkVersion : 24
+        targetSdkVersion project.hasProperty('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 36
+        versionCode 1
+        versionName "0.1.0"
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    lintOptions {
+        abortOnError = false
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+}
+
+repositories {
+    google()
+    mavenCentral()
+}
+
+dependencies {
+    implementation project(':capacitor-android')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+
+    // ONNX Runtime for Android — the same 1.24.3 the web build pins for onnxruntime-web
+    // (product_vision/06-emotional-journal.md §5.5, C3), so the two transcribers run the
+    // same pinned Whisper export on the same runtime version. The CPU execution provider
+    // only: NNAPI and the GPU delegates are not exercised on this model and a backend that
+    // loads and then fails at inference is worse than one never offered (C3 measured
+    // exactly that with WebGPU). Its native libraries add roughly 15 MB to the APK.
+    implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.24.3'
+
+    // LiteRT-LM — Gemma 4 E2B on the Full tier (§5.5 option A, D3). Google's on-device
+    // runtime for language models; the MediaPipe LLM Inference API it replaces is in
+    // maintenance mode. Apache-2.0, and a Kotlin API rather than a JNI build of our own,
+    // which is the whole reason §12.2 chose it over llama.cpp.
+    //
+    // Two things measured against 0.16.1 on 2026-09-02, off-device, before this line was
+    // written: the audio path works for Gemma 4 (a WAV through Content.AudioBytes is
+    // transcribed and labelled in one pass), and ResponseFormat.json really constrains the
+    // output. Both are in the ledger with the numbers.
+    //
+    // Its native library ships for arm64-v8a (21.5 MB) and x86_64 (25.6 MB) only — no
+    // armeabi-v7a, no 32-bit x86 — so a 32-bit device gets the Light tier and the tier code
+    // is what has to know that, not this file.
+    implementation 'com.google.ai.edge.litertlm:litertlm-android:0.16.1'
+}

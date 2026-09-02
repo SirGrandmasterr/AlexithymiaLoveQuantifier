@@ -51,6 +51,7 @@ import {
     mergeTriggerRequest
 } from './journal';
 import { MAX_TAG_LENGTH } from './contextTags';
+import { FORBIDDEN_WORDS } from './forbiddenWords';
 
 /* ------------------------------------------------------------------------------------ */
 /* Rail 1 — the forbidden-word walk                                                       */
@@ -60,12 +61,24 @@ import { MAX_TAG_LENGTH } from './contextTags';
  * The words this feature may not say, extended from cadence.test.js's six. The point of
  * walking the object rather than listing the strings is that a sentence added next session
  * is covered without anyone remembering to add it here.
+ *
+ * Since D1 the list itself lives in `constants/forbiddenWords.js`, because the proposal
+ * filter (`journal/inference/validate.js`) reads the same words over what a model writes.
+ * The pin below is what stops a shared list from being a shrinkable one: every word this
+ * walk has ever refused is still in it, by name.
  */
-const FORBIDDEN = [
-    'overdue', 'missed', 'streak', 'forgot', 'should', 'behind', '!',
-    'healthy', 'unhealthy', 'concerning', 'symptom', 'disorder', 'diagnos',
-    'fail', 'guilt', 'lazy', 'bad', 'good job'
-];
+const FORBIDDEN = FORBIDDEN_WORDS;
+
+describe('the forbidden list itself', () => {
+    it('still holds every word the walk has ever refused', () => {
+        expect(FORBIDDEN).toEqual(expect.arrayContaining([
+            'overdue', 'missed', 'streak', 'forgot', 'should', 'behind', '!',
+            'healthy', 'unhealthy', 'concerning', 'symptom', 'disorder', 'diagnos',
+            'fail', 'guilt', 'lazy', 'bad', 'good job'
+        ]));
+        expect(FORBIDDEN).toHaveLength(18);
+    });
+});
 
 /** Every string anywhere inside a value, with the path that reaches it. */
 const walkStrings = (value, path = '') => {
@@ -104,6 +117,14 @@ describe('the forbidden-word walk', () => {
         // vocabulary is in this object too, so the walk reads it with everything else.
         expect(found.map(entry => entry.path)).toContain('dayGraph.rotateRight');
         expect(found.map(entry => entry.path)).toContain('dayGraph.branch');
+        // D2's proposal card: the four §4.6 sentences, the resolution states and the exits.
+        // Every word the card can show is a template in this group, so the walk reads the
+        // whole card and the model's output only ever fills a slot.
+        ['proposal.ambiguity.feeling', 'proposal.ambiguity.target', 'proposal.ambiguity.conflict',
+            'proposal.people.matches', 'proposal.people.newPerson', 'proposal.people.candidate',
+            'proposal.notIt', 'proposal.exits.rerecord', 'proposal.dashed', 'proposal.saveError',
+            'settings.suggestions.model']
+            .forEach(path => expect(found.map(entry => entry.path)).toContain(path));
     });
 
     it('finds no evaluative or urgency vocabulary in JOURNAL_COPY', () => {

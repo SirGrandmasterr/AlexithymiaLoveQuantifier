@@ -195,6 +195,17 @@ that possible, and one of them has a blast radius wider than the feature:
 `connect-src` is unchanged and must stay that way: model weights come from this origin, never
 from a public model hub, and the Vault page tells the user exactly that.
 
+**`.mjs` needs a MIME type, and nginx does not ship one.** Checked against nginx 1.31.4 on
+2026-08-31: `.mjs` is absent from the bundled `mime.types`, so it is served as
+`application/octet-stream` — and a module script with that type is **refused** by strict MIME
+checking (*"Expected a JavaScript-or-Wasm module script…"*). ONNX Runtime's WebAssembly
+loader is a `.mjs`, so without the `types { text/javascript mjs; }` block now at the top of
+[`nginx.conf`](../nginx.conf) the Light-tier transcriber cannot start at all, and the error it
+reports is the thoroughly unhelpful *"no available backend found"*. `.wasm` needs no such
+line — nginx has mapped it to `application/wasm` since 1.21. **A browser that already cached
+the pre-fix response keeps the wrong type**, because `/assets/` is served immutable; a hard
+reload or a cleared cache is needed once after deploying this fix.
+
 **COEP is the one to understand.** `require-corp` means every *cross-origin* subresource the
 page loads must carry a `Cross-Origin-Resource-Policy` header of its own, or the browser
 blocks it — with no HTTP error to read, because the response arrives and is then discarded.
@@ -296,11 +307,35 @@ so re-running it is also the integrity check.
 To opt into more than the default:
 
 ```bash
-make models-fetch MODELS="whisper-tiny gemma-4-e2b"
+make models-fetch MODELS="whisper-tiny gemma-4-e2b-onnx gemma-4-e2b-litertlm"
 ```
 
-The default is `whisper-tiny` — 41 MB, the Light-tier floor. Larger sets are opt-in by name,
-and a name the manifest does not describe is refused before anything downloads.
+The default is `whisper-tiny` — **45,245,009 bytes over 13 files**, the Light-tier floor.
+Larger sets are opt-in by name, and a name the manifest does not describe is refused before
+anything downloads.
+
+| Set | What it is for | Size |
+| :-- | :------------- | :--- |
+| `whisper-tiny` (default) | The Light tier's transcriber, on both platforms | **45,245,009 B**, 13 files |
+| `gemma-4-e2b-onnx` | The proposal model **in a browser**, through transformers.js | **3,401,460,010 B**, 16 files |
+| `gemma-4-e2b-litertlm` | The proposal model **on Android**, as one LiteRT-LM bundle | **2,588,159,070 B**, 2 files |
+
+**Fetch only the sets your clients need.** The two Gemma sets are the same model in two
+packagings, and an operator serving only phones has no use for the 3.4 GB of ONNX (nor a
+browser-only deployment for the 2.6 GB bundle). Both together is 6 GB, and it is the right
+answer only where both kinds of client exist. All three numbers above are what `make
+models-fetch` reported on 2026-09-02, not estimates.
+
+**A browser without a WebGPU adapter never asks for the Gemma files at all**, and neither does
+a phone below 6 GB or without a 64-bit ABI — those devices are on the Light tier, which needs
+`whisper-tiny` and, for its proposals, the 3.1 GB text-only subset of `gemma-4-e2b-onnx`
+(the same rows; a Light-tier browser fetches twelve of the sixteen).
+
+**The browser verifies the same sums again.** `src/journal/inference/models.js` carries a
+second copy of the manifest and re-hashes every file it is served before caching it, and a
+unit test reads this Makefile to keep the two identical. That is not belt-and-braces for its
+own sake: it is what catches a truncated volume, a half-written file, and a proxy that
+answered with a page of HTML — none of which a check at only one end would see.
 
 | | |
 | :-- | :-- |
@@ -549,6 +584,14 @@ the Capacitor template inside the image on every run, so the artefact depends on
 `package-lock.json` and the Dockerfile rather than on any machine's local state, and a CI
 build that took a different path would give that up. If the Makefile's `build-android` recipe
 grows a third build argument, the workflow needs it too.
+
+Since Phase 6 (C4) the APK carries the journal's native plugin, a `file:` dependency at
+`plugins/alq-journal/`. `Dockerfile.android` copies `plugins/` **before** `npm ci` in both
+stages, because a lockfile naming a path the build context does not yet hold fails the install
+with an unhelpful `ENOENT`; a workflow that ever stops using the Dockerfile would need the same
+order. The plugin's ONNX Runtime dependency adds roughly 15 MB of native libraries to the APK,
+and the 27 MB of ONNX Runtime WebAssembly in `dist/` (C3) is bundled into the APK too without
+ever running there — a recorded follow-up, not a deliberate choice.
 
 `VITE_ANDROID_API_URL` defaults to `https://api.alexithymialovequantifier.voglerprojekte.com`
 in three places that must agree: `ANDROID_API_URL` in the [Makefile](../Makefile),

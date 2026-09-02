@@ -81,7 +81,8 @@ GRADLE_TASK ?= assembleDebug
         migrate migrate-check migrate-local migrate-check-local help \
         android-init build-android bundle-android dev-android run-android \
         android-install android-logs clean-android \
-        models-fetch
+        models-fetch \
+        journal-eval journal-audio-check journal-eval-scripts
 
 # Default target
 all: install build
@@ -273,9 +274,16 @@ db-reset: db-wait
 #   operator's first run with no way to tell a re-tag from tampering.
 #
 #   Do not add a large set to the MODELS default. whisper-tiny is 41 MB and is the floor the
-#   Light tier needs; Gemma 4 E2B is ~2.6 GB and EmbeddingGemma ~200-300 MB, and §5.6 has
-#   both opt-in. `make models-fetch MODELS="whisper-tiny gemma-4-e2b"` is how they are asked
-#   for, and an unknown name is refused before anything downloads.
+#   Light tier needs; Gemma 4 E2B is 3.4 GB as ONNX and 2.6 GB as a LiteRT-LM bundle, and
+#   EmbeddingGemma will be ~200-300 MB, and §5.6 has all of them opt-in.
+#   `make models-fetch MODELS="whisper-tiny gemma-4-e2b-onnx"` is how they are asked for, and
+#   an unknown name is refused before anything downloads.
+#
+#   Gemma is two sets rather than one because the two platforms need different files and
+#   neither should pay for the other's: `gemma-4-e2b-onnx` is what the browser loads through
+#   transformers.js, `gemma-4-e2b-litertlm` is the single bundle the Android plugin opens. An
+#   operator serving only phones fetches 2.6 GB, not 6 GB. Both are needed only where both
+#   kinds of client exist.
 # ---------------------------------------------------------------------------
 
 # Named explicitly in docker-compose.yml so it can be stated here rather than derived from
@@ -289,8 +297,8 @@ MODELS_VOLUME := love-metrics-models
 # with and for a retry that distinguishes a 404 from a dropped connection.
 MODELS_IMAGE := alpine:3.20
 
-# Which sets to fetch. Override to add one, once a later session has pinned it:
-#   make models-fetch MODELS="whisper-tiny gemma-4-e2b"
+# Which sets to fetch. Override to add one:
+#   make models-fetch MODELS="whisper-tiny gemma-4-e2b-onnx gemma-4-e2b-litertlm"
 MODELS ?= whisper-tiny
 
 # Light-tier transcriber: Whisper tiny, ONNX, int8-quantised, for transformers.js (§5.5).
@@ -317,6 +325,39 @@ WHISPER_TINY_DIR := onnx-community/whisper-tiny
 APACHE_20_URL := https://www.apache.org/licenses/LICENSE-2.0.txt
 APACHE_20_SHA := cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30
 
+
+# Full tier on the web: Gemma 4 E2B IT, ONNX, q4f16, for transformers.js over WebGPU (§5.5).
+#
+# Four sub-models, because `Gemma4ForConditionalGeneration` is four ONNX graphs and
+# transformers.js opens a session for each: the token embedding table, the merged decoder,
+# the audio encoder, and the vision encoder. The app never shows the model an image — the
+# vision encoder is fetched because the model class declares the session, and it is 99 MB of
+# a 3.4 GB download, which is not where a saving is.
+#
+# Every `.onnx` row here is a few hundred kilobytes of graph beside a `.onnx_data` row of
+# weights. Both halves are required, and ONNX Runtime resolves the second by the name written
+# inside the first — so they must land in the same directory, which is what these paths do.
+#
+# **3,401,460,010 bytes, 3.4 GB, measured 2026-09-02 from this revision.** §5.5 estimated
+# "2-3 GB (verify)" and the design document now carries the measurement instead. q4f16 is the
+# floor and not a preference: every other quantisation this repo offers is larger, and the
+# 3.1 GB of it that is the language model is needed for the Light tier's text mode too.
+GEMMA_E2B_ONNX_REV := 9f4bef82ea6e296bc69f8a2f5939f73af81b07a6
+GEMMA_E2B_ONNX_URL := https://huggingface.co/onnx-community/gemma-4-E2B-it-ONNX/resolve/$(GEMMA_E2B_ONNX_REV)
+GEMMA_E2B_ONNX_DIR := onnx-community/gemma-4-E2B-it-ONNX
+
+# Full tier on Android: the same model as one LiteRT-LM bundle (§5.5 option A).
+#
+# One file, mixed 2/4/8-bit weights, opened by com.google.ai.edge.litertlm. The generic
+# CPU/GPU bundle and not one of the six vendor builds beside it: those are NPU images for one
+# SoC each, and picking the wrong one is a multi-gigabyte download that cannot run.
+#
+# **2,588,159,070 bytes with the licence, 2.6 GB, measured 2026-09-02** — which is §5.5's
+# published 2,583 MB to the byte.
+GEMMA_E2B_LITERTLM_REV := b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1
+GEMMA_E2B_LITERTLM_URL := https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/$(GEMMA_E2B_LITERTLM_REV)
+GEMMA_E2B_LITERTLM_DIR := litert-community/gemma-4-E2B-it-litert-lm
+
 # One row per file: set|path-under-the-volume|url|sha256
 MODEL_MANIFEST := \
 	whisper-tiny|$(WHISPER_TINY_DIR)/LICENSE.txt|$(APACHE_20_URL)|$(APACHE_20_SHA) \
@@ -331,7 +372,25 @@ MODEL_MANIFEST := \
 	whisper-tiny|$(WHISPER_TINY_DIR)/merges.txt|$(WHISPER_TINY_URL)/merges.txt|2df2990a395e35e8dfbc7511e08c12d56018d8d04691e0133e5d63b21e154dc6 \
 	whisper-tiny|$(WHISPER_TINY_DIR)/normalizer.json|$(WHISPER_TINY_URL)/normalizer.json|bf1c507dc8724ca9cf9903640dacfb69dae2f00edee4f21ceba106a7392f26dd \
 	whisper-tiny|$(WHISPER_TINY_DIR)/onnx/encoder_model_quantized.onnx|$(WHISPER_TINY_URL)/onnx/encoder_model_quantized.onnx|2af4a414ca47aa30f61246017e5fe82b0a8d229281d1255ba666a2a7f6b84d19 \
-	whisper-tiny|$(WHISPER_TINY_DIR)/onnx/decoder_model_merged_quantized.onnx|$(WHISPER_TINY_URL)/onnx/decoder_model_merged_quantized.onnx|25e807a962b6349356d0ea5d0dfe530b7e5bf0e2a484aeca0359d03143faddd3
+	whisper-tiny|$(WHISPER_TINY_DIR)/onnx/decoder_model_merged_quantized.onnx|$(WHISPER_TINY_URL)/onnx/decoder_model_merged_quantized.onnx|25e807a962b6349356d0ea5d0dfe530b7e5bf0e2a484aeca0359d03143faddd3 \
+	gemma-4-e2b-onnx|$(GEMMA_E2B_ONNX_DIR)/LICENSE.txt|$(APACHE_20_URL)|$(APACHE_20_SHA) \
+	gemma-4-e2b-onnx|$(GEMMA_E2B_ONNX_DIR)/config.json|$(GEMMA_E2B_ONNX_URL)/config.json|5494e6677d9e150ea20ba3101ae8a32b0f141004626f052725d8bf48991b9faa \
+	gemma-4-e2b-onnx|$(GEMMA_E2B_ONNX_DIR)/generation_config.json|$(GEMMA_E2B_ONNX_URL)/generation_config.json|e6a0b50de21a511f15ac4857b7f227f68ee60ecb1f11255d07b75e0bdc60e155 \
+	gemma-4-e2b-onnx|$(GEMMA_E2B_ONNX_DIR)/preprocessor_config.json|$(GEMMA_E2B_ONNX_URL)/preprocessor_config.json|4457c6e8a09070d7d5d1cd983fbfb67ebafe602bd98120c3543a024f5d07056b \
+	gemma-4-e2b-onnx|$(GEMMA_E2B_ONNX_DIR)/processor_config.json|$(GEMMA_E2B_ONNX_URL)/processor_config.json|32bdf45d2ad4cc29a0822ddd157a182de76644f0419a6228d151495256e9813c \
+	gemma-4-e2b-onnx|$(GEMMA_E2B_ONNX_DIR)/chat_template.jinja|$(GEMMA_E2B_ONNX_URL)/chat_template.jinja|781d10940fbc44be40064b5d43a056fc486c84ceaa55538226368b57314132bf \
+	gemma-4-e2b-onnx|$(GEMMA_E2B_ONNX_DIR)/tokenizer.json|$(GEMMA_E2B_ONNX_URL)/tokenizer.json|47bd35616c7c782aaca6ccf48c75f3461d5877170984b8836b375107d0a9f566 \
+	gemma-4-e2b-onnx|$(GEMMA_E2B_ONNX_DIR)/tokenizer_config.json|$(GEMMA_E2B_ONNX_URL)/tokenizer_config.json|06afbf54e228050cba79c4a0afd83543cc89070a2d62b8337d0aa8b4cdc348c3 \
+	gemma-4-e2b-onnx|$(GEMMA_E2B_ONNX_DIR)/onnx/embed_tokens_q4f16.onnx|$(GEMMA_E2B_ONNX_URL)/onnx/embed_tokens_q4f16.onnx|d7ca53f6a169471b5699b2f57ee4c7aa2c73732b0152f3909e64b71384444825 \
+	gemma-4-e2b-onnx|$(GEMMA_E2B_ONNX_DIR)/onnx/embed_tokens_q4f16.onnx_data|$(GEMMA_E2B_ONNX_URL)/onnx/embed_tokens_q4f16.onnx_data|024b199e6358ed42970f807686add5f9430d7e254ca7ce22fc9c83f015b9c517 \
+	gemma-4-e2b-onnx|$(GEMMA_E2B_ONNX_DIR)/onnx/decoder_model_merged_q4f16.onnx|$(GEMMA_E2B_ONNX_URL)/onnx/decoder_model_merged_q4f16.onnx|73c0f1fe04f9a3a048fb3319c0671b6cf0346bf33a3a8624c853bcffe01c24a4 \
+	gemma-4-e2b-onnx|$(GEMMA_E2B_ONNX_DIR)/onnx/decoder_model_merged_q4f16.onnx_data|$(GEMMA_E2B_ONNX_URL)/onnx/decoder_model_merged_q4f16.onnx_data|3b27245a7396cb7039a4e4118bd2a8aa35106bae381522edf7c4867b5f22bb10 \
+	gemma-4-e2b-onnx|$(GEMMA_E2B_ONNX_DIR)/onnx/audio_encoder_q4f16.onnx|$(GEMMA_E2B_ONNX_URL)/onnx/audio_encoder_q4f16.onnx|5e0deb22791685c792d4b8e089deef9670fa4a4cecde434213d6a742e58fc3fa \
+	gemma-4-e2b-onnx|$(GEMMA_E2B_ONNX_DIR)/onnx/audio_encoder_q4f16.onnx_data|$(GEMMA_E2B_ONNX_URL)/onnx/audio_encoder_q4f16.onnx_data|df58e61a00bafa9449ee5fd52895ce952f158bbdd1fe38df8a68f48f36842e62 \
+	gemma-4-e2b-onnx|$(GEMMA_E2B_ONNX_DIR)/onnx/vision_encoder_q4f16.onnx|$(GEMMA_E2B_ONNX_URL)/onnx/vision_encoder_q4f16.onnx|e0a4e48e519ade4eeddbb4cdadb812a7251aea871f7fb5f50576615fd3af22a3 \
+	gemma-4-e2b-onnx|$(GEMMA_E2B_ONNX_DIR)/onnx/vision_encoder_q4f16.onnx_data|$(GEMMA_E2B_ONNX_URL)/onnx/vision_encoder_q4f16.onnx_data|0835071d2c79c105f8e1b549b7f8dd8c9af07fa95f01ead2e7add280602d3c6d \
+	gemma-4-e2b-litertlm|$(GEMMA_E2B_LITERTLM_DIR)/LICENSE.txt|$(APACHE_20_URL)|$(APACHE_20_SHA) \
+	gemma-4-e2b-litertlm|$(GEMMA_E2B_LITERTLM_DIR)/gemma-4-E2B-it.litertlm|$(GEMMA_E2B_LITERTLM_URL)/gemma-4-E2B-it.litertlm|181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c
 
 models-fetch:
 	@test -n "$(MODELS)" || { echo "MODELS is empty. Usage: make models-fetch MODELS=\"whisper-tiny\""; exit 1; }
@@ -350,6 +409,61 @@ models-fetch:
 		-e MANIFEST="$(MODEL_MANIFEST)" \
 		-v $(MODELS_VOLUME):/models \
 		$(MODELS_IMAGE) sh -s
+
+
+# ---------------------------------------------------------------------------
+# The golden suite and the model gate (§5.7, session D4)
+#
+# `journal-eval` drives a candidate model through every case in
+# src/journal/inference/golden/ at temperature 0 with the output schema as its grammar,
+# scores it with the app's own validateProposal, and writes the report §5.7 gates on into
+# product_vision/eval/. **A model does not become a tier default until its numbers are in a
+# checked-in report.**
+#
+# It is deliberately not part of `npm test`: it needs weights and minutes. What *is* in
+# `npm test` is the arithmetic underneath it — scripts/journal-eval/*.test.mjs cover the word
+# error rate, the scoring and the gate, because a wrong number there would mis-state a gate
+# result in a document somebody later trusts.
+#
+# With no arguments it runs the tier defaults. With CANDIDATE=reference it needs no weights at
+# all and checks itself, which is the useful thing to run first on a new machine:
+#
+#   make journal-eval CANDIDATE=reference
+#   make journal-eval --help                 (the candidate list)
+#
+# A real run needs a binary and a model, passed through the environment:
+#
+#   make journal-eval CANDIDATE=full-web \
+#        JOURNAL_EVAL_LLAMA_BIN=/opt/llama.cpp/llama-mtmd-cli \
+#        JOURNAL_EVAL_MODEL=/weights/gemma-4-E2B-it-Q4_K_M.gguf \
+#        JOURNAL_EVAL_MMPROJ=/weights/mmproj-gemma-4-E2B.gguf
+#
+# scripts/journal-eval/README.md has the rest, including how to score a candidate that only
+# runs on a phone.
+#
+# `journal-audio-check` is the other half: it says which of the 240 clips exist, whether they
+# are the right format, and — the part that is a rule rather than a convenience — refuses any
+# speaker directory that has no consent record beside it.
+# ---------------------------------------------------------------------------
+
+# Which candidate(s) to run. Empty means the tier defaults, which is what the gate is about.
+CANDIDATE ?=
+
+# Extra flags for the harness, e.g. EVAL_ARGS="--verbose --limit 8" while wiring a new runner up.
+EVAL_ARGS ?=
+
+journal-eval:
+	@node scripts/journal-eval/run.mjs \
+		$(if $(CANDIDATE),$(foreach c,$(CANDIDATE),--candidate $(c)),--tier-defaults) \
+		$(EVAL_ARGS)
+
+journal-audio-check:
+	@node scripts/journal-eval/audio-check.mjs $(AUDIO_ARGS)
+
+# Regenerates the two things a recording session is run from: the printable scripts, and this
+# is also the command to run after adding a case to the golden suite.
+journal-eval-scripts:
+	@node product_vision/eval/build-recording-scripts.mjs
 
 # ---------------------------------------------------------------------------
 # Android
@@ -475,6 +589,9 @@ help:
 	@echo "Frontend:   install, dev, build, preview, clean"
 	@echo "Tests:      test, test-frontend, test-backend, test-e2e"
 	@echo "Models:     models-fetch (fills the weights volume; MODELS=\"whisper-tiny\")"
+	@echo "Journal:    journal-eval (the golden suite against a model; CANDIDATE=reference needs no weights)"
+	@echo "            journal-audio-check (which recordings exist and whether they can be used)"
+	@echo "            journal-eval-scripts (regenerate the printable recording scripts)"
 	@echo "Android:    android-init, build-android, run-android, dev-android, clean-android"
 	@echo "            android-install, android-logs, bundle-android KEYSTORE=..."
 	@echo "            override the baked-in server with ANDROID_API_URL=http://host:port"

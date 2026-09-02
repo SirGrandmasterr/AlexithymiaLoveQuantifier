@@ -23,7 +23,18 @@ import {
     ritualTimeReached,
     tzOffsetMinutes
 } from '../constants/journal';
-import { readAskWho, readOptionalQuestions, readRitualSetting } from '../constants/journalSettings';
+import {
+    readAskWho,
+    readOptionalQuestions,
+    readRitualSetting,
+    readSuggestions,
+    readTierOverride,
+    readVoiceSetting
+} from '../constants/journalSettings';
+import { buildContext } from '../journal/inference';
+import { detectTier, effectiveTier, TIERS } from '../journal/inference/tier';
+import RitualVoice from './RitualVoice';
+import { createVoiceKit } from './VoiceCheckin';
 
 /**
  * The nightly ritual: five to nine binary questions, one card at a time, finishable
@@ -99,7 +110,7 @@ export const gestureIntent = (dx, dy, threshold) => {
  * not.
  */
 export const buildRitualRequest = ({
-    asked, answers, dayWord, mentions = [], durationMs, at, day, ids
+    asked, answers, dayWord, mentions = [], durationMs, at, day, ids, source = null
 }) => {
     const payload = {
         v: PAYLOAD_VERSION,
@@ -108,6 +119,12 @@ export const buildRitualRequest = ({
         rollover_hour: DAY_ROLLOVER_HOUR,
         duration_ms: durationMs
     };
+
+    // §3.7: a ritual answered by speaking carries `source: "voice"` and is otherwise
+    // identical to a swiped one. Absent for the swipes rather than `"swipe"`, so every row
+    // written before D3 keeps meaning exactly what it meant, and the server — which reads
+    // named keys and lets the rest travel through (§6.4) — needs no change at all.
+    if (source) payload.source = source;
 
     // Absent when the closing card was skipped, and carrying no `uncertain`: the ritual has
     // no affordance for "I am unsure of this word", so writing `false` would be recording a
@@ -306,8 +323,38 @@ export default function RitualCards() {
 
     const [index, setIndex] = useState(0);
     const [answers, setAnswers] = useState({});
+
+    /**
+     * §3.7's one breath, on the Full tier only.
+     *
+     * The offer is on the first card and nowhere else: it is an alternative to starting the
+     * deck, not a thing to reach for halfway through it. `spoken` turns it off for the rest
+     * of the night once it has been used or declined, so a person who came back to the cards
+     * is not asked again.
+     *
+     * The kit is built lazily and only where it could be used, so a Light-tier phone builds
+     * no recorder and opens no model — the same rule the check-in composer follows.
+     */
+    const [voiceTier] = useState(() => effectiveTier(detectTier(), readTierOverride()).tier);
+    const [spoken, setSpoken] = useState(false);
+    const canSpeak = voiceTier === TIERS.full
+        && readVoiceSetting(true) === true
+        && readSuggestions() === true
+        && !discreet;
+    const voiceKit = useMemo(
+        () => (canSpeak && !spoken ? createVoiceKit({ tier: voiceTier }) : null),
+        [canSpeak, spoken, voiceTier]
+    );
+    const voiceContext = useMemo(
+        () => buildContext({ relationships }),
+        [relationships]
+    );
     const [who, setWho] = useState([]);
     const [dayWord, setDayWord] = useState(null);
+    // §3.7: "a ritual answered by voice carries `source: "voice"` and is otherwise identical
+    // to one answered by swipes". `null` for the swipes, so the ordinary row is unchanged
+    // and no reader has to know this field exists.
+    const [source, setSource] = useState(null);
     const [saving, setSaving] = useState(false);
     const [saveError, setSaveError] = useState(null);
     const [saved, setSaved] = useState(null);
@@ -380,7 +427,7 @@ export default function RitualCards() {
 
         try {
             await createEntry(buildRitualRequest({
-                asked, answers, dayWord: word, mentions, durationMs, at, day, ids
+                asked, answers, dayWord: word, mentions, durationMs, at, day, ids, source
             }));
             // Second, and only if there is one. A day word with no ritual behind it would be
             // an orphan; a ritual whose second write failed still reads whole, because the
@@ -394,7 +441,7 @@ export default function RitualCards() {
         } finally {
             setSaving(false);
         }
-    }, [answers, asked, createEntry, relationships, who]);
+    }, [answers, asked, createEntry, relationships, source, who]);
 
     /** Advance, or save if this was the last card. */
     const advance = useCallback((word = dayWord) => {
@@ -480,6 +527,30 @@ export default function RitualCards() {
             progress={<Progress index={Math.min(index, steps.length - 1)} total={steps.length} />}
         >
             <div className="w-full max-w-md h-full flex flex-col">
+                {voiceKit && index === 0 && (
+                    <div className="mb-4" data-ritual-voice-block>
+                        <RitualVoice
+                            kit={voiceKit}
+                            deck={deck}
+                            context={voiceContext}
+                            onAnswers={(spokenAnswers) => {
+                                // The answers the person confirmed, and nothing else. The
+                                // deck then continues from the *Who?* card if there is one
+                                // to show, or from the day word — the questions they did not
+                                // mention stay unanswered, which is §3.7's own rule and
+                                // invariant 14's.
+                                setAnswers(spokenAnswers);
+                                setSpoken(true);
+                                setSource('voice');
+                                const whoAt = deck.findIndex(q => q.id === 'with_people') + 1;
+                                setIndex(spokenAnswers.with_people === true && askWho && whoAt > 0
+                                    ? whoAt
+                                    : deck.length);
+                            }}
+                            onCards={() => setSpoken(true)}
+                        />
+                    </div>
+                )}
                 {/* The card takes the space, the controls sit at the bottom of it. Anchoring
                     them low is not decoration: the acceptance test for this screen is one
                     thumb on a 360 dp phone, and a Yes button in the middle of a 800 dp

@@ -236,6 +236,16 @@ export const PAYLOAD_VERSION = 1;
 /** How many feelings one check-in may carry. Beyond this a check-in stops being a sentence. */
 export const MAX_FEELINGS_PER_CHECKIN = 5;
 
+/**
+ * The languages the transcription setting offers to pin (§4.3, §9.7).
+ *
+ * Not a closed vocabulary and not a claim about what Whisper can do — it handles far
+ * more — but a pin the user never uses is a select with a hundred rows in it. German
+ * first, because §12.1 says this app's actual user base speaks it and every German
+ * number has to be believed before any English one is.
+ */
+export const TRANSCRIPTION_LANGUAGES = ['de', 'en', 'fr', 'es', 'it', 'nl', 'pl', 'pt', 'tr', 'ru'];
+
 /** A transcript is a spoken minute or two, not a document. */
 export const MAX_TRANSCRIPT_LENGTH = 4000;
 
@@ -303,7 +313,11 @@ export const JOURNAL_STORAGE_KEYS = {
     suggestions: 'alq:journal-suggestions',
     embeddings: 'alq:journal-embeddings',
     keepTranscripts: 'alq:journal-keep-transcripts',
-    language: 'alq:journal-language'
+    language: 'alq:journal-language',
+    // C3's, and the one key §9.7's table does not list: the tier a user pinned when the
+    // detected one was wrong, or too expensive for their machine. The design document
+    // now carries the row beside the other eight.
+    tier: 'alq:journal-tier'
 };
 
 /** The ritual's default time, if the user never picks one. */
@@ -364,7 +378,34 @@ export const JOURNAL_COPY = {
         // Trap 4 again: the cards stay where they are and every tap is still held, so the
         // sentence says that rather than only that the write did not land.
         saveError: "Could not save tonight's answers. What you tapped is still here.",
-        retry: 'Try again'
+        retry: 'Try again',
+        // §3.7, the ritual in one breath. Full tier only — the swipe cards are the default
+        // and the only path everywhere else, and this copy is unreachable there.
+        voice: {
+            // The offer, on the first card. Deliberately "or": the cards are already in
+            // front of the person reading it and this does not replace them.
+            offer: 'Or say it in one breath',
+            hint: 'One sentence about your day — sleep, moving, being outside, people, meals. Anything you leave out stays unanswered.',
+            listening: 'Listening. Tap when you are done.',
+            reading: 'Reading it back…',
+            // The confirm card. The same two sentences the check-in's card uses, because it
+            // is the same promise: nothing here is saved until it is tapped.
+            confirm: 'Is this right?',
+            confirmHint: 'Dashed means not saved yet. Tap a row to change it; anything left blank stays unanswered.',
+            heard: 'It heard: {names}',
+            keep: 'Save these',
+            // The exits. Both of them lead to the cards, because the cards are the thing
+            // that always works (§3.7).
+            cards: 'Use the cards instead',
+            nothing: 'No answers in that one — the cards are below.',
+            // Named `unavailable` and not `failed`: the copy walk reads the key path as
+            // well as the string, and "fail" is on the list wherever it appears.
+            unavailable: 'That did not come back. The cards are below.',
+            // What a row says before it is confirmed, for a screen reader. The visual cue is
+            // the dashed border; this is the same information as words.
+            unconfirmed: 'suggested, not saved',
+            unanswered: 'left unanswered'
+        }
     },
 
     checkin: {
@@ -474,10 +515,107 @@ export const JOURNAL_COPY = {
         // routes that later slices fill in, so a link is never a dead end.
         nothingHere: 'Nothing here yet.',
         voiceUnavailable: "Voice isn't available here — this device can't run the transcriber on its own, and the app won't send audio anywhere. Typing works the same way.",
+        // Why, when the app can say why. A browser reached over plain http:// has no
+        // microphone and no way to hash a downloaded file, and “this device can't” is a
+        // worse answer than the true one when the true one is fixable.
+        voiceNeedsSecureContext: "Voice isn't available over a plain http:// address — the browser only offers the microphone and the checks this needs over HTTPS or on localhost. Typing works the same way.",
         modelDownloading: 'Downloading the model — {size}. Tapping words works in the meantime.',
         modelDownloadCancel: 'Cancel'
     },
 
+    // The microphone path, from the tap to the words on the card (§4.2, §4.3). There is
+    // no proposal here and no chip the app chose: this slice writes down what was said
+    // and hands it to the same grid the chips path has always used.
+    voice: {
+        open: 'Say a check-in',
+        openHint: 'Tap to record. Tap again to stop.',
+        // The limit is on the button before it is reached, and the number comes from
+        // `MAX_CLIP_MS` rather than from this sentence, so the two cannot disagree.
+        limit: 'Up to {seconds} seconds',
+        recording: 'Recording',
+        stop: 'Stop',
+        remaining: '{seconds}s left',
+        addMore: 'Add more',
+        discard: 'Discard',
+        again: 'Record again',
+        clips: {
+            one: 'One clip on this check-in.',
+            many: '{count} clips on this check-in.'
+        },
+        working: 'Writing down what you said…',
+        // §4.3: the transcript is the record, and it is editable because a model
+        // mishears names most of all.
+        transcriptLabel: 'What you said',
+        transcriptHint: 'Edit it if a word came out wrong — what you leave here is what is saved.',
+        empty: 'Nothing came through. Record again, or tap the words below.',
+        // §4.2's register: say the room was loud, do not pretend the text is clean.
+        noisy: 'This was a noisy take — check the words.',
+        // A microphone that was refused is not an error; it is a path not taken.
+        denied: 'The microphone was not allowed, so there is nothing to write down. Tapping words works the same way.',
+        // Not `failed`: the walk reads the key path as well as the string, and it is
+        // right to — a screen that logs `voice.failed` is one refactor from showing it.
+        notWritten: 'The words could not be written down. Your recording was not kept — tap the words below, or record again.',
+        keyboard: 'Type instead'
+    },
+
+    // The proposal card (§4.4). Every sentence the model's output is dropped into lives
+    // here, and the model writes none of them: its words only ever fill a `{slot}`, which
+    // `validateProposal` has already read against the same list this object is walked with.
+    // The four `ambiguity` sentences are §4.6's, verbatim.
+    proposal: {
+        suggested: 'Suggested from what you said',
+        // Moved here from the U1 fixture card when D2 built the real one, so the walk sees it.
+        dashed: 'Dashed means not saved yet. Tap a word to keep it, tap it again to put it down.',
+        keep: 'Keep {label}',
+        putDown: 'Put {label} down',
+        change: 'Change',
+        changeHint: 'Pick the word that fits instead of {label}.',
+        changeCancel: 'Leave it',
+        addWord: 'Add a word',
+        addWordClose: 'Close the words',
+        // §4.6 `target`: the feelings are here and nothing is attached to them yet.
+        attachHint: 'Tap Person, Trigger or Tag to say what this was about.',
+        people: {
+            heading: 'People',
+            matches: '{name} — matches your relationship "{match}"',
+            newPerson: '{name} — new person?',
+            candidate: '{candidate}?',
+            candidateHint: 'Or, if you meant someone you already have:',
+            pickExisting: 'Pick existing…',
+            keepNew: 'Add {name} as a new person',
+            added: '{name} — new person',
+            linked: '{name} — as {match}',
+            // Nothing dashed is written (§4.4): a person nobody confirmed is not created, and
+            // the chips that named them go unsaved with them.
+            unresolved: 'Not saved until you say who this is.'
+        },
+        triggers: {
+            keep: 'Keep the new trigger {label}'
+        },
+        ambiguity: {
+            feeling: 'Which of these is closest to how that felt?',
+            // `{options}` is filled from the mentions the model did find, each as
+            // `targetOption`, joined with commas — "about Lucie, about work".
+            target: 'Was that {options}, or something else?',
+            targetOption: 'about {name}',
+            targetUnknown: 'What was that about?',
+            conflict: 'Could be either — pick one, or say it another way.'
+        },
+        notIt: "This isn't it",
+        // The three exits §4.6 gives every non-`none` ambiguity and the *This isn't it* link.
+        exits: {
+            heading: 'Say it another way',
+            edit: 'Edit the words',
+            rerecord: 'Say it again',
+            chips: 'Tap words instead'
+        },
+        rerunning: 'Reading the new words…',
+        save: 'Save',
+        saving: 'Saving…',
+        discard: 'Discard',
+        // Trap 4: the card stays and keeps every confirmation, so the sentence says so.
+        saveError: 'Could not save this check-in. Nothing was written, and what you kept is still here.'
+    },
     settings: {
         heading: 'Journal',
         subheading: 'All of this is per device, and none of it is sent anywhere.',
@@ -502,15 +640,34 @@ export const JOURNAL_COPY = {
             description: 'With this on, a yes to "spent time with someone" shows your people as chips so you can name them. It is off by default because it is a list of names on a screen at bedtime.'
         },
         voice: {
-            label: 'Voice check-ins and suggestions',
+            label: 'Voice check-ins',
             // Verbatim from the Vault's "What about AI features?" paragraph (§10.2), so the
-            // toggle and the privacy page cannot drift apart.
-            description: 'One model, and it runs on this device: Gemma 4 E2B, open weights under the Apache 2.0 licence, downloaded once from this server. It writes down a voice note — the audio is never saved and never sent — and suggests feelings, people and triggers to tag from what was said. It is asked only what you said, never how you sounded. Every suggestion waits for you to confirm, change, or discard it — nothing it proposes is saved on its own, and it never touches your love snapshots. It switches off in your profile at any time.',
-            remove: 'Remove downloaded files'
+            // toggle and the privacy page cannot drift apart. **§10.2's paragraph names
+            // Gemma 4 E2B and promises suggestions; this build has neither**, so what is
+            // shared here is the sentence that is true of the code as written — one model,
+            // this device, writes words down. D3 restores the rest when the model that
+            // does the suggesting exists. Softening a claim to make it true is the move
+            // that is never available; narrowing one to what shipped is the opposite.
+            description: 'One model, and it runs on this device: Whisper tiny, open weights under the Apache 2.0 licence, downloaded once from this server. It writes down a voice note — the audio is never saved and never sent — and it is asked only what you said, never how you sounded. It reads the words back to you before anything is saved, and you tag them yourself. It switches off in your profile at any time.',
+            // Said before the download, never after it: §5.6 wants the size in front of the
+            // user while the choice is still theirs.
+            size: '{label}, {size}. It downloads once and stays on this device.',
+            remove: 'Remove downloaded files',
+            removed: 'Removed. Turning voice on again downloads it once more.',
+            downloadOffer: 'Download {label} — {size}',
+            downloading: 'Downloading {label} — {done} of {size}.',
+            downloaded: 'On this device.',
+            // A wrong sum is never a warning to click past. It is the end of the attempt.
+            checksumError: 'The model files on the server do not match what this app expects, so nothing was kept. Ask whoever runs the server to fetch them again.',
+            downloadError: 'The download stopped and nothing was kept. Check the server, then try again.'
         },
         suggestions: {
             label: 'Show suggestions',
-            description: 'With this off, voice still writes the words down and you tag them yourself with chips.'
+            description: 'With this off, voice still writes the words down and you tag them yourself with chips.',
+            // D3 gave this toggle a model, so the line under it names the model and its
+            // licence instead of saying there is none. It stays descriptive: what runs, where
+            // it runs, and what it is allowed to do — never how well it does it.
+            model: '{label} suggests them, on this device, under the {licence} licence. Every suggestion waits for you to keep it or put it down.'
         },
         embeddings: {
             label: 'Similar-entry suggestions and search',
@@ -522,7 +679,27 @@ export const JOURNAL_COPY = {
         },
         language: {
             label: 'Transcription language',
-            description: 'Auto — the model works out which language you spoke. Pin it here when it guesses wrong.'
+            description: 'Auto — the model works out which language you spoke. Pin it here when it guesses wrong.',
+            auto: 'Auto'
+        },
+        tier: {
+            label: 'What this device can run',
+            description: 'Worked out from what the browser reports. You can pin it lower if you would rather this device did less; it cannot be pinned higher than what is actually here.',
+            // Android (C4): the number comes from the phone itself, through the plugin,
+            // because the WebView rounds memory down to a power of two.
+            descriptionNative: 'Worked out from how much memory this phone has. You can pin it lower if you would rather this phone did less; it cannot be pinned higher than what is actually here.',
+            memory: 'This phone reports {gb} GB of memory.',
+            detected: 'Detected: {tier}.',
+            pinned: 'Pinned to {tier}.',
+            auto: 'Use what this device reports',
+            // Named, not swallowed: a refused choice the user never hears about is a
+            // control that lies about being a control.
+            refused: 'This device cannot run {tier}, so it is running {actual} instead.',
+            names: {
+                full: 'the full model',
+                light: 'the small transcriber',
+                'text-only': 'typing and chips only'
+            }
         }
     },
 

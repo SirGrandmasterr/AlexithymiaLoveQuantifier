@@ -118,9 +118,13 @@ are going to modify.
 
 ### 2.4 Local environment facts, verified 2026-08-22
 
-- **Baseline is green.** `npm test` → **22 files, 511 tests**, passing in ~20 s on this
-  machine (as of the 6-A closeout, 2026-08-22; it was 14 files / 201 tests before Phase 6, and
-  the "~70 s" this line used to claim was never right here).
+- **Baseline is green.** `npm test` → **43 files, 1226 tests**, passing in ~34 s on this
+  machine (as of D4, 2026-09-03; it was 39 / 1096 at D3, 35 / 1016 at D2, 34 / 971 at D1, 33 / 815 at C4, 26 / 684 at C2, 22 files / 511 at the 6-A closeout
+  and 14 files / 201 before Phase 6, and the "~70 s" this line used to claim was never right
+  here). Android sessions also `make build-android`, which needs Docker Desktop **running**
+  — it was stopped when C4 began — and whose Gradle error is only readable if the output is
+  kept in a file: piped through `tail`, the recipe's exit code is `tail`'s and the failure
+  scrolls away.
   `cd backend && go test ./...` → passing, handlers ~10 s. If either is red *before* you change
   anything, stop and report it; do not build on a red baseline.
 - **`gofmt -l .` is never empty, and that is not a formatting problem.** Every CRLF file in the
@@ -204,9 +208,9 @@ Twenty-eight sessions. The **Slice** column maps back to the design document's �
 | **A10** | 6-A closeout: docs, QA, review | 6-A | Doc updates, the manual QA run, a review pass | A4, A7, A8, A9 |
 | **B1** | Day graph: the geometry | 6-B | `src/components/dayGraph.js`, pure and tested | A5 |
 | **B2** | Day graph: the component | 6-B | `DayGraph.jsx`, ribbon → tilt, rotation, ⓘ | B1, A6 |
-| **U1** | The user test | gate | A protocol, a run, and a report in `product_vision/eval/` | A10, B2 |
+| **U1** | The user test | gate | A protocol, a run, and a report in `product_vision/eval/`. **Waived 2026-08-31 — see U1's banner** | A10, B2 |
 | **C1** | Deployment: headers and the model channel | 6-C | `nginx.conf`, `/models/`, `models_data`, `make models-fetch` | S0 |
-| **C2** | Capture and the inference boundary | 6-C | Recorder state machine, `propose()` seam, fake runtime | A7, U1 |
+| **C2** | Capture and the inference boundary | 6-C | Recorder state machine, `propose()` seam, fake runtime | A7, ~~U1~~ (waived) |
 | **C3** | Web Light-tier transcription **+ the Vault copy** | 6-C | Whisper via transformers.js, download manager, new Vault copy | C1, C2 |
 | **C4** | Android: microphone, plugin skeleton, tiers | 6-C | `RECORD_AUDIO`, the Capacitor plugin, tier detection | C3 |
 | **D1** | The proposal contract, offline | 6-D | Schema, prompt builder, `validateProposal`, fixtures | C2 |
@@ -240,7 +244,7 @@ graph TD
     S0 --> A1
     S0 --> A5
     S0 --> C1["C1 headers + /models/"]
-    U1 --> C2["C2 capture + seam"]
+    U1 -.->|"waived 2026-08-31"| C2["C2 capture + seam"]
     A7 --> C2
     C1 --> C3["C3 web transcription + Vault copy"]
     C2 --> C3 --> C4["C4 Android mic + plugin"]
@@ -267,13 +271,15 @@ Vault page.
 | :--------- | :------- | :------------- |
 | **A10** | A complete manual journal: chips, typed notes, triggers, the nightly ritual, People and Triggers views, export/import v2 | Untouched and still true — no model, no microphone |
 | **B2** | The same, plus the day graph | Untouched and still true |
-| **U1** | Evidence about whether the expensive half is worth building | — |
+| **U1** | Evidence about whether the expensive half is worth building. **Waived 2026-08-31: the expensive half is built without it** | — |
 | **C4** | Voice notes transcribed on-device, tagged with chips | Changed once, honestly, in C3 |
 | **D4** | The full feature: one on-device pass, proposals, the golden gate | Changed to the full "voice on" variant in D3 |
 | **G2** | Trigger normalisation and semantic recall | One more entry |
 
 If U1 says people do not reuse triggers and do not search, **G1 and G2 are not built** — the
-design document says so and this plan holds you to it.
+design document says so and this plan holds you to it. **With the gate waived on 2026-08-31
+there is no U1 to say either way**, so that decision now falls to whoever reaches G1 with
+no evidence in front of them; §5.8's costs are the only argument left on the table.
 
 ---
 
@@ -1526,8 +1532,16 @@ touch contract, and the design document's status line records 6-B as implemented
 
 > **Half-run on 2026-08-25. The instrument exists; the run does not.** `product_vision/eval/`
 > holds the protocol, two tally sheets, a generated fixture proposal card and a report
-> template. Step 1 below is **done** — a re-run starts at step 2 and does not rebuild it. The
-> gate is still open, all four decisions are unmade, and the ledger says so.
+> template. Step 1 below is **done** — a re-run starts at step 2 and does not rebuild it.
+>
+> **Waived on 2026-08-31 by the operator: the run is not a prerequisite of anything any
+> more, and 6-C onward is built without it.** Management decided to forgo the user test and
+> to implement the remaining sections; C2 started under that waiver, and the decision and
+> its consequences are recorded in [`06-progress.md`](06-progress.md) and in §12.4 of the
+> design. **The gate is waived, not closed** — the difference matters: the four decisions
+> below are not made, they are skipped, and everything shipped after this point is shipped
+> on the design's judgement rather than on evidence. This session stays here, still
+> runnable, and a later run corrects rows rather than starting over.
 
 ▼▼▼ COPY FROM HERE ▼▼▼
 
@@ -1678,8 +1692,10 @@ which browsers you verified in and what the avatar check showed.
 
 Read `product_vision/06-implementation-prompts.md` §2 and follow it for this entire session.
 This is session **C2** of Phase 6 — the Emotional Journal. Start by reading
-`product_vision/06-progress.md`. **Confirm in the ledger that U1's gate is closed** — if the user
-test has not run, stop and say so.
+`product_vision/06-progress.md`. ~~**Confirm in the ledger that U1's gate is closed** — if the
+user test has not run, stop and say so.~~ **Superseded 2026-08-31: the operator waived the U1
+gate. C2 ran on 2026-08-31 without it; the run has still not happened.** Read the waiver in
+the ledger's *Decisions* table before assuming anything below rests on evidence.
 
 **Goal:** a tested recorder state machine, and the injected-runtime boundary that keeps every
 later test free of model weights. Nothing ships to the user in this session; the Vault page is
@@ -2067,6 +2083,8 @@ Top to bottom, exactly as §4.4:
    confirm.**
 5. **Facts**, if any — each an explicit opt-in chip that is **off by default**. This is the one
    place the default is not "accepted", because it writes free text about a third party.
+   *(Superseded before it ran: S0's decision that no UI writes a `person_fact` until 6-E names
+   this card. D2 built no fact affordance, and a test asserts it — see the ledger.)*
 6. **Two buttons and one link**: *Save* writes exactly what is solid. *Discard* drops everything
    including the transcript. *This isn't it* — the rephrase path.
 
@@ -2085,6 +2103,16 @@ Then:
     runtime is available. Add that setting (`alq:journal-suggestions`, on when voice is on) with
     §9.7's description: *with this off, voice still writes the words down and the user tags with
     chips*.
+
+**What D1 left for you (2026-09-02).** `propose` already returns `{ ok, proposal, provenance, … }`
+with `proposal` validated — schema-valid, forbidden-word-free, and `ambiguity === "feeling"`
+exactly when `feelings` is empty — and `provenance` as `{ schema_valid, dropped_by_filter,
+drops }`; the raw output is not on the envelope, so the card never sees it. In text mode the
+transcript is the input, echoed. `PROMPT_VERSION` is exported from `prompt.js` for the
+provenance block. The §4.7 stage-3 proposal is `golden/transcripts.json`'s `lucie.en`
+reference — use it as the fixture for the byte-for-byte test. One rule the validator does
+**not** enforce and the card must: `unclear` is exclusive (A7); a proposal may arrive carrying
+`unclear` beside a named feeling. Read [Frontend §4bm](../docs/06-frontend.md) before §4.4.
 
 **Do not build:** any real runtime (D3), the download of Gemma (D3), the ritual-by-voice path
 (D3), or the eval harness (D4). Everything here runs on `createFakeRuntime`.
@@ -2144,6 +2172,19 @@ tiers — and every `(verify)` in it, which is your work list), §5.6 (weights a
 (one model, one pass, and when to revisit), §3.7 (the ritual in one breath), §10.2's full
 "voice on" variant, §12.1's runtime-maturity and memory rows; the ledger's `Measured` section from
 C3 and C4.
+
+**What D2 left for you (2026-09-02).** The card is wired: a composer the microphone opened
+hands every `propose` envelope to `ProposalCard` when `alq:journal-suggestions` is on (default
+on), and the card re-runs the proposal in **text mode** after a transcript edit through the
+same runtime — so a real runtime must accept `text` as well as `audio` for that path to work
+(both Whisper runtimes refuse text today, and the card then keeps the edit and the chips).
+For the provenance block a runtime **declares itself**: `runtime.model` and
+`runtime.promptVersion` are what `payload.proposal` records (the fake takes them as options;
+`PROMPT_VERSION` is in `prompt.js`). Set `PROPOSAL_MODEL` in `models.js` to the Gemma record —
+the profile's *Show suggestions* toggle says *nothing on this device proposes anything yet*
+while it is `null`, and the Vault's *"it proposes nothing"* is the sentence your full copy
+replaces. Facts are not offered on the card, by S0's decision, whatever the model proposes.
+Read [Frontend §2ea](../docs/06-frontend.md) before §5.5.
 
 **Build this**
 
@@ -2227,6 +2268,18 @@ relationship; the tier override in both directions; removing the downloaded file
 
 **Definition of done:** Appendix B, plus every `(verify)` in §5.5 replaced with a measured value
 and a date, and the ledger carrying the full measurement table.
+> **Annotated after the session (2026-09-02).** Three of the six measurements need a phone and
+> there was none, as in C4: peak RAM on the oldest supported Full-tier device, thermal and
+> battery over ten check-ins, and every item of the manual QA list. D3 ran the model
+> **off-device** instead — `litertlm-jvm` 0.16.1 on x86-64, the same API, version and bundle the
+> plugin uses — which answered the two questions that gate the design (**the audio path works**,
+> and **the audio encoder costs 169 MB**, not 800) and produced a finding this prompt did not
+> anticipate: **LLGuidance cannot bind an enum member containing a space**, which three of the
+> seven context tags contain. The web model has not run at all — the browser here exposes
+> `navigator.gpu` and returns `null` from `requestAdapter()`, which is itself a defect this
+> session found and fixed in `detectTier`. The ONNX bundle measured **3.4 GB** against this
+> prompt's *"expect 2–3 GB"*, and the operator was asked before the promise was changed.
+
 
 ▲▲▲ COPY TO HERE ▲▲▲
 

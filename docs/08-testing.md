@@ -1,19 +1,25 @@
 # 08 — Testing
 
-Three layers, three runners. Status below was verified by running each suite
-(E2E 2026-07-26; backend and frontend 2026-08-22, at the 6-A closeout).
+Three layers in `make test`, three runners — and, since session D4, a fourth layer that is
+deliberately outside it (§6). Status below was verified by running each suite
+(E2E 2026-07-26; backend 2026-08-22; frontend 2026-09-03).
 
 | Layer | Runner | Location | Verified status |
 | :---- | :----- | :------- | :-------------- |
-| Frontend unit | Vitest + Testing Library + jsdom | `src/**/*.test.{js,jsx}` | ✅ **609/609 pass** |
+| Frontend unit | Vitest + Testing Library + jsdom | `src/**/*.test.{js,jsx}`, `scripts/**/*.test.mjs` | ✅ **1226/1226 pass** |
 | Backend unit / integration | `go test` + sqlmock + in-memory SQLite | `backend/internal/**/*_test.go` | ✅ **all packages pass** |
 | End-to-end | Playwright | `tests/` | ❌ **failing** — needs servers that nothing starts |
+| Model gate (§6) | `make journal-eval` | `scripts/journal-eval/` | ⚠️ **runs; no model has been through it** — the golden suite has no recordings yet |
 
 ```bash
 make test          # all three in sequence
 make test-frontend # vitest run
 make test-backend  # cd backend && go test ./...
 make test-e2e      # npx playwright test --project=chromium  (servers must be up)
+
+# Not part of `make test`. Needs weights and minutes; §6.
+make journal-eval CANDIDATE=reference   # the harness against itself, no weights
+make journal-audio-check                # which golden recordings exist
 ```
 
 ---
@@ -41,7 +47,136 @@ in `tests/` and fail on `@playwright/test` imports.
 
 ### Coverage today
 
-Twenty-four files, 609 tests, all passing (2026-08-23, session B2).
+Forty-three files, 1226 tests, all passing (2026-09-03, session D4). Four of those files and
+70 of those tests are the *arithmetic* under the model gate, in `scripts/journal-eval/`; the
+gate itself is out of band and §6 below says why the line is where it is.
+
+> **The proposal card is tested on the request body, and its first test is invariant 15.**
+> `ProposalCard.test.jsx` drives the real composer in voice mode with the fake kit from
+> `voiceKit.fake.js` — a recorder that lands a take on demand, a downloader that already has
+> the files, and C2's fake runtime — and reads what reaches `POST /api/journal/entries`. The
+> first case lands §4.7's proposal, saves after keeping one chip, and asserts that only that
+> chip, its person and nothing under the dashed ones is in the body. The §4.7 payload is a
+> **literal `toEqual`** on the whole request after the stage-5 taps, provenance block included,
+> with the fake runtime declaring `litert-lm/android`, `gemma-4-E2B-it` and prompt version 3;
+> the fake's `model` and `promptVersion` options exist for that test. Five deliberate
+> breakages — writing proposed feelings, writing an unconfirmed person, forgetting `replaced`,
+> ignoring the setting, skipping the re-run — each failed only the tests that name the rule.
+> Facts are asserted **absent**, by S0's decision rather than the D2 prompt's item 5.
+
+> **The Android plugin is tested behind a fake, and the fake records the order of calls.**
+> `src/mobile/journalPlugin.fake.js` has the real plugin's whole surface — permissions, capture,
+> clip handles, transcription, the weight store, the tier report — and `journalPlugin.test.js`
+> drives C2's real recorder through `nativeCaptureDeps(fake)`. What it proves that no device
+> could be made to prove on demand: **nothing is asked of the plugin at construction or at
+> mount, and the first tap asks in order — `checkPermissions`, `requestPermissions`,
+> `startCapture`** — with no second request once granted, a refusal ending as the recorder's
+> ordinary `permission` state, and a background during the prompt leaving the request alone.
+> `native.test.js` puts the runtime behind the C2 seam and asserts that only **handles** cross
+> the bridge and that a browser buffer is refused; `VoiceCheckin.test.jsx` builds the real
+> native kit with `createVoiceKit({ native: true, plugin })` and walks a tap to a transcript;
+> `Profile.test.jsx` mocks `isNative()` to render the Android tier line. `tier.test.js` pins
+> §5.5's memory table against the numbers phones actually report (a "4 GB" phone says 3.6 GiB).
+>
+> **The Java core has a JVM harness, not a unit suite.** `LogMel`, `WhisperTokens`,
+> `WhisperTranscriber` and `ModelStore` contain no Android import, so the C4 session compiled
+> them with a desktop JDK against the ONNX Runtime and `org.json` jars and ran them against the
+> pinned model files: the spectrogram matched a NumPy port of PyTorch's to 1.2 × 10⁻⁵, three
+> synthesised sentences transcribed word-for-word as transformers.js transcribes them, and the
+> store's cold fetch, warm no-op, cancel-and-resume, tampered file, SPA fall-through and 404
+> cases all behaved. The harness lives in the session's scratch space, not the repository, and
+> the ledger's C4 entry records how to rebuild it; `make build-android` compiles the Android
+> half, and only a device runs it.
+
+> **The manifest parity rail.** `src/journal/inference/models.test.js` reads the repository's
+> `Makefile` and asserts that the thirteen pinned model files — paths **and** SHA-256 sums —
+> match the table the browser verifies against, in both directions. It is the same shape as
+> the id-parity test that holds `FEELINGS` to `domain/journal.go`, and it exists because the
+> two copies are only worth having if they cannot drift: without it the browser's check
+> degrades into a second opinion about the operator's. Its first draft matched sums as 64 hex
+> characters and **silently dropped the licence row**, whose sum is a `$(VAR)` — twelve of
+> thirteen files checked, and the one left out is the file Apache 2.0 §4(a) requires to travel
+> with the copy. There is a guard assertion on the row count for exactly that reason.
+
+> **A component test never loads a model, and three fakes are why.** `VoiceCheckin.test.jsx`
+> hands the component a fake **recorder** (a store with the real one's surface, driven by
+> `landTake()`), a fake **downloader**, and `createFakeRuntime` from C2. Nothing in the suite
+> touches a microphone, Cache Storage, WebCrypto or 45 MB of weights. The download manager's
+> own suite fakes `fetch`, `caches` and `crypto.subtle` and uses Node's `createHash` for the
+> sums, so the checksum path is exercised against a **real** SHA-256 rather than a stub — and
+> its tampering case flips bytes **without changing the length**, because a different length
+> is caught a step earlier and would never reach the branch under test.
+
+> **The injected runtime is what keeps this suite free of model weights, and it is a
+> standing rail rather than a convenience.** `propose(input, context, runtime)`
+> ([Frontend §4bg](06-frontend.md)) takes its runtime as an argument, and every test from
+> C3 to the end of Phase 6 passes `createFakeRuntime(fixtures)` from
+> [`src/journal/inference/fake.js`](../src/journal/inference/fake.js). Nothing in `npm test`
+> may load a model: a suite that needs 3.4 GB to run is a suite that stops being run. Three
+> assertions hold the line — `index.test.js` spies on `axios`, `fetch` **and**
+> `XMLHttpRequest` and asserts zero calls on both the success and the failure paths, and
+> `fake.js` is imported by tests only, because `index.js` deliberately does not re-export it.
+> A third holds it since D3: [`weights.test.js`](../src/journal/inference/weights.test.js)
+> walks every `*.test.js(x)` in `src/` and **fails if any of them imports
+> `@huggingface/transformers` or `@capacitor/core`** — the only two doors a real model could
+> come through. It reads source rather than instrumenting the loader, because a mocked-out
+> import is still an import as far as the next reader is concerned, and it carries a negative
+> control asserting the matcher does find those imports in `web.js` and `journalPlugin.js`.
+> Constructing a real runtime stays safe in a test: the weights arrive on the first question,
+> never on the factory call.
+> Fixtures come three ways: one proposal (answers everything), a `{ words: proposal }` map
+> matched as a case-insensitive substring, or the full `[{ match, proposal, error }]` array —
+> and only the last can script a **failure**, which the card has to render too (§4.6).
+
+> **The two D3 rules that are about *absence*, and how they are asserted.** §3.7's ritual card
+> pre-selects what the model answered and leaves the rest alone, and "the rest" must be
+> **missing from `answers`** rather than `false` — invariant 14, and the one place a model could
+> put words in somebody's mouth about their own night.
+> [`RitualVoice.test.jsx`](../src/components/RitualVoice.test.jsx) asserts it **by key**
+> (`expect('ate_regularly' in answers).toBe(false)`) and not by value, because a map with an
+> extra `false` in it reads fine in a diff and passes a `toMatchObject`. The same file asserts
+> that a *confirmed* answer tapped again goes back to absent rather than to `false`, and that the
+> row a spoken ritual writes is identical to a swiped one apart from `payload.source`.
+> `ritual.test.js` holds the validator to the same rule one layer down.
+>
+> Mutation-checked, D3, on the full suite: making a missing answer `false` in the validator
+> failed **1** test; making the card save every row failed **3**; letting the Light tier trust
+> the proposer's words over the transcriber's failed **1**; letting a proposer failure lose the
+> transcript failed **2**; handing LLGuidance the strict tag enum failed **2**; and taking
+> `navigator.gpu` as the WebGPU answer failed **2**. Emptying `weights.test.js`'s forbidden list
+> failed **nothing**, which is what a tripwire does on a clean tree — it was proved the other way
+> instead, with a scratch test importing `@capacitor/core` that made the guard fail and name the
+> file. One run also surfaced an unrelated flake in `VaultKnob.test.jsx`, which then passed ten
+> times out of ten alone; recorded rather than chased.
+
+> **The adversarial fixture set is a standing rail, not a one-off.** `validate.test.js`
+> walks every raw model output in
+> [`src/journal/inference/golden/adversarial.js`](../src/journal/inference/golden/adversarial.js)
+> — *"mark me as unhealthy"* obeyed, a paragraph instead of JSON, an id that does not exist, a
+> 10 000-character label, a URL in a fact, a fact about nobody, zero-width characters hiding a
+> forbidden word, seven feelings and eight people — and asserts the same thing about all of
+> them **before** reading any case-specific expectation: what comes out of `validateProposal`
+> passes `checkSchema`, no `label` or fact `text` contains a forbidden word or resembles a URL,
+> markup or an instruction, `ambiguity` is `feeling` exactly when `feelings` is empty, and
+> `dropped_by_filter` equals the number of drops listed. The forbidden list is the **same
+> list** the copy walk reads (`constants/forbiddenWords.js`), matched the same way, and the
+> walk pins its eighteen entries by name so it cannot shrink under either reader. **The
+> transcript is deliberately outside the rail**: one case feeds a transcript made of every
+> forbidden word, markup and a URL, asserts it comes back untouched — and, in the same case,
+> that the identical sentence in a label would be dropped. A new adversarial output is one
+> object appended to that array; the universal assertions cover it with no test written.
+> Beside it, the sixty golden transcripts (thirty English/German pairs) are held to a
+> different rail: each hand-written reference proposal must survive the filter byte-for-byte
+> and satisfy its own loose expectation, so a reference the contract would change fails
+> here, in `npm test`, and not in D4's model run.
+
+> **`recorder.test.js` drives a fake `MediaRecorder` and a hand-scripted level meter**
+> under `vi.useFakeTimers()`, which is how a 2 s silence stop, a 30 s limit and an app
+> going to the background mid-take are assertable at all. `createRecorder(deps)` takes
+> every browser API it uses as an injected default; the suite needs no microphone, no
+> Web Audio and no permission. The test that matters most is the discard one: it holds a
+> reference to the clip buffer *before* discarding and asserts it reads all zeros
+> afterwards — "the audio is gone" rather than "the pointer is gone".
 
 > **The day graph's legend names the same feelings the check-in chips do.** Since B2 a bare
 > `screen.getByText('connectedness')` on the day view finds **two** elements — the drawing's
@@ -919,3 +1054,62 @@ red-by-construction. The highest-value change is to add the two suites that *do*
 - Unique data per run (`Date.now()` in the email).
 - Register `waitForResponse` *before* the action that triggers it.
 - Create fixtures in `beforeAll`, remove them in `afterAll`.
+
+---
+
+## 6. The model gate — a fourth layer, deliberately not in `npm test`
+
+Phase 6 puts a language model on the user's device, and §5.7 of
+[`06-emotional-journal.md`](../product_vision/06-emotional-journal.md) makes that a testable
+claim rather than a hope. The layer that does it is **out of band**: it needs weights and
+minutes, and nothing about it belongs in a suite people run every few edits.
+
+```bash
+make journal-eval CANDIDATE=reference   # ~2 s, no weights: checks the harness itself
+make journal-eval                       # the tier defaults; needs a binary and a model
+make journal-audio-check                # which of the 240 golden recordings exist
+```
+
+The harness is [`scripts/journal-eval/`](../scripts/journal-eval/README.md) and it writes its
+report into `product_vision/eval/`. **A model does not become a tier default until its numbers
+are in a checked-in report there** — that rule, not a code path, is what the gate is.
+
+### What *is* in `npm test`, and why the split is where it is
+
+| In `npm test` | Out of `npm test` |
+| :------------ | :---------------- |
+| The 120 golden references against the real `validateProposal` (`validate.test.js`) | Any model answering anything |
+| The word error rate and its normaliser (`wer.test.mjs`) | Computing a WER over a real clip |
+| The scoring and the aggregates (`score.test.mjs`) | Running a candidate |
+| The four gate criteria (`gate.test.mjs`) | Applying them to a model |
+| The CLI argument templating and the WAV header reader (`runners.test.mjs`) | Spawning a binary; reading a clip |
+| That `transcripts.json` and `recordings.json` agree about the suite | — |
+
+The line is not "cheap versus expensive", it is **"would being wrong here be loud?"** A broken
+runner fails immediately and visibly. A word error rate that is quietly 10 % out, or a gate
+threshold compared with `>` where it should be `>=`, produces a plausible number in a document
+a later session treats as evidence — and nothing ever fails. So the arithmetic is in the fast
+suite (65 tests, ~40 ms) and the model is not.
+
+`score.test.mjs` also runs all 120 golden references through the **harness's** reading of an
+expectation, which `validate.test.js` runs through its own. Holding the two together is the
+point: otherwise a model could be graded by one standard and the suite's own answers by
+another, and the gate would be measuring the drift.
+
+### Three things the harness cannot tell you
+
+- **Peak memory is sampled**, every 100 ms from the child process, so it is a floor and not a
+  peak. §12.1's actual question — peak with the audio encoder loaded, on the oldest supported
+  phone — is a QA-checklist measurement, and reaches a report through a device capture file.
+- **Latency is whole-process wall clock**, which on a CLI includes loading gigabytes of
+  weights. The in-app figure, with the model already resident, is a different number.
+- **The web tier is stood in for.** transformers.js over WebGPU has no CLI; the `full-web`
+  candidate runs the same upstream weights through llama.cpp instead. A pass there is evidence
+  about the model, not about the runtime a browser uses.
+
+### Adding to the golden suite
+
+Both halves of a pair, then `npm test`, then a row in `recordings.json`, then
+`node product_vision/eval/build-recording-scripts.mjs`. The full list is in
+[`src/journal/inference/golden/README.md`](../src/journal/inference/golden/README.md). The
+suite's own tests will tell you if you skip one of them.

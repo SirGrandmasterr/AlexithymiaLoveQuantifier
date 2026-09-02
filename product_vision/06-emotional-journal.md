@@ -1,6 +1,9 @@
 # Phase 6 — The Emotional Journal
 
-**Status: 6-A and 6-B implemented; 6-C…6-G planned.** As of **2026-08-23**. Written against the code
+**Status: 6-A and 6-B implemented; 6-C implemented in code, its device checks pending; 6-D in
+progress — D1 (the proposal contract), D2 (the proposal card) and D3 (the real runtimes) shipped
+2026-09-02, with the model measured off-device and not yet run on a phone; D4 (the golden suite
+and the model gate) is next; 6-E…6-G planned.** As of **2026-09-02**. Written against the code
 on branch `app-improvements` as of 2026-08-21, and revised the same day after review: the
 voice path is built on one audio-native on-device model (Gemma 4 E2B) rather than a
 transcriber plus a text model, triggers are first-class records, and an on-device embedding
@@ -18,6 +21,23 @@ draws them (session B2), mounted in the day view. It costs **0 KB of chart libra
 no three.js, no react-three-fiber and no Recharts anywhere in it, and the flat ribbon is the
 same drawing with the camera's tilt set to nothing. §12.4's question 6 is still open and still
 U1's — it needs readers who are not the person who drew it.
+**Slice 6-C is implemented as of 2026-09-02** — the edge headers and the `/models/` channel
+(C1), the recorder and the inference seam (C2), Whisper tiny in the browser and the Vault copy
+it changed (C3), and on Android a narrow native plugin that records, transcribes the same
+pinned model through ONNX Runtime, fetches the weights from the configured server and reports
+the device's memory (C4). What the slice has not had is a person: **no one has tapped the
+microphone on either platform**, and the airplane-mode acceptance test is unrun. The C3 and C4
+entries of the ledger carry the exact lists; the Vault page already describes the feature as
+built, which is true of the code as written.
+**D3 put a model behind it on 2026-09-02** — Gemma 4 E2B through LiteRT-LM on Android and
+through transformers.js over WebGPU on the web, the Light tier as Whisper tiny followed by the
+same model in text mode, the download, the tiers, the ritual in one breath, and the Vault's full
+*"voice on"* copy in both tiers' wording. The audio path and the constrained decoding were both
+exercised against the real bundle **off-device**, on an x86-64 JVM through the same LiteRT-LM
+API and version the plugin uses, and the sixteen web files were fetched and verified from a
+browser on the deployed stack. **Nothing has run on a phone, and the web model has not run at
+all** — the browser available to this session exposes `navigator.gpu` and has no adapter behind
+it. The D3 entry of the ledger carries the numbers and the list of what is still unrun.
 [`06-progress.md`](06-progress.md) is the record of exactly what has shipped, session by
 session, and of what 6-A deliberately does not do.
 The execution plan for building it is
@@ -474,7 +494,12 @@ neither (§5.6) and what keeps the default build's trust claims true until the u
   the first tap of the microphone and never at launch, with the same reasoning the manifest
   already gives for `POST_NOTIFICATIONS`. Capture goes through the native plugin (§5.5) rather
   than the WebView's `getUserMedia`, so the audio never crosses the WebView bridge as a
-  base64 string and reaches the model as a buffer.
+  base64 string and reaches the model as a buffer. *Shipped in C4 (2026-09-02): the permission
+  is CHANGE 5 in the manifest, the plugin is `plugins/alq-journal/`, C2's recorder drives it
+  through injected `deps`, and what crosses the bridge is a clip **handle** —
+  [docs/12 §6](../docs/12-android-app.md). One rule the design did not state and the phone
+  forced: the permission prompt is an activity of its own, so it pauses the app, and a recorder
+  waiting on the prompt is not discarded as "gone to the background".*
 - **Audio is never persisted.** It lives in memory until the check-in is confirmed or
   discarded, the app locks, or the app goes to the background — whichever is first. There is
   no "keep the recording" option in this phase. The rationale is in §6.6; the short version is
@@ -525,7 +550,11 @@ state it. Its anatomy, top to bottom:
    or *Lucie M?* when the only near match differs. Nothing here is created until confirm.
 5. **Facts**, if the model proposed any (*"Lucie moved to Lyon"*), each an explicit opt-in
    chip that is **off by default** — the one place the default is not "accepted", because it
-   writes free text about a third party (§2.3).
+   writes free text about a third party (§2.3). **Not built in D2 (2026-09-02):** S0 decided
+   that no UI writes a `person_fact` until the 6-E envelope lands (§12.5, the ledger's
+   *Decisions*), and named this card. The card shows no fact chip; a proposal's `facts` are
+   filtered by §5.4's validator and then dropped, so the record is clean for the day the
+   decision is reversed.
 6. **Two buttons and one link.** *Save* writes exactly what is solid on the card. *Discard*
    drops everything including the transcript. *This isn't it* — the rephrase path (§4.6).
 
@@ -654,22 +683,34 @@ decides *stress* was really *irritation*, swaps it from the vocabulary, and save
     "source": "voice",
     "transcript": "I had a nice day with Lucie today and felt very connected to her, even though work was stressful.",
     "language": "en",
+    "tz_offset_min": 120,
+    "transcript_kept": true,
     "feelings": [
-      { "id": "pleasure",   "intensity": 2, "uncertain": false, "about": [{ "kind": "person", "ref": 0 }] },
-      { "id": "rapport",    "intensity": 3, "uncertain": false, "about": [{ "kind": "person", "ref": 0 }] },
-      { "id": "irritation", "intensity": 2, "uncertain": false, "about": [{ "kind": "trigger", "trigger": "0b7e…" }] }
+      { "id": "pleasure",   "intensity": 2, "about": [{ "kind": "person", "ref": 0 }] },
+      { "id": "rapport",    "intensity": 3, "about": [{ "kind": "person", "ref": 0 }] },
+      { "id": "irritation", "intensity": 2, "about": [{ "kind": "trigger", "trigger": "0b7e…" }] }
     ],
-    "tags": [],
     "proposal": {
       "model": "gemma-4-E2B-it", "runtime": "litert-lm/android", "prompt_version": 3,
-      "proposed": ["pleasure", "rapport", "stress"], "accepted": ["pleasure", "rapport"],
-      "replaced": { "stress": "irritation" }, "edited_transcript": false
+      "proposed": ["pleasure", "rapport", "stress"], "accepted": ["pleasure", "rapport", "irritation"],
+      "replaced": { "stress": "irritation" }, "dropped_by_filter": 0,
+      "ambiguity": "none", "edited_transcript": false
     }
   },
   "mentions": [{ "ref": 0, "relationship_id": 5, "label": "Lucie" }],
-  "triggers": [{ "trigger": "0b7e…" }]
+  "triggers": [{ "trigger": "0b7e…" }],
+  "supersedes_id": null
 }
 ```
+
+*This block is what the code writes, byte for byte — `ProposalCard.test.jsx` asserts it as a
+literal (D2, 2026-09-02). Three things changed against the first draft, all A7's rules:
+`uncertain` is written only when it is `true` (invariant 14), an empty `tags` is absent rather
+than `[]`, and `tz_offset_min`, `transcript_kept` and `supersedes_id` are §7.2's. And
+`accepted` is **everything that was saved** — additions and replacements included — so that
+`proposed − accepted − keys(replaced)` is what the user put down and
+`accepted − proposed − values(replaced)` is what they added; `replaced` says which slot a
+changed word took.*
 
 **Stage 7 — the server**, in one transaction: validate every id against the allowlists
 (§6.5), confirm the trigger `0b7e…` is one of the caller's, insert the entry, insert one
@@ -753,7 +794,10 @@ echoed from the input and ignored.
 
 Where the schema is enforced: **LiteRT-LM enforces JSON Schema natively** (its constrained
 decoding takes JSON Schema, regex and Lark grammars); **llama.cpp** compiles it to GBNF;
-**transformers.js** has no grammar support *(verify at implementation time)*, so on the web the
+**transformers.js** has no grammar support — **verified 2026-09-02 against 4.2.0**, whose whole
+generation surface is fourteen logits processors (forced and suppressed tokens, n-gram and
+repetition penalties, temperature, top-k, top-p) with no way to constrain output to a schema;
+`logits_processor` takes a custom list, which is an extension point and not a feature. So on the web the
 output is parsed and validated and anything that fails is treated as `ambiguity: feeling`
 (§4.6). The validator runs everywhere regardless of the runtime — a grammar is a guarantee
 about tokens, not about meaning.
@@ -768,7 +812,8 @@ label, a short gloss, a position on the two axes the day graph uses (§8.1), and
 The list is a first draft for the user test in §12.4 to correct; the *shape* of the contract
 is the decision, the membership is not yet. The test that would correct it has a protocol
 ([`eval/user-test-protocol.md`](eval/user-test-protocol.md), 2026-08-25) and **has not been
-run**: this table is still the draft, not a result. That protocol's own §10.1 fixes in advance
+run**, and on 2026-08-31 the operator waived it (§12.4): this table is the draft, it ships
+as the draft, and no row in it has been confirmed by a user. That protocol's own §10.1 fixes in advance
 what would change a row — retire on zero use across five or more participants, add on three
 independent asks, and move a valence or energy constant only on an affect-grid median more
 than 0.3 (or 0.25) away from the authored one.
@@ -852,7 +897,7 @@ applies to Argon2 parameters.
 
 | Fact | Value |
 | :--- | :---- |
-| Released / licence | 2026-04-02; **Apache 2.0**. Google's pages still link a prohibited-use policy and an intended-use statement; whether either binds Apache-licensed weights is a question for a licence read-through *(verify once)*, but the Gemma-3-era Terms of Use no longer apply |
+| Released / licence | 2026-04-02; **Apache 2.0**. Google's pages still link a prohibited-use policy and an intended-use statement; whether either binds Apache-licensed weights is a question for a licence read-through **still not done — it is a legal reading and not a measurement**, and D3 did not do it. What D3 did check is what the redistribution actually depends on: both repositories this build pins declare `license: apache-2.0` in their metadata, neither is gated, and `make models-fetch` places the canonical Apache 2.0 text beside the weights as §4(a) wants. The Gemma-3-era Terms of Use no longer apply |
 | Size | 2.3 B effective parameters, **5.1 B with the per-layer embeddings** — the number that sets the download |
 | Audio | Native; **30 s per clip**; 16 kHz mono float32; 25 tokens per second of audio; documented tasks are speech recognition, speech translation and "general speech understanding" — **no tone, emotion or speaker capability is documented** |
 | Context / languages | 128K; 35+ languages out of the box, pre-trained on 140+ |
@@ -862,25 +907,41 @@ applies to Argon2 parameters.
 
 | Option | Assessment |
 | :----- | :--------- |
-| **A. LiteRT-LM, Kotlin API — recommended** | Google's on-device runtime (the MediaPipe LLM Inference API is now maintenance-only). E2B bundle **2,583 MB**, mixed 2/4/8-bit weights; **peak RAM 1,733 MB text-only on an S26 Ultra CPU**, 0.8 GB working memory plus 1.12 GB memory-mapped embeddings; vision and audio encoders load on demand — **peak with the audio encoder loaded is not published** *(verify; plan for 2–2.5 GB)*; S26 Ultra GPU 52 tok/s decode, 0.3 s to first token; **constrained decoding takes JSON Schema, regex and Lark** (LLGuidance backend), so §5.2 is enforced by the runtime; GPU and NPU paths; Apache-2.0. The native work is a thin Capacitor plugin over a stable Kotlin API, not a JNI build. Audio input through the Kotlin API is documented for Gemma 3n and stated for Gemma 4 *(verify on a device — the one detailed write-up was not reachable)*. |
+| **A. LiteRT-LM, Kotlin API — recommended** | Google's on-device runtime (the MediaPipe LLM Inference API is now maintenance-only). E2B bundle **2,583 MB**, mixed 2/4/8-bit weights; **peak RAM 1,733 MB text-only on an S26 Ultra CPU**, 0.8 GB working memory plus 1.12 GB memory-mapped embeddings; vision and audio encoders load on demand — the published figure is text-only, and **D3 measured the encoder's marginal cost rather than a phone's absolute peak, because no phone was available: 3,291 MB with the audio encoder against 3,122 MB without it, a difference of 169 MB** (x86-64 CPU, 4,096-token context, 2026-09-02). Against the published 1,733 MB that puts a Full-tier pass at roughly **1.9 GB on a phone** — the bottom of the 2–2.5 GB this row used to say to plan for. **The absolute peak on the oldest supported Full-tier phone is still unmeasured** and is the one row of this table that still needs a device; S26 Ultra GPU 52 tok/s decode, 0.3 s to first token; **constrained decoding takes JSON Schema, regex and Lark** (LLGuidance backend), so §5.2 is enforced by the runtime; GPU and NPU paths; Apache-2.0. The native work is a thin Capacitor plugin over a stable Kotlin API, not a JNI build. **Audio input works for Gemma 4, measured 2026-09-02** — off-device, through `litertlm-jvm` 0.16.1 on x86-64 Linux, which is the same API, the same version and the same `.litertlm` bundle the Android artifact carries. A 6.8 s WAV through `Content.AudioBytes` came back transcribed word-for-word with the labels in the same pass, in 11.2 s. Three things that cost the spike an attempt each, so the plugin has them right: the bytes must be a **RIFF/WAVE container** (raw PCM is not decoded); `extraContext` on `sendMessage` is **non-null in Kotlin** and `null` throws from inside the intrinsics; and `getBenchmarkInfo()` throws unless the engine was built with benchmark parameters, which `EngineConfig` cannot set — so the plugin times the call itself. **Not yet run on a phone.** |
 | B. llama.cpp via JNI — runner-up | Gemma 4 audio conformer encoder merged 2026-04-12. Main model Q4_0 **2.84 GB** plus a separate `mmproj` encoder file — **BF16 (987 MB) strongly recommended**, F16 and lower drift and repeat; 2-bit main quantisations fail. GBNF grammars. More portable, more native build work (NDK stage in `Dockerfile.android`), and a larger download than A. |
 | C. In-WebView, transformers.js over WebGPU | **Not available: Android WebView still does not ship WebGPU by default** (Chrome on Android has had it since 121; WebView has not). Nothing to decide until that changes. |
-| D. Platform `SpeechRecognizer` as the **Light-tier transcriber** | Zero download, OEM-tuned. Acceptable **only** with an on-device guarantee — `SpeechRecognizer.createOnDeviceSpeechRecognizer` (API 31+) — because below that the framework may send audio to a server with no way for the app to prove it did not. An optional engine on API 31+, named as such in Settings; Whisper tiny/base through the same plugin is the default transcriber there. |
+| D. Platform `SpeechRecognizer` as the **Light-tier transcriber** | Zero download, OEM-tuned. Acceptable **only** with an on-device guarantee — `SpeechRecognizer.createOnDeviceSpeechRecognizer` (API 31+) — because below that the framework may send audio to a server with no way for the app to prove it did not. An optional engine on API 31+, named as such in Settings; Whisper tiny/base through the same plugin is the default transcriber there. **C4 (2026-09-02) chose not to offer it**: the Vault names one model and one licence, an OEM recogniser is neither, describing it honestly would need a third Vault variant, and its on-device guarantee cannot be checked without a device. **Whisper tiny through the plugin is what shipped** — the same pinned ONNX export as the web, run through ONNX Runtime Android 1.24.3 with the spectrogram, tokenizer and decode loop hand-written in Java. On a desktop JVM against the pinned files it produced word-for-word the web path's transcripts for three synthesised sentences; it has not yet been run on a phone. |
 
 #### Desktop browser
 
 | Option | Assessment |
 | :----- | :--------- |
-| **transformers.js + `onnx-community/gemma-4-E2B-it-ONNX` (`q4f16`, WebGPU) — recommended for the Full tier** | The ONNX export includes the audio encoder, so the browser runs the same single pass as the phone. **WebGPU is mandatory with no fallback**; the download is several shards — size not published *(verify; expect 2–3 GB)*, cached in Cache Storage after the first run. No grammar support *(verify)* → validator-only enforcement. Apache-2.0 runtime. |
-| **transformers.js + Whisper tiny/base — the Light tier and the noise fallback** | **tiny is 41 MB, measured** (C1, 2026-08-25); base still *(verify)*. WebGPU when present, WASM otherwise (slow but functional). |
+| **transformers.js + `onnx-community/gemma-4-E2B-it-ONNX` (`q4f16`, WebGPU) — recommended for the Full tier** | The ONNX export includes the audio encoder, so the browser runs the same single pass as the phone. **WebGPU is mandatory with no fallback**; the download is several shards — **3,401,460,010 bytes, 3.4 GB, measured 2026-09-02** at revision `9f4bef8`, over sixteen files: the token embedding table (1.59 GB), the merged decoder (1.52 GB), the audio encoder (171 MB), the vision encoder (99 MB) and 19 MB of tokeniser and configs. **The estimate in this row was low, and the download promise changed with it** — the settings screen says 3.4 GB and the operator fetches it with `make models-fetch MODELS="gemma-4-e2b-onnx"`. Cached in Cache Storage after the first run. **No grammar support, verified** (see §5.2) → validator-only enforcement.
+
+**The Light tier is a smaller download and not the same one.** transformers.js picks its ONNX sessions from the model *class*: `Gemma4ForCausalLM` against this repository loads only the embedding table and the decoder — 3.1 GB — while `Gemma4ForConditionalGeneration` adds the two encoders. The Light tier asks for the first, so its files are a strict subset of the Full tier's and a device promoted later re-uses every verified byte. Apache-2.0 runtime. |
+| **transformers.js + Whisper tiny/base — the Light tier and the noise fallback** | **tiny is 45 MB over 13 files, measured** (C1 2026-08-25, re-verified in a browser C3 2026-08-31); base still *(verify)*. **WASM, not WebGPU — measured, and the opposite of what this row used to say.** On the deployed stack the WebGPU backend loads and then **fails at inference** with the quantised export (`OrtRun` → `GetReducedShape` in the WebGPU EP), while plain WASM loads the model in **2.2 s** and transcribes a 30 s clip in **2.2 s**, single-threaded, on a desktop Chromium. "Slow but functional" was pessimistic: WASM is the working path and it is fast enough that nothing is given up. **And the runtime version matters more than the model does** — see the note under this table. |
 | Web Speech API (`webkitSpeechRecognition`) | **Rejected.** In Chrome it sends audio to Google for most languages; the app cannot verify otherwise. It would falsify the Vault page. |
-| No WebGPU (Firefox without it enabled, older Safari, a VM) | Text-only tier: typed + chips, said plainly in Settings. No remote fallback in this phase; §12.2 records what adding one behind its own consent would cost. |
+| No WebGPU (Firefox without it enabled, older Safari, a VM) | **Not text-only — corrected in C3.** WebGPU is mandatory for Gemma and irrelevant to Whisper, so a browser without it still runs the Light tier on WASM. What actually puts a browser on the text-only floor is measured in `journal/inference/tier.js`: no secure context, no `getUserMedia`, no `MediaRecorder`, no Web Audio, no WebAssembly, no `crypto.subtle`, or no Cache Storage. **The first of those is the common case for this product**, not the exotic one: a self-hosted install reached over plain `http://` on a home network has no microphone and no way to verify a download, and the settings screen says so in words. No remote fallback in this phase; §12.2 records what adding one behind its own consent would cost. |
+
+> **The runtime version is load-bearing, and this is the finding C3 would most want a later
+> session to have.** `@huggingface/transformers` 4.2.0 pins `onnxruntime-web` to a **dev
+> build** (`1.26.0-dev.20260416`) while pinning `onnxruntime-node` to stable `1.24.3`. On
+> that dev build the pinned Whisper export does not load at all: *"Can't create a session
+> … `qdq_actions.cc:137 TransposeDQWeightsForMatMulNBits` Missing required scale"*, and the
+> same error on **every** quantisation the repo offers — `_quantized`, `int8` and `uint8`
+> are two distinct files between them and all three fail. Pinning `onnxruntime-web` to
+> stable **1.24.3**, the version transformers.js itself trusts on the server, fixes it
+> outright. The pin is a direct dependency **and** an `overrides` entry in `package.json`,
+> because without the override npm leaves transformers' own exact pin in place, and
+> without the direct dependency the package is not hoisted where the build can reach its
+> binaries. A later session that bumps transformers.js must re-check this pin, and should
+> expect the model to be blamed for what is a runtime regression.
 
 #### Models in the phase
 
 | Model | Role | Size class | Licence |
 | :---- | :--- | :--------- | :------ |
-| **Gemma 4 E2B IT** | Full tier: transcription + proposals in one pass; Light tier: proposals in text mode | 2.6 GB (LiteRT bundle) / 2.8 GB + 1 GB (GGUF) / *(verify)* (ONNX) | Apache 2.0 |
+| **Gemma 4 E2B IT** | Full tier: transcription + proposals in one pass; Light tier: proposals in text mode | **2.6 GB (LiteRT-LM bundle, measured)** / 2.8 GB + 1 GB (GGUF) / **3.4 GB full, 3.1 GB text-only (ONNX, measured 2026-09-02)** | Apache 2.0 |
 | Gemma 4 E4B IT | Desktop tier to evaluate: reportedly better on ambiguous input and complex schemas; 4.5 B effective / 8 B total, ~4–5 GB | — *(verify)* | Apache 2.0 |
 | Whisper tiny / base | Light-tier transcriber; noise fallback | **tiny: 41 MB measured** (C1, 2026-08-25 — the q8 encoder and merged decoder, 40.8 MB, plus 4.4 MB of tokeniser and configs); base still *(verify)* | **Apache 2.0**, not MIT — see below |
 | **EmbeddingGemma 300m** | The embedding index, §5.8 | < 200 MB RAM quantised; ~200–300 MB on disk at q8/q4 *(verify)* | **Gemma Terms of Use** — not Apache; see §5.6 |
@@ -892,9 +953,44 @@ the plugin on Android), shown in Settings, overridable by the user.
 
 | Tier | Condition | Transcription | Proposals |
 | :--- | :-------- | :------------ | :-------- |
-| **Full** | ≥ 6 GB RAM on Android *(verify whether 4 GB devices can carry the encoder)*; WebGPU on the web | Gemma 4 E2B, audio-native | Same pass |
-| **Light** | 4–6 GB RAM | Whisper tiny/base (or the on-device platform recogniser, API 31+) | Gemma 4 E2B in text mode — 1.7 GB peak *(verify on a 4 GB device; if it does not fit, this tier is chips)* |
-| **Text-only** | below, or no WebGPU on the web | — | — (typed + chips) |
+| **Full** | ≥ 6 GB RAM on Android **and a 64-bit ABI**; a WebGPU **adapter** on the web | Gemma 4 E2B, audio-native | Same pass |
+| **Light** | 4–6 GB RAM, or a 32-bit device, or a browser with no WebGPU adapter | Whisper tiny/base (the on-device platform recogniser is not offered — C4) | Gemma 4 E2B in text mode — 1.7 GB peak published, **still unmeasured on a 4 GB device**; if it does not fit, this tier is chips |
+| **Text-only** | below 4 GB, or a browser missing a secure context, `getUserMedia`, `MediaRecorder`, Web Audio, WebAssembly, `crypto.subtle` or Cache Storage | — | — (typed + chips) |
+
+*C4 (2026-09-02), on Android:* the number is `ActivityManager.totalMem` through the plugin —
+not the WebView's `navigator.deviceMemory`, which rounds down to a power of two and reads a
+6 GB phone as 4 — rounded **up** to the gigabytes the phone is sold with (a "4 GB" phone
+reports about 3.6 GiB) and read against the boundaries above unchanged; `isLowRamDevice()`
+puts a device on the floor whatever the number says. The floor stays at 4 GB even though
+Whisper tiny would run on less, because the Light tier's proposals (D3, text-mode Gemma) need
+it and a phone that has voice today should not lose it the day proposals arrive. The settings
+screen says the number it read, and the pin still only goes down.
+
+*D3 (2026-09-02) moved no memory boundary and added two conditions, both of them facts about a
+runtime rather than judgements about a device.*
+
+**A 32-bit phone cannot reach the Full tier however much memory it has.**
+`litertlm-android` 0.16.1 ships `liblitertlm_jni.so` for **arm64-v8a and x86_64 only** — checked
+inside the published AAR and again inside this build's own APK, where the two libraries are
+21.5 MB and 25.6 MB and there is no `armeabi-v7a` entry. ONNX Runtime, which is what the Light
+tier's Whisper uses, does ship all four. So a 32-bit device gets the Light tier, and it gets it
+for a reason nobody can fix by closing apps. `TierProbe` reports `abi64` and `tierFromMemory`
+reads it; an **absent** `abi64` — every report written before D3 — is not a "no".
+
+**`navigator.gpu` existing is not WebGPU working, and this one was measured the hard way.** On
+a Chromium 148 build with an RTX 3080 behind it, `navigator.gpu` was present,
+`crossOriginIsolated` was true, WebGL2 named the card — and `requestAdapter()` returned `null`
+for every option including `forceFallbackAdapter`. A browser detected as Full on the strength of
+the property would have downloaded 3.4 GB and thrown at the first check-in, which is exactly the
+failure C3 recorded one layer down: *a backend that loads and then throws is worse than one that
+was never offered.* So the web asks for an **adapter**, which is asynchronous, which is why it is
+primed like the Android report and reads as Light until it has answered.
+
+**What D3 could not measure, and would not guess at:** the absolute peak RAM of a Full-tier pass
+on the oldest supported phone, whether text-mode Gemma fits a 4 GB device, and thermal and
+battery over ten consecutive check-ins. All three need a phone; there was none, as in C4. What
+was measured instead is the audio encoder's *marginal* cost — 169 MB — which is the number that
+decides whether the encoder sets this boundary, and it does not.
 
 ### 5.6 Where the weights come from, and the headers that must change
 
@@ -955,6 +1051,48 @@ the plugin on Android), shown in Settings, overridable by the user.
 | **Golden recordings and transcripts** | `src/journal/inference/golden/`: **recordings** (consented real clips plus TTS-synthesised ones, German and English, each with a clean and a noisy variant) for audio mode, and **transcripts** for text mode; expectations written as *must include* / *must not include* feeling ids, expected `ambiguity`, and a WER ceiling per clip — not exact equality, because quantisation and runtime differences make exact matching brittle. ~60 cases to start, including the Lucie sentence, negations (*"not angry, just tired"*), two people in one sentence, a trigger label the user already has (*work*) and one they do not. | `make journal-eval` — drives the candidate model through LiteRT-LM's CLI or `llama-mtmd-cli` at temperature 0 with the schema and reports per-id precision/recall, ambiguity accuracy and WER. **Not** part of `npm test`: it needs weights and minutes. |
 | **Acceptance gate** | Recall ≥ 0.8 on *must include*, ≤ 0.05 on *must not include*, `ambiguity` correct on ≥ 0.9 of the ambiguity cases, German WER within a stated margin of English on the clean clips, for the default model of each tier. Numbers to be revised after the first run, and recorded in the eval report checked into `product_vision/eval/`. | Before a model becomes a default |
 | **On device** | Manual: the airplane-mode run (§11), latency on the oldest supported phone, peak memory with the audio encoder loaded, thermal after ten consecutive check-ins. | QA checklist |
+
+
+#### Where each layer lives, as built (D4, 2026-09-03)
+
+| Layer | Where | State |
+| :---- | :---- | :---- |
+| Mocked boundary | `createFakeRuntime` in `src/journal/inference/fake.js` | Shipped C2 |
+| Schema and register | `validate.test.js` against `golden/adversarial.js` | Shipped D1 |
+| Golden transcripts | `golden/transcripts.json` — **120 cases in 60 English/German pairs** | 60 from D1, 60 added by D4 |
+| Golden recordings | `golden/recordings.json` names all 240 clips; `golden/audio/` holds them; `golden/consent/` says who agreed | **Planned in full, none recorded.** The plan, the naming, the consent register and the checks exist; the audio does not |
+| The harness | `make journal-eval` → [`scripts/journal-eval/`](../scripts/journal-eval/README.md) | Runs. `CANDIDATE=reference` needs no weights and checks its own arithmetic |
+| Acceptance gate | `scripts/journal-eval/gate.mjs`, four criteria | Runs. **No model has been through it** |
+| On device | The QA checklist in §11 | Unrun since C4 — there is still no phone |
+
+**The recordings, in detail.** Each of the 120 transcript cases is recorded twice, clean and
+noisy, by one or more speakers; several speakers on one sentence is more evidence rather than
+duplicate evidence, and the harness scores every clip it finds. Files are named
+`<case-id>.<clean|noisy>.wav` inside `audio/<speaker-id>/`, 16 kHz mono PCM, and
+`make journal-audio-check` reports which of the 240 slots are filled and whether what is in
+them can be used.
+
+**Consent is enforced, not promised.** A speaker directory with no row in
+`golden/consent/speakers.json` is refused by every tool that reads the clips, and a synthesised
+voice is a speaker too — with `kind: "synthetic"`, so the report never averages a text-to-speech
+WER together with a human one.
+
+**The WER ceiling is per clip, stated as a class.** `plain` 0.15/0.30, `hard` 0.25/0.45
+(proper names, place names, abbreviations, numerals, borrowed words), `disfluent` 0.30/0.50
+(fillers, speed, a sixty-word run-on), `low-level` 0.25/0.45 (deliberately quiet or loud), and
+`short` 0.50/0.50 — where the number means *at most one word wrong*, because a two-word clip
+quantises WER to steps of 0.5 and a rate is the wrong way to read it. Both halves of a pair
+always share a class, or the language comparison would be a comparison of two ceilings.
+
+**The fourth gate criterion needs a margin, and §5.7 above leaves it to the first run.** D4
+states it: **0.05 absolute** — German corpus WER on the clean clips may exceed English by at
+most five points. Absolute rather than relative, because a relative margin gets more permissive
+as English gets worse, which is the wrong direction. The reasoning is in
+`scripts/journal-eval/gate.mjs` beside the constant.
+
+**A criterion that was not measured is not a pass.** The gate has three verdicts — `pass`,
+`fail` and `incomplete` — and a tier whose German clips were never recorded lands on the third.
+Reporting that as success is the exact mistake §12.1's language row exists to prevent.
 
 ### 5.8 The embedding index — what it is, where it lives, what it may do
 
@@ -1135,12 +1273,15 @@ Notes against the traps register:
   "note": "…",                           // optional free text typed on the card
   "proposal": {                          // present only when a model was consulted
     "model": "…", "runtime": "…", "prompt_version": 3,
-    "proposed": ["pleasure", "rapport", "stress"], "accepted": ["pleasure", "rapport"],
+    "proposed": ["pleasure", "rapport", "stress"], "accepted": ["pleasure", "rapport", "irritation"],
     "replaced": { "stress": "irritation" }, "dropped_by_filter": 0,
     "ambiguity": "none", "edited_transcript": false
   }
 }
 ```
+
+*`accepted` is everything that was saved, additions included — see the note under §4.7's
+stage 6 for the arithmetic that recovers "put down" and "added" from the three lists.*
 
 **`kind: "ritual"`**
 
@@ -1707,11 +1848,12 @@ A **Journal** section in `Profile.jsx` beside *Check-in reminders*, same toggle 
 | Nightly ritual, and its time | Off; 22:30 | `alq:journal-ritual` |
 | Optional questions (≤ 3) | none | `alq:journal-questions` |
 | Ask who I was with | Off | `alq:journal-ask-who` |
-| Voice check-ins and suggestions (downloads the on-device model: Gemma 4 E2B on the Full tier, ~2.6 GB; a small transcriber on the Light tier, ~75 MB) | Off | `alq:journal-voice` — with the tier, the model name and size shown, and *remove downloaded files* |
+| Voice check-ins (downloads the on-device model: Gemma 4 E2B on the Full tier, ~2.6 GB; **Whisper tiny, 45 MB measured**, on the Light tier) | Off | `alq:journal-voice` — with the tier, the model name and size shown, and *remove downloaded files*. **Only offered where the device could run it** (C3): elsewhere the row is a sentence saying why, not a toggle |
 | Show suggestions (the model's proposals; with this off, voice still writes the words down and the user tags them with chips) | On when voice is on | `alq:journal-suggestions` |
 | Similar-entry suggestions and search (downloads the embedding model, ~200 MB — §5.8) | Off | `alq:journal-embeddings` |
 | Keep transcripts | On | `alq:journal-keep-transcripts` |
 | Transcription language | auto — the model detects it; pin it here when it guesses wrong | `alq:journal-language` |
+| **What this device can run** *(added in C3; this table had no row for it)* | detected | `alq:journal-tier` — a pin the user may set **downwards only**. Pinning higher than the device reports would make this screen promise a model that cannot load, so it is refused and the refusal is shown |
 
 Each is per device, and each is described in the plain register the Vault uses — the model
 toggle's description is the Vault paragraph in §10.2 verbatim, so the two cannot drift.
@@ -1813,6 +1955,12 @@ states and on both tiers.
 - The network security config is unchanged: nothing new talks to the network except the
   one-time weight download from the configured server, over the same cleartext-on-LAN
   trade-off the app already documents.
+
+*Shipped in C4 (2026-09-02).* CHANGE 5 in the manifest carries the permission and both
+reasons; the `allowBackup` comment names the journal's settings and the model files; the
+plugin's only URL is `<server>/models/<path>`, opened with no session token, and the network
+security config is byte-for-byte what it was. [docs/12 §6](../docs/12-android-app.md) has the
+policy in full.
 
 ### 10.6 A note on third parties
 
@@ -1930,11 +2078,20 @@ at noon and 18:00, with a `neutral` check-in, with a ritual word and without; ro
 and by buttons; the page still scrolls from a vertical drag that starts on the graph; print
 preview.
 
-### 6-C — Voice capture, the headers, and the Light-tier transcriber
+### 6-C — Voice capture, the headers, and the Light-tier transcriber · **implemented 2026-09-02; device checks pending**
 
 **Outcome:** tap, speak, see the text, then tag with chips — on every tier that has a
 microphone. No proposals yet. The Vault copy changes to the "voice on" variant minus the
 suggestions sentence; the "Does it listen?" entry appears.
+
+> **What shipped, session by session:** C1 the headers and `/models/` (2026-08-25); C2 the
+> recorder and the seam (2026-08-31); C3 Whisper tiny in the browser and the Vault copy
+> (2026-08-31); C4 the Android plugin — `RECORD_AUDIO`, native capture, the same Whisper
+> through ONNX Runtime, the weight store, the tier report — with the platform recogniser
+> deliberately not offered (2026-09-02). **What has not happened:** no person has tapped the
+> microphone on either platform, the airplane-mode acceptance test below is unrun, and nothing
+> in this slice has been measured on a phone. The C3 and C4 ledger entries list the exact
+> device checks that remain.
 
 **Depends on:** 6-A. Deployment changes: `Permissions-Policy`, CSP `'wasm-unsafe-eval'`,
 `worker-src`, COOP/COEP plus CORP on `/uploads/` (§5.6) — shipped and verified as their own
@@ -2170,9 +2327,20 @@ phone, before any native inference work begins:
 > session — with the decision rules fixed **before** the run, two tally sheets
 > ([feelings](eval/tally-feelings.md), [triggers](eval/tally-triggers.md)) and a fixture
 > proposal card generated from `FEELINGS`, so that question 2 measures a card rather than a
-> mock-up. Written 2026-08-25 in session U1; **not run, and the gate is open.** Until a dated
-> report sits beside the protocol in `product_vision/eval/`, every question below is
-> unanswered, and nothing after 6-B is settled by it.
+> mock-up. Written 2026-08-25 in session U1; **not run.** Until a dated report sits beside
+> the protocol in `product_vision/eval/`, every question below is unanswered.
+>
+> **The gate was waived on 2026-08-31, by the operator, and the eight questions below are
+> therefore unanswered rather than answered by default.** Management decided to forgo the
+> user test and to build 6-C onward regardless; session C2 began under that waiver and
+> recorded it in [`06-progress.md`](06-progress.md). The four decisions this test was
+> positioned to make are now made by omission, and each is worth naming so nobody later
+> reads a shipped thing as a validated one: the feeling vocabulary ships as drafted (§5.3),
+> the ritual keeps the length §3.2 gives it, the proposal card **is** built (6-D), and
+> whether 6-G is built falls to whoever reaches it with no evidence about trigger reuse or
+> search to weigh. The protocol and its instruments stay in `eval/` and stay runnable; a
+> later run would correct rows rather than start over. Nothing below is retired, and
+> nothing below has been confirmed.
 
 1. **Can the ritual be done in under 60 s, half-asleep, by thumb?** Is nine cards too many;
    which optional questions do people actually turn on; is the *Who?* card welcome or
@@ -2220,8 +2388,22 @@ Still open:
 - Whether `person_fact` ships in 6-D or waits for 6-E — it is the one payload that is *about*
   a third party, and shipping it plaintext is a choice the operator should make knowingly.
 - Whether the Android Light-tier transcriber default is Whisper or the platform recogniser on
-  API 31+ — measured, not argued.
+  API 31+ — measured, not argued. **Still open on 2026-09-03.** D4 built the instrument
+  and could not run it: both candidates (`light-android-whisper`,
+  `light-android-platform`) are scored from a capture taken on a handset, and no handset
+  has been available since C4. What closes it: one device, one capture file per
+  transcriber, `make journal-eval JOURNAL_EVAL_REPLAY=…`, and the two reports compared.
 - Whether E4B becomes a desktop-tier default — decided by `make journal-eval`.
+  **Still open on 2026-09-03.** The harness has a `desktop-e4b` candidate and E4B has no
+  weights behind it: it is not pinned in the Makefile, not in `models.js`, and was not
+  run. What closes it: pinning a revision and a SHA-256 per file the way §5.6 requires,
+  then a run against the same suite as E2B, on the same desktop, in the same report.
+- Whether the single pass needs a dedicated transcriber back on the Full tier (§5.1) —
+  **open, and correctly so on 2026-09-03.** §5.1 requires the evidence to be recorded
+  before a model is added back, and there is none: no audio-mode run has happened,
+  because the golden suite has no recordings yet. What closes it: the 240 clips, an
+  audio-mode run of a Full-tier candidate, and its WER beside the Light tier's Whisper
+  over the same clips.
 - A remote inference fallback behind its own consent (§12.2) — out of this phase; recorded.
 
 ### 12.6 Parked: reading feelings from how a voice sounds

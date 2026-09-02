@@ -1,39 +1,54 @@
-import React, { useEffect, useId, useMemo, useState } from 'react';
-import { NotebookPen, Plus, X } from 'lucide-react';
+import React, { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { Mic, NotebookPen, Plus, X } from 'lucide-react';
 import { useJournal } from '../context/JournalContext';
-import { useSubjects } from '../context/SubjectsContext';
 import { useDiscretion } from '../context/DiscretionContext';
-import { CONTEXT_TAGS, MAX_TAGS, MAX_TAG_LENGTH } from '../constants/contextTags';
+import VoiceCapture, { createVoiceKit } from './VoiceCheckin';
+import ProposalCard from './ProposalCard';
 import {
-    DAY_ROLLOVER_HOUR,
-    INTENSITY_LEVELS,
+    chipClass,
+    INTENSITY_DOT,
+    DEFAULT_INTENSITY,
+    nextIntensity,
+    aboutText,
+    FeelingGrid,
+    PersonPicker,
+    TriggerPicker,
+    TagPicker,
+    buildCheckinRequest
+} from './CheckinControls';
+import { readKeepTranscripts, readSuggestions } from '../constants/journalSettings';
+import { CONTEXT_TAGS, MAX_TAGS } from '../constants/contextTags';
+import {
     JOURNAL_COPY,
     MAX_FEELINGS_PER_CHECKIN,
-    MAX_TRIGGER_LABEL,
-    PAYLOAD_VERSION,
     UNCLEAR_FEELING_ID,
-    activeFeelings,
-    civilDay,
-    clientId,
     feelingById,
-    fillCopy,
-    personCandidates,
-    rfc3339Local,
-    triggerCandidates,
-    tzOffsetMinutes
+    fillCopy
 } from '../constants/journal';
+
+// Still exported from here. `Journal.jsx` reads the chip shape and two suites read the
+// request builder from this module; both moved to `CheckinControls.jsx` when the proposal
+// card needed them too, and the names stay reachable where their importers look.
+export { chipClass, buildCheckinRequest };
 
 /**
  * The check-in composer — chips and typed text, which §4.1 calls the definition of a
- * check-in rather than a fallback for one. Voice and the model arrive in 6-C and 6-D and
- * land on the same record; nothing here waits for them.
+ * check-in rather than a fallback for one. Voice arrived in 6-C and the model's card in
+ * 6-D, and both land on the same record.
  *
  * **Invariant 15 is structural in this file, not intentional.** Nothing is written that the
- * user did not tap: `personCandidates` and `triggerCandidates` return suggestions and this
+ * user did not tap: the pickers in `CheckinControls.jsx` return suggestions and this
  * component never selects one of them, a new person or a new trigger reaches the request
  * only from the button that names it, and the `about` a chip carries is only ever the chip
  * the user put there. The request is built from this component's state at save time, never
  * from a picker's transient text — a label typed and then abandoned mints nothing.
+ *
+ * **The proposal card (D2) is a second body for the same sheet, not a second sheet.** A
+ * composer the microphone opened hands every runtime result to `ProposalCard` when the
+ * *Show suggestions* setting is on; the card builds its own request from what the user
+ * confirmed and hands it back through `saveProposal`, and the write path is this file's
+ * `createEntry` either way. With the setting off, or on a card's *Tap words instead*, the
+ * words land in the grid below exactly as they did in C3.
  *
  * **Trap 4:** a failed save leaves the sheet open with every selection intact. `onClose()`
  * sits inside `try`, after the await, and never in a `finally`.
@@ -42,310 +57,6 @@ import {
  * `journal.test.js` sees the whole surface. Colours are inline `style` from the complete
  * literal hexes in `FEELINGS`, never composed class names (invariant 4).
  */
-
-/* ------------------------------------------------------------------------------------ */
-/* The pieces                                                                             */
-/* ------------------------------------------------------------------------------------ */
-
-/**
- * Strength, as dots.
- *
- * §4.4 item 2 says dots and never numbers, and the reason is the product's: a number
- * invites arithmetic across check-ins, and there is no mood average in this app. The word
- * goes in the button's `aria-label` so a screen reader hears "clearly" rather than a run of
- * middle dots; `data-intensity` is for tests, and a data attribute is not a rendering.
- */
-const INTENSITY_DOT = '·';
-
-/** `··`. Two of three, so the common case is one tap and not two. */
-const DEFAULT_INTENSITY = INTENSITY_LEVELS[1];
-
-const nextIntensity = (level) => {
-    const index = INTENSITY_LEVELS.indexOf(level);
-    return INTENSITY_LEVELS[(index + 1) % INTENSITY_LEVELS.length];
-};
-
-/**
- * The neutral chip shape every chip in the journal borrows, so one row reads as one row.
- *
- * It lives here rather than in `Journal.jsx`, which is where it reads more naturally,
- * because `Journal.jsx` imports this module — the other direction would be a cycle. It is a
- * complete literal string and must stay one: a composed class name is purged by the Tailwind
- * scanner and renders shapeless (invariant 4).
- */
-export const chipClass = 'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium';
-
-/** The whole vocabulary as one grid of buttons, narrowed by the field above it. */
-const FeelingGrid = ({ picked, atCap, query, onToggle }) => {
-    const needle = query.trim().toLowerCase();
-    const shown = activeFeelings().filter(feeling => (
-        !needle
-        || feeling.label.toLowerCase().includes(needle)
-        || feeling.gloss.toLowerCase().includes(needle)
-        || feeling.id.includes(needle)
-    ));
-
-    if (shown.length === 0) {
-        return <p className="text-xs text-slate-400 font-light">{JOURNAL_COPY.checkin.findEmpty}</p>;
-    }
-
-    return (
-        <div className="flex flex-wrap gap-2">
-            {shown.map(feeling => {
-                const selected = picked.some(entry => entry.id === feeling.id);
-                const unclear = feeling.id === UNCLEAR_FEELING_ID;
-                // The cap is stated above this grid; here it only stops the tap. `unclear`
-                // is exempt because choosing it puts every other word down anyway.
-                const blocked = !selected && atCap && !unclear;
-
-                return (
-                    <button
-                        key={feeling.id}
-                        type="button"
-                        data-feeling={feeling.id}
-                        aria-pressed={selected}
-                        disabled={blocked}
-                        title={feeling.gloss}
-                        onClick={() => onToggle(feeling.id)}
-                        className={`${chipClass} border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${unclear ? 'border-dashed' : 'border-solid'
-                            } ${selected ? 'text-slate-800' : 'text-slate-600'}`}
-                        style={{
-                            borderColor: feeling.hex,
-                            backgroundColor: selected ? `${feeling.hex}33` : 'transparent'
-                        }}
-                    >
-                        <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: feeling.hex }} />
-                        {feeling.label}
-                    </button>
-                );
-            })}
-        </div>
-    );
-};
-
-/**
- * One person the user might have meant, or one they are about to name for the first time.
- *
- * Nothing here is pre-selected. `personCandidates` returns an exact match **alone** (§4.5
- * step 1), so what this list offers beside a name is only ever offered when the server
- * would not have matched it exactly either.
- */
-const PersonPicker = ({ onPick, onCancel }) => {
-    const { relationships } = useSubjects();
-    const { maskName } = useDiscretion();
-    const [query, setQuery] = useState('');
-
-    const typed = query.trim();
-    const candidates = personCandidates(typed, relationships);
-    const offered = typed ? candidates : relationships.map(person => ({
-        relationshipId: person.ID, name: person.name, exact: false, match: 'all'
-    }));
-
-    return (
-        <div className="space-y-2 pt-2">
-            <input
-                type="text"
-                autoFocus
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                aria-label={JOURNAL_COPY.checkin.personLabel}
-                placeholder={JOURNAL_COPY.checkin.personPlaceholder}
-                maxLength={MAX_TAG_LENGTH}
-                className="w-full text-sm border-b-2 border-slate-200 py-1.5 focus:border-slate-800 focus:outline-none bg-transparent transition-colors placeholder:text-slate-300 text-slate-700"
-            />
-
-            {typed && candidates.length > 0 && !candidates[0].exact && (
-                <p className="text-[11px] text-slate-400 font-light">{JOURNAL_COPY.people.candidateHint}</p>
-            )}
-
-            <div className="flex flex-wrap gap-2">
-                {offered.map(candidate => (
-                    <button
-                        key={`known-${candidate.relationshipId}`}
-                        type="button"
-                        data-person-candidate={candidate.relationshipId}
-                        onClick={() => onPick({ kind: 'person', relationshipId: candidate.relationshipId, name: candidate.name })}
-                        className={`${chipClass} border border-slate-200 bg-white text-slate-600 hover:border-slate-400 transition-colors`}
-                    >
-                        {maskName(candidate.name)}
-                    </button>
-                ))}
-
-                {/* Dashed, because nothing dashed has been written yet (§4.4). The person is
-                    created by the server inside the entry's transaction, and only if this
-                    button was tapped — and it is never offered beside an exact match,
-                    because `FindOrCreateRelationship` would have matched that name anyway
-                    and the offer would invite a duplicate the server cannot make (§4.5). */}
-                {typed && !candidates.some(candidate => candidate.exact) && (
-                    <button
-                        type="button"
-                        data-new-person
-                        onClick={() => onPick({ kind: 'person', relationshipId: null, name: typed })}
-                        className={`${chipClass} border border-dashed border-slate-300 bg-white text-slate-500 hover:border-slate-500 transition-colors`}
-                    >
-                        {fillCopy(JOURNAL_COPY.people.newPerson, { name: maskName(typed) })}
-                    </button>
-                )}
-            </div>
-
-            <button
-                type="button"
-                onClick={onCancel}
-                className="text-[11px] font-medium text-slate-400 hover:text-slate-600 underline underline-offset-4"
-            >
-                {JOURNAL_COPY.checkin.cancel}
-            </button>
-        </div>
-    );
-};
-
-/**
- * The same for a trigger.
- *
- * The list comes from the provider's `triggers`, which is `activeTriggers` resolved through
- * `readTrigger` — a merged-away trigger is not in it, and the one that survived is offered
- * under its current label. The id sent is `live`, never the id a chip was first written
- * with: the server accepts a live trigger only (§6.3), and the client is the half that
- * resolves.
- */
-const TriggerPicker = ({ pending, onPick, onCancel }) => {
-    const { triggers } = useJournal();
-    const { blurClass } = useDiscretion();
-    const [query, setQuery] = useState('');
-
-    // The triggers this composer has already minted count as existing ones for every
-    // feeling after the first. Without them the second feeling cannot reach the word the
-    // first one just named, and the only way to attach it would be to type the label again
-    // — which mints a second `client_id` and, on save, a second trigger row with the same
-    // label. A vocabulary that duplicates itself on the way in is worse than none.
-    const known = [...triggers, ...pending];
-    const typed = query.trim();
-    const candidates = triggerCandidates(typed, known);
-    const offered = typed ? candidates : known;
-
-    return (
-        <div className="space-y-2 pt-2">
-            <input
-                type="text"
-                autoFocus
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                aria-label={JOURNAL_COPY.checkin.triggerLabel}
-                placeholder={JOURNAL_COPY.checkin.triggerPlaceholder}
-                maxLength={MAX_TRIGGER_LABEL}
-                className="w-full text-sm border-b-2 border-slate-200 py-1.5 focus:border-slate-800 focus:outline-none bg-transparent transition-colors placeholder:text-slate-300 text-slate-700"
-            />
-
-            <div className="flex flex-wrap gap-2">
-                {offered.map(candidate => (
-                    <button
-                        key={`known-${candidate.live ?? candidate.clientId}`}
-                        type="button"
-                        data-trigger-candidate={candidate.live ?? candidate.clientId}
-                        onClick={() => onPick({
-                            kind: 'trigger',
-                            // `live` is what a new entry must reference; `clientId` is what
-                            // the row was called when it was written. A candidate from
-                            // `triggerCandidates` carries the row it matched, so the walk
-                            // is reachable from either shape.
-                            clientId: candidate.live ?? candidate.trigger?.live ?? candidate.clientId,
-                            label: candidate.label,
-                            // A trigger this composer minted a moment ago is still new: it
-                            // has no row yet, so it travels as `label` + `client_id` rather
-                            // than as a reference the server would answer 404 for.
-                            isNew: candidate.isNew === true || candidate.trigger?.isNew === true
-                        })}
-                        className={`${chipClass} border border-slate-200 bg-white text-slate-600 hover:border-slate-400 transition-colors ${blurClass}`}
-                    >
-                        {candidate.label}
-                    </button>
-                ))}
-
-                {/* Dashed until confirmed. The `client_id` is minted here, on the tap, and
-                    travels in `triggers[]` and in the feeling's `about` as the same value —
-                    which is what makes the two halves of §7.2 agree. Not offered beside an
-                    exact match: *Arbeit* and *arbeit* are one trigger (§4.5b). */}
-                {typed && !candidates.some(candidate => candidate.exact) && (
-                    <button
-                        type="button"
-                        data-new-trigger
-                        onClick={() => onPick({ kind: 'trigger', clientId: clientId(), label: typed, isNew: true })}
-                        className={`${chipClass} border border-dashed border-slate-300 bg-white text-slate-500 hover:border-slate-500 transition-colors`}
-                    >
-                        {fillCopy(JOURNAL_COPY.triggers.newTrigger, { label: typed })}
-                    </button>
-                )}
-            </div>
-
-            <button
-                type="button"
-                onClick={onCancel}
-                className="text-[11px] font-medium text-slate-400 hover:text-slate-600 underline underline-offset-4"
-            >
-                {JOURNAL_COPY.checkin.cancel}
-            </button>
-        </div>
-    );
-};
-
-/** A context tag, from the same seven the snapshots offer, or one the user writes. */
-const TagPicker = ({ onPick, onCancel }) => {
-    const [custom, setCustom] = useState('');
-    const typed = custom.trim();
-
-    return (
-        <div className="space-y-2 pt-2">
-            <div className="flex flex-wrap gap-2">
-                {CONTEXT_TAGS.map(tag => (
-                    <button
-                        key={tag}
-                        type="button"
-                        onClick={() => onPick({ kind: 'tag', tag })}
-                        className={`${chipClass} border border-slate-200 bg-white text-slate-600 hover:border-slate-400 transition-colors`}
-                    >
-                        {tag}
-                    </button>
-                ))}
-            </div>
-
-            <div className="flex gap-2">
-                <input
-                    type="text"
-                    value={custom}
-                    onChange={(event) => setCustom(event.target.value)}
-                    onKeyDown={(event) => {
-                        if (event.key !== 'Enter') return;
-                        event.preventDefault();
-                        if (typed) onPick({ kind: 'tag', tag: typed });
-                    }}
-                    aria-label={JOURNAL_COPY.checkin.tagLabel}
-                    placeholder={JOURNAL_COPY.checkin.tagPlaceholder}
-                    maxLength={MAX_TAG_LENGTH}
-                    className="flex-1 text-sm border-b-2 border-slate-200 py-1.5 focus:border-slate-800 focus:outline-none bg-transparent transition-colors placeholder:text-slate-300 text-slate-700"
-                />
-                <button
-                    type="button"
-                    disabled={!typed}
-                    onClick={() => onPick({ kind: 'tag', tag: typed })}
-                    className="px-3 py-1 text-xs font-medium text-slate-500 border border-slate-200 rounded-lg hover:border-slate-400 hover:text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                    {JOURNAL_COPY.checkin.add}
-                </button>
-            </div>
-
-            <button
-                type="button"
-                onClick={onCancel}
-                className="text-[11px] font-medium text-slate-400 hover:text-slate-600 underline underline-offset-4"
-            >
-                {JOURNAL_COPY.checkin.cancel}
-            </button>
-        </div>
-    );
-};
-
-/** The text of one `about` chip, before it is a payload target. */
-const aboutText = (about) => (about.kind === 'tag' ? about.tag : (about.name ?? about.label ?? ''));
 
 /**
  * One chip a feeling is about.
@@ -519,89 +230,6 @@ const PickedFeeling = ({
 };
 
 /* ------------------------------------------------------------------------------------ */
-/* The request                                                                            */
-/* ------------------------------------------------------------------------------------ */
-
-/**
- * The §7.2 request, built from what is on screen and from nothing else.
- *
- * Two dedupe passes, both of which matter. Two feelings about the same person produce **one**
- * mention and two `about`s pointing at its `ref` — the ref is the index into `mentions`,
- * which is what the server validates against (§6.5). Two feelings about the same new trigger
- * produce **one** `triggers[]` entry and therefore one trigger row, which is the difference
- * between a vocabulary and a pile of duplicates.
- *
- * `source` is `typed` when the user wrote a sentence and `chips` when they only tapped —
- * §4.1's two paths, told apart by the only thing that distinguishes them here.
- */
-export const buildCheckinRequest = ({ picked, tags, note, now = new Date() }) => {
-    const mentions = [];
-    const mentionRefs = new Map();
-    const triggers = [];
-    const triggersSeen = new Set();
-
-    const refFor = (about) => {
-        const key = about.relationshipId != null ? `id:${about.relationshipId}` : `new:${about.name}`;
-        if (!mentionRefs.has(key)) {
-            const ref = mentions.length;
-            mentions.push(about.relationshipId != null
-                ? { ref, relationship_id: about.relationshipId, label: about.name }
-                : { ref, name: about.name, label: about.name });
-            mentionRefs.set(key, ref);
-        }
-        return mentionRefs.get(key);
-    };
-
-    const declareTrigger = (about) => {
-        if (triggersSeen.has(about.clientId)) return about.clientId;
-        triggersSeen.add(about.clientId);
-        triggers.push(about.isNew
-            ? { label: about.label, client_id: about.clientId }
-            : { trigger: about.clientId });
-        return about.clientId;
-    };
-
-    const feelings = picked.map(entry => {
-        const about = entry.about.map(target => {
-            if (target.kind === 'person') return { kind: 'person', ref: refFor(target) };
-            if (target.kind === 'trigger') return { kind: 'trigger', trigger: declareTrigger(target) };
-            return { kind: 'tag', tag: target.tag };
-        });
-
-        const feeling = { id: entry.id, intensity: entry.intensity, about };
-        // Absent, never `false` (invariant 14). Only `true` is a statement the user made.
-        if (entry.uncertain === true) feeling.uncertain = true;
-        return feeling;
-    });
-
-    const trimmedNote = note.trim();
-    const payload = {
-        v: PAYLOAD_VERSION,
-        source: trimmedNote ? 'typed' : 'chips',
-        tz_offset_min: tzOffsetMinutes(now),
-        feelings
-    };
-    // An empty list and an absent key mean the same thing, and the absent one is the honest
-    // record of a user who added neither.
-    if (tags.length > 0) payload.tags = tags;
-    if (trimmedNote) payload.note = trimmedNote;
-
-    return {
-        client_id: clientId(),
-        kind: 'checkin',
-        at: rfc3339Local(now),
-        day: civilDay(now, DAY_ROLLOVER_HOUR),
-        // The row's schema version, which is not the payload's `v` — they are both 1 today
-        // and they version different things (§6.2 against §6.4).
-        schema_version: 1,
-        payload,
-        mentions,
-        triggers,
-        supersedes_id: null
-    };
-};
-
-/* ------------------------------------------------------------------------------------ */
 /* The two ways in (§9.2)                                                                 */
 /* ------------------------------------------------------------------------------------ */
 
@@ -609,16 +237,19 @@ export const buildCheckinRequest = ({ picked, tags, note, now = new Date() }) =>
  * The header button above `md`, in the corner the dashboard puts *New Analysis* in, so the
  * app's two primary screens share one grammar.
  */
-export const CheckinButton = ({ onOpen }) => (
+export const CheckinButton = ({ onOpen, voice = false }) => (
     <button
         type="button"
         data-checkin-open="header"
-        onClick={onOpen}
-        title={JOURNAL_COPY.checkin.openHint}
+        data-checkin-mode={voice ? 'voice' : 'chips'}
+        onClick={() => onOpen(voice ? 'voice' : 'chips')}
+        title={voice ? JOURNAL_COPY.voice.openHint : JOURNAL_COPY.checkin.openHint}
         className="hidden md:flex items-center justify-center gap-2 px-5 py-3 min-h-[48px] bg-white border border-slate-200 text-slate-700 rounded-xl hover:border-slate-400 hover:shadow-md transition-all group flex-shrink-0"
     >
-        <NotebookPen size={18} className="text-slate-400 group-hover:text-slate-600 transition-colors" />
-        <span className="font-medium">{JOURNAL_COPY.checkin.open}</span>
+        {voice
+            ? <Mic size={18} className="text-slate-400 group-hover:text-slate-600 transition-colors" />
+            : <NotebookPen size={18} className="text-slate-400 group-hover:text-slate-600 transition-colors" />}
+        <span className="font-medium">{voice ? JOURNAL_COPY.voice.open : JOURNAL_COPY.checkin.open}</span>
     </button>
 );
 
@@ -628,20 +259,23 @@ export const CheckinButton = ({ onOpen }) => (
  * the soft keyboard is up, for the bar's own reason — a control under an open keyboard is a
  * mis-tap waiting to happen.
  *
- * It is a keyboard/chips button in this slice. The microphone takes this place in 6-C where
- * a device can run the transcriber, and under discretion it stays a keyboard for good
- * (§4.4): speaking a note aloud defeats the mode, and the app should not offer to.
+ * **C3 gave it the microphone**, where a device can run the transcriber and the user has
+ * turned voice on. Under discretion it stays a keyboard for good (§4.4, §9.6): speaking a
+ * note aloud defeats the mode, and the app should not offer to. It is replaced rather than
+ * disabled — a greyed-out microphone still says *you could be recording* to anyone looking
+ * over a shoulder, which is the exact thing the mode exists to prevent.
  */
-export const CheckinFab = ({ onOpen }) => (
+export const CheckinFab = ({ onOpen, voice = false }) => (
     <button
         type="button"
         data-checkin-open="fab"
-        onClick={onOpen}
-        aria-label={JOURNAL_COPY.checkin.open}
+        data-checkin-mode={voice ? 'voice' : 'chips'}
+        onClick={() => onOpen(voice ? 'voice' : 'chips')}
+        aria-label={voice ? JOURNAL_COPY.voice.open : JOURNAL_COPY.checkin.open}
         style={{ bottom: 'calc(var(--alq-nav-height) + env(safe-area-inset-bottom, 0px) + 1rem)' }}
         className="alq-hide-on-keyboard md:hidden fixed right-4 z-40 h-16 w-16 rounded-full bg-slate-800 text-white shadow-lg shadow-slate-900/20 flex items-center justify-center active:bg-slate-700 transition-colors"
     >
-        <NotebookPen size={26} strokeWidth={1.75} />
+        {voice ? <Mic size={26} strokeWidth={1.75} /> : <NotebookPen size={26} strokeWidth={1.75} />}
     </button>
 );
 
@@ -649,10 +283,17 @@ export const CheckinFab = ({ onOpen }) => (
 /* The sheet                                                                              */
 /* ------------------------------------------------------------------------------------ */
 
-export default function CheckinComposer({ onClose, onSaved }) {
+export default function CheckinComposer({ onClose, onSaved, mode = 'chips', voiceKit = null, context = null }) {
     const { createEntry } = useJournal();
     const { blurClass } = useDiscretion();
     const titleId = useId();
+
+    // Built once, and only for a composer that was opened by the microphone. A chips
+    // composer never constructs a recorder, so it never asks for a device.
+    const kit = useMemo(
+        () => (mode === 'voice' ? (voiceKit || createVoiceKit()) : null),
+        [mode, voiceKit]
+    );
 
     const [picked, setPicked] = useState([]);
     const [query, setQuery] = useState('');
@@ -662,6 +303,47 @@ export default function CheckinComposer({ onClose, onSaved }) {
     const [moving, setMoving] = useState(null);
     const [error, setError] = useState(null);
     const [saving, setSaving] = useState(false);
+    // `null` means “nothing spoken yet” and `''` means “spoken, and the words came back
+    // empty” — the same absent-is-not-empty rule the payload follows.
+    const [transcript, setTranscript] = useState(null);
+    const [language, setLanguage] = useState(null);
+
+    const takeTranscript = useCallback((text, spokenLanguage) => {
+        setTranscript(text);
+        if (spokenLanguage !== undefined) setLanguage(spokenLanguage || null);
+    }, []);
+
+    // D2. Read once per open, like the transcript setting: a preference changed on the
+    // profile screen applies to the next composer, not to one already holding a card.
+    const [suggestions] = useState(() => readSuggestions());
+    // The `propose` envelope the card is drawn from, or null while there is none. Only a
+    // composer the microphone opened can ever hold one, and only with the setting on.
+    const [proposal, setProposal] = useState(null);
+
+    const takeProposal = useCallback((result) => {
+        if (suggestions && result?.ok) setProposal(result);
+    }, [suggestions]);
+
+    /** The card's save: the request is the card's, the write is this sheet's. Trap 4 holds
+        on the card's side — it catches, this only closes on success. */
+    const saveProposal = async (request) => {
+        const created = await createEntry(request);
+        if (onSaved) onSaved(created);
+        onClose();
+    };
+
+    /** §4.6's second exit: back to the microphone, with nothing kept. */
+    const rerecord = () => {
+        setProposal(null);
+        setTranscript(null);
+        setLanguage(null);
+    };
+
+    /** §4.6's third exit: the words stay, the card goes, and the grid below takes over. */
+    const fallToChips = (text) => {
+        setProposal(null);
+        setTranscript(text);
+    };
 
     useEffect(() => {
         const onKeyDown = (event) => {
@@ -763,7 +445,12 @@ export default function CheckinComposer({ onClose, onSaved }) {
         try {
             // Built here rather than memoised above: nothing downstream depends on its
             // identity, so a memo would only suggest something does.
-            const created = await createEntry(buildCheckinRequest({ picked, tags, note }));
+            const created = await createEntry(buildCheckinRequest({
+                picked, tags, note,
+                // What the user left in the box is what is saved (§4.3). The model's own
+                // text is never read again after it lands in that textarea.
+                transcript, language, keepTranscript: readKeepTranscripts()
+            }));
             // Trap 4: inside `try`, after the await. In a `finally` this would throw the
             // user's whole check-in away on every failed save.
             if (onSaved) onSaved(created);
@@ -797,6 +484,37 @@ export default function CheckinComposer({ onClose, onSaved }) {
                 </div>
 
                 <div className="flex-1 overflow-y-auto px-5 pb-5 space-y-5">
+                    {/* The words first, then what to do with them. There are no proposals
+                        in this slice: the grid below opens with nothing chosen, which is
+                        exactly what §4.6's `feeling` ambiguity already means. */}
+                    {kit && (
+                        <VoiceCapture
+                            kit={kit}
+                            context={context}
+                            transcript={transcript}
+                            onTranscript={takeTranscript}
+                            onProposal={takeProposal}
+                            onKeyboard={() => setTranscript('')}
+                            hidden={proposal !== null}
+                        />
+                    )}
+
+                    {proposal !== null ? (
+                        <ProposalCard
+                            result={proposal}
+                            context={context}
+                            runtime={kit.runtime}
+                            source={{
+                                model: kit.runtime.model ?? kit.model?.id ?? null,
+                                promptVersion: kit.runtime.promptVersion ?? null
+                            }}
+                            onSave={saveProposal}
+                            onDiscard={onClose}
+                            onRerecord={rerecord}
+                            onChips={fallToChips}
+                        />
+                    ) : (
+                    <>
                     {picked.length > 0 && (
                         <div className="space-y-2">
                             {moving && (
@@ -890,8 +608,13 @@ export default function CheckinComposer({ onClose, onSaved }) {
                             className={`w-full text-sm p-3 bg-white border border-slate-200 rounded-lg text-slate-700 focus:outline-none focus:border-slate-800 transition-colors resize-y ${blurClass}`}
                         />
                     </div>
+                    </>
+                    )}
                 </div>
 
+                {/* The card carries its own three controls (§4.4 item 6); two Save buttons on
+                    one sheet would be two answers to which state is written. */}
+                {proposal === null && (
                 <div className="px-5 py-4 border-t border-slate-100 flex-shrink-0 space-y-3 pb-safe">
                     {error && (
                         <p role="alert" className="p-3 rounded-lg bg-red-50 text-red-800 border border-red-200 text-sm">
@@ -916,6 +639,7 @@ export default function CheckinComposer({ onClose, onSaved }) {
                         </button>
                     </div>
                 </div>
+                )}
             </div>
         </div>
     );

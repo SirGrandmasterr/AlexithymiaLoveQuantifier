@@ -76,14 +76,18 @@ graph TD
 
 ## Invariants — every phase must preserve these
 
-- **Self-authored, never computed.** No inference engine, no AI, no hidden math. Any arithmetic
-  shown to the user (suggestion bands, deltas, volatility) must be transparent, explainable in
-  one sentence in the UI, and never overwrite a user-authored value. *"Authored" rather than
-  "scored" since Phase 6:* a journal check-in has no score in it — the user picks words from a
-  closed vocabulary and a strength for each — and the rule is the same one. Nothing is written
-  that the user did not confirm with a tap, including a person, a trigger label, or a feeling.
-- **The user authors every number.** Suggestion bands never constrain the slider; deltas
-  describe, never prescribe.
+- **Self-authored, never computed.** No hidden math. Any arithmetic shown to the user
+  (suggestion bands, deltas, volatility) must be transparent, explainable in one sentence in
+  the UI, and never overwrite a user-authored value. **Where inference exists at all (Phase 6),
+  it runs on the user's device, is off by default, and *proposes* — it never writes a value, a
+  label, or a person without the user's confirmation, and it never touches a score.**
+  *"Authored" rather than "scored" since Phase 6:* a journal check-in has no score in it — the
+  user picks words from a closed vocabulary and a strength for each — and the rule is the same
+  one. Nothing is written that the user did not confirm with a tap, including a person, a
+  trigger label, or a feeling.
+- **The user authors every number, and every label.** Suggestion bands never constrain the
+  slider; deltas describe, never prescribe. A model's proposal arrives dashed and is discarded
+  unless it is tapped.
 - **Non-clinical posture.** Descriptive vocabulary only ("dominant," "most changed") — never
   evaluative ("healthy," "concerning") and no diagnostic claims. "Alexithymia" names the
   motivating problem, not a screening feature.
@@ -91,7 +95,9 @@ graph TD
   `mania`, `agape`, `selflessness` — the JSON keys in `stats`, the chart `dataKey`s, and (from
   Phase 1 on) the server-side validation allowlist. Prose/taxonomy content stays frontend-only.
 - **Single-user, no social graph.** Nothing transmits anywhere. Sharing exists only as
-  deliberate local export (Phase 5).
+  deliberate local export (Phase 5). **Model files travel one way, from the user's own server
+  or app package to the device** — there is no path in the other direction, and no request to
+  anywhere but this app's own origin.
 - **Additive schema changes only, outside Phase 4.** A phase may only add nullable columns, or
   whole new tables, compatible with `AutoMigrate` on both SQLite and Postgres. Phase 4 owns the
   one structural migration and its backfill, and it is meant to stay the only one. *Restated

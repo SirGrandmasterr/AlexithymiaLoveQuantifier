@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { User, Mail, Shield, Save, Upload, Loader2, Info, Bell, NotebookPen } from 'lucide-react';
 import axios from 'axios';
 import { resolveAssetUrl } from '../mobile/serverUrl';
@@ -7,17 +7,35 @@ import {
     DEFAULT_RITUAL_TIME,
     JOURNAL_COPY,
     MAX_OPTIONAL_QUESTIONS,
+    TRANSCRIPTION_LANGUAGES,
     fillCopy,
     optionalQuestions
 } from '../constants/journal';
 import {
     readAskWho,
+    readKeepTranscripts,
+    readLanguage,
     readOptionalQuestions,
     readRitualSetting,
+    readSuggestions,
+    readTierOverride,
+    readVoiceSetting,
     writeAskWho,
+    writeKeepTranscripts,
+    writeLanguage,
     writeOptionalQuestions,
-    writeRitualSetting
+    writeRitualSetting,
+    writeSuggestions,
+    writeTierOverride,
+    writeVoiceSetting
 } from '../constants/journalSettings';
+import {
+    canTranscribe, detectTier, effectiveTier, nativeTierReport, nominalMemoryGb, probeWebGpu
+} from '../journal/inference/tier';
+import { createModelSetDownloader } from '../journal/inference/download';
+import { PROPOSAL_MODEL, formatBytes, setBytes, setLabel, tierModels } from '../journal/inference/models';
+import { isNative } from '../mobile/platform';
+import { createNativeDownloader, primeNativeTier } from '../mobile/journalPlugin';
 
 // This screen used to call through its own `axios.create()` instance, which carried the
 // token but not App.jsx's response interceptor — interceptors on the global default do not
@@ -27,16 +45,280 @@ import {
 // synchronously at import time and on every token transition), so using it directly loses
 // nothing and gains the 401 handling. See docs/10-agent-guide.md Recipe 6.
 
+
+/**
+ * The voice block: what this device can run, whether the model is on it, and the two
+ * settings that only mean anything once it is.
+ *
+ * Split out of `JournalSettings` because it has a dependency the rest of that section does
+ * not — it asks the device what it can do, and asks Cache Storage what it holds — and
+ * because it is the block whose copy the Vault page quotes. Keeping it whole makes the two
+ * easy to read against each other.
+ */
+const VoiceSettings = () => {
+    // Android (C4): the tier is the plugin's memory report rather than the WebView's
+    // guess, the files live in the plugin's store rather than Cache Storage, and the
+    // sentence under the heading says which of the two this screen is describing.
+    const native = isNative();
+    const [detected, setDetected] = useState(() => detectTier());
+    const [override, setOverride] = useState(readTierOverride);
+    const { tier, refused } = effectiveTier(detected, override);
+    const capable = canTranscribe(tier);
+
+    const [voice, setVoice] = useState(() => readVoiceSetting(capable));
+    const [suggestions, setSuggestions] = useState(readSuggestions);
+    const [keepTranscripts, setKeep] = useState(readKeepTranscripts);
+    const [language, setLanguage] = useState(readLanguage);
+    const [onDevice, setOnDevice] = useState(null);
+
+    // The shell primes the report at launch; this is for the screen that got here first.
+    // On the web the same shape of question is WebGPU's — an **adapter**, asked for rather
+    // than read off `navigator.gpu`, which D3 watched be present on a browser that had none.
+    useEffect(() => {
+        let live = true;
+        (native ? primeNativeTier() : probeWebGpu()).then(() => {
+            if (!live) return;
+            const now = detectTier();
+            setDetected(now);
+            setVoice(readVoiceSetting(canTranscribe(effectiveTier(now, readTierOverride()).tier)));
+        });
+        return () => { live = false; };
+    }, [native]);
+
+    const memoryGb = native ? nominalMemoryGb(nativeTierReport()?.totalMemoryBytes) : null;
+
+    // What this tier actually needs (D3): one model on the Full tier, two on the Light one.
+    // The list is `tierModels`' and the sentence is built from it, so the screen cannot
+    // promise a size it is not about to download.
+    const models = useMemo(() => tierModels(tier, { native }), [tier, native]);
+    const downloader = useMemo(
+        () => createModelSetDownloader(models, native ? { createDownloader: createNativeDownloader } : {}),
+        [models, native]
+    );
+
+    useEffect(() => {
+        let cancelled = false;
+        downloader.isDownloaded().then(has => { if (!cancelled) setOnDevice(has); });
+        return () => { cancelled = true; };
+    }, [downloader]);
+
+    const tierName = (id) => JOURNAL_COPY.settings.tier.names[id] || id;
+
+    const toggleVoice = () => {
+        // The writer refuses a `true` for a device that cannot record, and what it stored is
+        // what goes on screen — so a refusal is visible rather than silently undone.
+        setVoice(writeVoiceSetting(!voice, capable));
+    };
+
+    const pin = (value) => {
+        const next = value || null;
+        setOverride(next);
+        writeTierOverride(next);
+        // Turning the tier down below what voice needs turns voice off with it, rather than
+        // leaving a `true` behind that the Vault page would read as "a model is running".
+        if (!canTranscribe(effectiveTier(detected, next).tier)) {
+            setVoice(writeVoiceSetting(false, false));
+        }
+    };
+
+    const removeFiles = async () => {
+        await downloader.remove();
+        setOnDevice(false);
+    };
+
+    return (
+        <div className="mt-6" data-voice-settings>
+            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                {JOURNAL_COPY.settings.tier.label}
+            </h4>
+            <p className="text-xs text-slate-400 font-light leading-relaxed max-w-md mb-2">
+                {native ? JOURNAL_COPY.settings.tier.descriptionNative : JOURNAL_COPY.settings.tier.description}
+            </p>
+            <p className="text-xs text-slate-500 font-light" data-tier-detected={detected}>
+                {fillCopy(
+                    override ? JOURNAL_COPY.settings.tier.pinned : JOURNAL_COPY.settings.tier.detected,
+                    { tier: tierName(tier) }
+                )}
+            </p>
+            {memoryGb !== null && (
+                <p className="text-xs text-slate-400 font-light" data-tier-memory={memoryGb}>
+                    {fillCopy(JOURNAL_COPY.settings.tier.memory, { gb: memoryGb })}
+                </p>
+            )}
+            {refused && (
+                <p className="mt-1 text-xs text-amber-700 font-light" data-tier-refused={refused}>
+                    {fillCopy(JOURNAL_COPY.settings.tier.refused, {
+                        tier: tierName(refused), actual: tierName(tier)
+                    })}
+                </p>
+            )}
+            <select
+                data-setting="tier"
+                aria-label={JOURNAL_COPY.settings.tier.label}
+                value={override || ''}
+                onChange={(event) => pin(event.target.value)}
+                className="mt-2 p-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+                <option value="">{JOURNAL_COPY.settings.tier.auto}</option>
+                {['full', 'light', 'text-only'].map(id => (
+                    <option key={id} value={id}>{tierName(id)}</option>
+                ))}
+            </select>
+
+            <div className="mt-6">
+                {!capable ? (
+                    // No toggle at all where it could not work. §9.4's sentence, and the
+                    // sharper one when the reason is an address rather than a machine.
+                    <p className="text-sm text-slate-500 font-light leading-relaxed max-w-md" data-voice-unavailable>
+                        {typeof window !== 'undefined' && window.isSecureContext === false
+                            ? JOURNAL_COPY.empty.voiceNeedsSecureContext
+                            : JOURNAL_COPY.empty.voiceUnavailable}
+                    </p>
+                ) : (
+                    <>
+                        <button
+                            type="button"
+                            data-setting="voice"
+                            onClick={toggleVoice}
+                            aria-pressed={voice}
+                            className={`w-full sm:w-auto flex items-center justify-between gap-4 px-5 py-3 min-h-[48px] border rounded-xl font-medium transition-all text-sm ${voice
+                                ? 'bg-slate-800 text-white border-slate-800'
+                                : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                                }`}
+                        >
+                            <span>{JOURNAL_COPY.settings.voice.label}</span>
+                            <span className={`text-xs ${voice ? 'text-slate-300' : 'text-slate-400'}`}>
+                                {voice ? JOURNAL_COPY.settings.on : JOURNAL_COPY.settings.off}
+                            </span>
+                        </button>
+
+                        <p className="mt-3 text-xs text-slate-400 font-light leading-relaxed max-w-md">
+                            {JOURNAL_COPY.settings.voice.description}
+                        </p>
+                        <p className="mt-2 text-xs text-slate-400 font-light">
+                            {onDevice
+                                ? JOURNAL_COPY.settings.voice.downloaded
+                                : fillCopy(JOURNAL_COPY.settings.voice.size, {
+                                    label: setLabel(models), size: formatBytes(setBytes(models))
+                                })}
+                        </p>
+
+                        {onDevice && (
+                            <button
+                                type="button"
+                                data-setting="remove-model"
+                                onClick={removeFiles}
+                                className="mt-3 px-4 py-2 min-h-[44px] bg-white border border-slate-200 text-slate-600 text-sm rounded-xl hover:border-slate-400 transition-all"
+                            >
+                                {JOURNAL_COPY.settings.voice.remove}
+                            </button>
+                        )}
+
+                        {/* D2. *On when voice is on* (§9.7): the toggle exists only under a
+                            voice that is on, because with voice off there is no proposal to
+                            show or hide. While no model proposes, the line under it says so
+                            rather than letting the label imply otherwise (invariant 2e). */}
+                        {voice && (
+                            <div className="mt-6" data-suggestions-settings>
+                                <button
+                                    type="button"
+                                    data-setting="suggestions"
+                                    onClick={() => { const next = !suggestions; setSuggestions(next); writeSuggestions(next); }}
+                                    aria-pressed={suggestions}
+                                    className={`w-full sm:w-auto flex items-center justify-between gap-4 px-5 py-3 min-h-[48px] border rounded-xl font-medium transition-all text-sm ${suggestions
+                                        ? 'bg-slate-800 text-white border-slate-800'
+                                        : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                                        }`}
+                                >
+                                    <span>{JOURNAL_COPY.settings.suggestions.label}</span>
+                                    <span className={`text-xs ${suggestions ? 'text-slate-300' : 'text-slate-400'}`}>
+                                        {suggestions ? JOURNAL_COPY.settings.on : JOURNAL_COPY.settings.off}
+                                    </span>
+                                </button>
+                                <p className="mt-3 text-xs text-slate-400 font-light leading-relaxed max-w-md">
+                                    {JOURNAL_COPY.settings.suggestions.description}
+                                </p>
+                                {/* D3: the model has a name now, and the line under the
+                                    toggle says which one and on what terms. While
+                                    `PROPOSAL_MODEL` was null this said that nothing on this
+                                    device proposes anything — the sentence a feature with no
+                                    model behind it owes the person reading it. */}
+                                <p className="mt-2 text-xs text-slate-400 font-light leading-relaxed max-w-md" data-suggestions-model>
+                                    {fillCopy(JOURNAL_COPY.settings.suggestions.model, {
+                                        label: PROPOSAL_MODEL.label,
+                                        licence: PROPOSAL_MODEL.licence
+                                    })}
+                                </p>
+                            </div>
+                        )}
+
+                        <div className="mt-6">
+                            <button
+                                type="button"
+                                data-setting="keep-transcripts"
+                                onClick={() => { const next = !keepTranscripts; setKeep(next); writeKeepTranscripts(next); }}
+                                aria-pressed={keepTranscripts}
+                                className={`w-full sm:w-auto flex items-center justify-between gap-4 px-5 py-3 min-h-[48px] border rounded-xl font-medium transition-all text-sm ${keepTranscripts
+                                    ? 'bg-slate-800 text-white border-slate-800'
+                                    : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                                    }`}
+                            >
+                                <span>{JOURNAL_COPY.settings.keepTranscripts.label}</span>
+                                <span className={`text-xs ${keepTranscripts ? 'text-slate-300' : 'text-slate-400'}`}>
+                                    {keepTranscripts ? JOURNAL_COPY.settings.on : JOURNAL_COPY.settings.off}
+                                </span>
+                            </button>
+                            <p className="mt-3 text-xs text-slate-400 font-light leading-relaxed max-w-md">
+                                {JOURNAL_COPY.settings.keepTranscripts.description}
+                            </p>
+                        </div>
+
+                        <div className="mt-6">
+                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                {JOURNAL_COPY.settings.language.label}
+                            </h4>
+                            <p className="text-xs text-slate-400 font-light leading-relaxed max-w-md mb-2">
+                                {JOURNAL_COPY.settings.language.description}
+                            </p>
+                            <select
+                                data-setting="language"
+                                aria-label={JOURNAL_COPY.settings.language.label}
+                                value={language || ''}
+                                onChange={(event) => {
+                                    const next = event.target.value || null;
+                                    setLanguage(next);
+                                    writeLanguage(next);
+                                }}
+                                className="p-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            >
+                                <option value="">{JOURNAL_COPY.settings.language.auto}</option>
+                                {TRANSCRIPTION_LANGUAGES.map(code => (
+                                    <option key={code} value={code}>{code}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </>
+                )}
+            </div>
+        </div>
+    );
+};
+
 /**
  * The journal's per-device settings (§9.7), beside *Check-in reminders* and in the same
  * shape, because they are the same kind of thing: a preference this device holds and nothing
  * else ever sees.
  *
- * **Three of the eight, deliberately.** Voice, suggestions, embeddings, transcripts and
- * language are described in `JOURNAL_COPY.settings` and are *not* rendered here — those
- * features arrive in 6-C, 6-D and 6-G, and a toggle for something the app cannot do would
- * make the Vault's claims false (invariant 2e). A description is not permission to render a
- * control.
+ * **Six of the nine, since C3.** Voice, *keep transcripts*, the transcription language and
+ * the tier joined the ritual's three. `suggestions` and `embeddings` are still described in
+ * `JOURNAL_COPY.settings` and *not* rendered, because there is no model that suggests and
+ * no index that searches; a toggle for something the app cannot do would make the Vault's
+ * claims false (invariant 2e). **A description is not permission to render a control.**
+ *
+ * The voice block has a rule the others do not: it is only a toggle where the device could
+ * actually run the transcriber. Everywhere else it is a sentence saying why not — which for
+ * a self-hosted app reached over plain `http://` is the common case, not the exotic one,
+ * because the microphone, WebCrypto and Cache Storage all require a secure context.
  *
  * Unlike the reminders block above it there is no `available()` gate: the ritual is a screen,
  * not a notification, so it works everywhere. What is native-only is the *reminder* for it,
@@ -185,6 +467,8 @@ const JournalSettings = () => {
                     {JOURNAL_COPY.settings.askWho.description}
                 </p>
             </div>
+
+            <VoiceSettings />
         </div>
     );
 };
