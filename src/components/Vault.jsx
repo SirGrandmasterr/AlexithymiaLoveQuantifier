@@ -7,6 +7,7 @@ import { hashPassphrase, readLockHash, setLockHash, isLockAvailable } from './Ap
 import { readVoiceSetting } from '../constants/journalSettings';
 import { canTranscribe, detectTier, TIERS } from '../journal/inference/tier';
 import { MAX_CLIP_MS, SILENCE_HOLD_MS } from '../journal/recorder';
+import { isNative } from '../mobile/platform';
 
 /**
  * The Vault: what is stored, how to take it with you, and how to put it back.
@@ -40,6 +41,29 @@ const LAST_EXPORT_KEY = 'alq:last-export-at';
  *
  * Exported so `Vault.test.jsx` can assert all three verbatim, which is what keeps them honest.
  */
+
+/**
+ * The outbox (design §9.5), stated where the user can see it.
+ *
+ * *"Everything you have written is stored in your database"* is the first sentence of the
+ * section below, and F1 made it momentarily untrue on a phone: a check-in saved in a tunnel is
+ * on the device and nowhere else until it can be sent. Invariant 2e does not allow that gap to
+ * go unstated, and softening the sentence above into something vaguer is the one move that is
+ * never available — so the exception is named instead, with its scope, because a queue the user
+ * does not know about is a copy of their writing they do not know about.
+ *
+ * Shown **only on the phone**, since that is the only place the outbox exists. In a browser a
+ * failed save still fails and still says so, and a sentence about a queue that is not there
+ * would be the same kind of untrue in the other direction.
+ *
+ * Exported so `Vault.test.jsx` can assert it verbatim.
+ */
+export const OUTBOX_CLAIM = 'One exception, on this phone: a check-in you save with no '
+    + 'connection is kept **on this device** until it can be sent, marked **not yet synced** on '
+    + 'its day. It is sent once when the connection is back, however many times it is tried, '
+    + 'and it is held in plain text here in the meantime, like everything else. It is the only '
+    + 'thing this app keeps that way — your analyses are never queued — and signing out clears '
+    + 'it.';
 
 export const AI_CLAIM = {
     off: 'None are running. The journal can write down a voice note and suggest what it was '
@@ -482,6 +506,14 @@ export default function Vault() {
                                 </p>
                             )}
                         </>
+                    )}
+
+                    {/* Outside the `meta` branch above on purpose: this is a fact about this
+                        phone, and it is true whether or not the server answered. */}
+                    {isNative() && (
+                        <p data-outbox-claim className="text-sm text-slate-600 font-light leading-relaxed mt-2">
+                            {emphasised(OUTBOX_CLAIM)}
+                        </p>
                     )}
                 </Section>
 

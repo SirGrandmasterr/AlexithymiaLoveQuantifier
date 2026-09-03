@@ -3,7 +3,9 @@
 **Status: 6-A and 6-B implemented; 6-C implemented in code, its device checks pending; 6-D in
 progress — D1 (the proposal contract), D2 (the proposal card) and D3 (the real runtimes) shipped
 2026-09-02, with the model measured off-device and not yet run on a phone; D4 (the golden suite
-and the model gate) is next; 6-E…6-G planned.** As of **2026-09-02**. Written against the code
+and the model gate) shipped 2026-09-03 as an instrument with no model through it; 6-F's outbox
+(§9.5) shipped 2026-09-04, and the rest of 6-F, 6-E and 6-G are planned.** As of
+**2026-09-04**. Written against the code
 on branch `app-improvements` as of 2026-08-21, and revised the same day after review: the
 voice path is built on one audio-native on-device model (Gemma 4 E2B) rather than a
 transcriber plus a text model, triggers are first-class records, and an on-device embedding
@@ -38,6 +40,12 @@ API and version the plugin uses, and the sixteen web files were fetched and veri
 browser on the deployed stack. **Nothing has run on a phone, and the web model has not run at
 all** — the browser available to this session exposes `navigator.gpu` and has no adapter behind
 it. The D3 entry of the ledger carries the numbers and the list of what is still unrun.
+**F1 shipped the outbox on 2026-09-04** — §9.5's one deliberate exception to *no offline
+writes*: a check-in saved with no connectivity is kept on the device, marked *not yet synced* in
+the day view, and posted on the next fetch that comes back, on `resume`, or on pull-to-refresh.
+It is safe for exactly one reason, which is that the entry carries a client-minted `client_id`
+and §7.2's `POST` answers a repeat with `200` and the row already stored. It queues journal
+entries and nothing else, it does not edit or delete offline, and it is not a sync engine.
 [`06-progress.md`](06-progress.md) is the record of exactly what has shipped, session by
 session, and of what 6-A deliberately does not do.
 The execution plan for building it is
@@ -1812,7 +1820,7 @@ imprecision is deliberate and worth naming: the range is a month, so a user whos
 are older than the month they are looking at and who has never opened the ritual setting would
 see it again. Both halves have to be true, which makes that rare rather than possible.
 
-### 9.5 Offline: the one deliberate exception to "no offline writes"
+### 9.5 Offline: the one deliberate exception to "no offline writes" · **shipped 2026-09-04 (F1)**
 
 [Android §3.4](../docs/12-android-app.md#34-mobile-first-additions) keeps the offline cache
 read-through because a write queue against find-or-create with server-assigned ids needs
@@ -1829,6 +1837,22 @@ What it does **not** do: edit or delete offline (a correction of an unsynced ent
 in the outbox; anything already synced waits), and it does not queue snapshots. The scope is
 the journal, and the scope statement goes into `offlineCache.js`'s header comment beside the
 existing one.
+
+**As built (F1, 2026-09-04).** The store is `offlineCache.js`'s second half, key
+`alq:journal-outbox`, native only; the queue is `JournalContext`'s. "An entry saved without
+connectivity" is made precise as three conditions that must all hold — the error carried **no
+response** (so nothing can have stored it), the body has **no `supersedes_id`** (so it is a new
+record and not an edit), and the app is **native** — and anything else rejects as it did
+before. A **new trigger travels in the same request** as the check-in that names it, which
+§7.2 allows and which is the option with no sequencing state in it. A body the server *reads
+and refuses* (a `400` naming a field, a `404` for a person deleted elsewhere) stops being
+retried, keeps the server's message and stays on the day saying so, rather than either
+vanishing or churning; a transport failure keeps everything queued and stops the flush there.
+The pending rows are kept **beside** `entries` rather than merged into it, because half the app
+reads that list through a row id a queued entry has not got — so the **day graph draws a queued
+check-in only once it lands**, while the day's list shows it immediately with its mark. See
+[`docs/12-android-app.md` §3.4](../docs/12-android-app.md#34-mobile-first-additions) and
+[`docs/06-frontend.md`](../docs/06-frontend.md).
 
 ### 9.6 Discretion mode and the app lock
 
@@ -2172,7 +2196,7 @@ journal day graph identical before and after; `GET /api/journal/entries` serving
 encrypted rows and `payload` for legacy ones through the same dual-read the subject endpoints
 use.
 
-### 6-F — Android depth
+### 6-F — Android depth · **the outbox shipped 2026-09-04 (F1); the rest is F2**
 
 **Outcome:** the ritual's local notification, the launcher shortcut, the outbox (§9.5), tier
 detection through the plugin, haptics on swipe commits, and the weight-download path from the
@@ -2184,8 +2208,10 @@ configured server for all three models.
 
 *Automated:* the notification body is the fixed string and carries no content; one pending
 notification per night, replaced on reschedule, none when the ritual is off; the outbox
-posts once per `client_id` across retries, resume and pull-to-refresh, posts a new trigger
-before the check-in that references it, and holds ciphertext when encryption is on.
+posts once per `client_id` across retries, resume and pull-to-refresh, carries a new trigger
+in the same request as the check-in that references it (F1's choice between §7.2's two
+allowed orderings), and holds ciphertext when encryption is on — **the last of these is
+untested and stays untested until E1 runs**, which is conditional and may never happen.
 
 *Manual QA:* notification arrives at the chosen time and opens the ritual behind the lock;
 the shortcut opens recording-armed; kill the app mid-recording — nothing persists; a

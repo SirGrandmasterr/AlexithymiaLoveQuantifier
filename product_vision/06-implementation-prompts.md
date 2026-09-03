@@ -118,8 +118,8 @@ are going to modify.
 
 ### 2.4 Local environment facts, verified 2026-08-22
 
-- **Baseline is green.** `npm test` → **43 files, 1226 tests**, passing in ~34 s on this
-  machine (as of D4, 2026-09-03; it was 39 / 1096 at D3, 35 / 1016 at D2, 34 / 971 at D1, 33 / 815 at C4, 26 / 684 at C2, 22 files / 511 at the 6-A closeout
+- **Baseline is green.** `npm test` → **44 files, 1258 tests**, passing in ~30 s on this
+  machine (as of F1, 2026-09-04; it was 43 / 1226 at D4, 39 / 1096 at D3, 35 / 1016 at D2, 34 / 971 at D1, 33 / 815 at C4, 26 / 684 at C2, 22 files / 511 at the 6-A closeout
   and 14 files / 201 before Phase 6, and the "~70 s" this line used to claim was never right
   here). Android sessions also `make build-android`, which needs Docker Desktop **running**
   — it was stopped when C4 began — and whose Gradle error is only readable if the output is
@@ -138,6 +138,9 @@ are going to modify.
 
   Add any untracked `.go` files you have created to that list — `git ls-files` will not see
   them.
+- **`node_modules` may simply not be there.** It was missing at the start of F1 and
+  `npm install` took three minutes. If `npm test` answers *'vitest' is not recognized*, that
+  is what it means — it is not the broken ESLint install below.
 - **`npm run lint` is broken** — `eslint-plugin-react-hooks` fails to load from a bad local
   install. This is an environment fault, not a code fault. **Do not try to fix it, and do not
   use it as a signal.** Verify with `npm test` and `npx vite build`.

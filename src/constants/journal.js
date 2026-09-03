@@ -503,7 +503,17 @@ export const JOURNAL_COPY = {
         // The screen's own error slot (agent guide, Recipe 5). The page keeps rendering
         // under it, and the banner can be put away without the day going with it.
         loadError: 'Could not load your journal. Check that the server is running, then reload.',
-        dismiss: 'Dismiss'
+        dismiss: 'Dismiss',
+        // The outbox (§9.5, session F1). An entry saved with no connectivity is kept and
+        // this is the mark it wears until the post lands. Descriptive, like every other word
+        // on this screen: nothing has gone wrong and nothing is owed — the entry is simply
+        // still here rather than there.
+        notSynced: 'Not yet synced',
+        // The other end of that: the server read the body and refused it, which is the one
+        // case a retry cannot fix. The app stops retrying and says so, because an entry that
+        // will never land while still showing 'not yet synced' would be a promise it cannot
+        // keep. `{reason}` is the server's own message, as `loadError`'s slot is.
+        notSent: 'Not sent — {reason}'
     },
 
     empty: {

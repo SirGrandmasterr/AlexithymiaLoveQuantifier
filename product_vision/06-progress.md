@@ -52,7 +52,7 @@ and whether the weights stay out of it entirely.
 | D3 | Real runtimes + the full Vault copy | done — **code complete and driven off-device; nothing run on a phone, and the web model not run at all** | — | 2026-09-02 | Gemma 4 E2B behind both platforms, the Light tier as two models in sequence, the two downloads, the tiers, §3.7 in one breath, and the Vault's full *voice on* copy in three variants. The audio path and the JSON-Schema grammar were exercised against the real bundle on a JVM; the web bundle was fetched and verified from a browser. **Three of the six required measurements need a phone** |
 | D4 | The golden suite and the model gate | done — **the instrument, not the run**: the suite doubled, the harness and the gate work, and no model has been through them | — | 2026-09-03 | 120 golden cases in 60 English/German pairs, the 240-clip recording plan with its consent gate, `make journal-eval` and `make journal-audio-check`, and §5.7's four criteria in code. **Scope narrowed by the operator at the start of the session: build everything around the audio; the recordings themselves are theirs.** The three §12.5 questions stay open, with what would close each |
 | E1 | Encryption alignment | not started | | | **Conditional** — docs/13 is unconfirmed (2026-08-22). May never run. |
-| F1 | The outbox | not started | | | |
+| F1 | The outbox | done — **code complete, nothing run on a phone** | — | 2026-09-04 | §9.5's one exception to *no offline writes*: the queue, its three flush signals, the *not yet synced* mark, and the `client_id` argument that makes a blind retry safe. **The outbox is native-only by design, so no browser can stand in for a device** — the whole manual QA is the operator's. The ciphertext test is E1's and E1 has not started |
 | F2 | Android depth | not started | | | |
 | G1 | The embedding index and trigger normalisation | not started | | | |
 | G2 | Retrieval: past entries, search, and the Vault line | not started | | | |
@@ -80,6 +80,8 @@ Everything the design document marked `(verify)`, as it gets measured. Device, b
 
 | Date | What | Value | Where measured | Design doc updated? |
 | :--- | :--- | :---- | :------------- | :------------------ |
+| 2026-09-04 | **What the outbox costs the bundle** | **+5.16 kB raw, +1.71 kB gzip.** The main chunk went from D4's 1,012.03 kB raw / 310.34 kB gzip to **1,017.19 / 312.05**; CSS unchanged at 42.69 / 7.53. That is the whole feature: the store, the queue, the mark, pull-to-refresh on the day view, and the Vault paragraph | `npx vite build` on this machine | n/a — the design document names no bundle target for 6-F |
+| 2026-09-04 | **The debug APK, first build since D3** | **168,246,778 B = 160.4 MB**, against C4's 119.7 MB. **None of the growth is F1's** — it is D3's runtimes; recorded because C4's number was the last in this ledger and a reader would otherwise attribute the jump to this session | `make build-android`, Docker Desktop | n/a |
 | 2026-09-02 | **The web ONNX bundle — §5.5's "expect 2–3 GB", measured** | **3,401,460,010 B = 3.4 GB** over 16 files at revision `9f4bef8`: embed_tokens 1.59 GB, decoder 1.52 GB, audio encoder 171 MB, vision encoder 99 MB, 19 MB of tokeniser and configs. **The estimate was low and the download promise changed with it** — the operator was asked before it did. The Light tier's text-only subset is **3,130,562,888 B = 3.1 GB** over 12 of the same files | `make models-fetch MODELS="gemma-4-e2b-onnx"` | Yes — §5.5 now states the measurement |
 | 2026-09-02 | **The LiteRT-LM bundle** | **2,588,159,070 B = 2.6 GB** with the licence beside it, which is §5.5's published 2,583 MB to the byte | `make models-fetch MODELS="gemma-4-e2b-litertlm"` | Yes |
 | 2026-09-02 | **All 16 web files, re-verified from a browser on the deployed stack** | **16/16, 3,401,460,010 bytes, zero mismatches, 22.3 s.** The 1.59 GB file alone: 9.4 s to `arrayBuffer`, **1.17 s to SHA-256**. The only host in `performance.getEntriesByType('resource')` for the whole run was **`localhost:8082`** — the evidence behind `docs/06` §3c's *"suggestions run on the device"* row | Chromium 148 on `localhost:8082` | n/a — confirms C1 and the Makefile from the other end of the wire |
@@ -139,6 +141,10 @@ Everything the design document marked `(verify)`, as it gets measured. Device, b
 
 | From | Item | Where it should land |
 | :--- | :--- | :------------------- |
+| F1 | **The outbox's manual QA is entirely unrun.** The airplane-mode check-in, the *not yet synced* mark on a real screen, the network coming back, and the kill-and-relaunch with an item queued. No phone, no emulator, no `adb` — and because the outbox is **native-only by design**, no browser can stand in for one either. Everything is covered by tests behind a mocked `isNative`; nothing has been seen. | **The operator with a device.** Four minutes: save a check-in in airplane mode, confirm the mark, kill the app, relaunch, confirm the mark survives, restore the network, confirm one row on the server |
+| F1 | **No UI can produce a correction of an unsynced entry.** The provider replaces an outbox item keyed by `client_id` and a test drives it, which is §9.5's sentence honoured at the seam — but `buildCheckinRequest` mints a fresh `client_id` on every save, so nothing on a screen reaches it. It is a guarantee waiting for a caller. | Whoever adds an edit affordance to a queued entry — which §9.5 does not ask for. Until then it is protection against a retried save, not a feature |
+| F1 | **The day graph does not draw a queued check-in.** Pending rows are kept out of `entries` because half the app reads that list through a row id they have not got, and `DayGraph` opens a branch by `ID`. The day's list shows the entry immediately with its mark; the drawing gains it when the post lands. | Whoever decides the gap is worth a synthetic key. It is a real inconsistency and it was the narrow choice on purpose |
+| F1 | **The ciphertext test the F1 prompt lists was not written**, because it is conditional on E1 and E1 has not started. The seam is in place instead: the outbox stores what it is handed and never inspects `payload`, so the envelope goes in at `createEntry`. `docs/13` §2.5 and both of its checklists now name the outbox beside the cache, with an entry 7b saying that `clearOutbox()` is the **wrong** tool on enrolment — unlike the cache, those rows exist nowhere else. | **E1**, if it ever runs |
 | D4 | **The 240 golden recordings do not exist.** 120 cases × clean and noisy, in German and English, read by consented speakers. Everything around them is built: the sentences, the per-clip WER ceilings, the naming, the consent register and its refusal, the format check, the ffmpeg converter and the noise recipe, and the printable scripts. Until they exist, every audio-mode candidate has nothing to run and §5.7's German-versus-English criterion cannot be measured at all. | **The operator, with a few speakers.** `product_vision/eval/recording-script-{en,de}.md` is what they read; `src/journal/inference/golden/audio/README.md` says where the files go |
 | D4 | **No model has been through the gate, so no model is a tier default.** `full-web` and `light-web` need a llama.cpp build and a GGUF; `full-android` needs LiteRT-LM's CLI or D3's JVM route; both Android Light candidates need a handset and a capture file. | **The next session with weights.** D3's JVM recipe in *Warnings* is the cheapest first run |
 | D4 | **The two CLI argument templates have never met a binary.** `DEFAULT_ARGS` in `scripts/journal-eval/runners.mjs` is taken from llama.cpp's and LiteRT-LM's documented interfaces; neither is installed here, and D4 would rather say so than invent a verification. Both are overridable in one environment variable and the report prints the command that ran. | **The first real run**, which should expect to correct a flag name and nothing more |
@@ -216,6 +222,17 @@ Everything the design document marked `(verify)`, as it gets measured. Device, b
 
 Things a future session would otherwise rediscover the hard way.
 
+- **Which files are CRLF, since §2.4 of the prompts warns about the trap and names none.** Of
+  everything F1 touched, exactly three are CRLF — `src/components/Vault.jsx`,
+  `src/components/Vault.test.jsx` and `src/constants/journal.js`; `JournalContext.jsx`,
+  `Journal.jsx`, both of their test files, `offlineCache.js` and every `docs/` and
+  `product_vision/` file are LF. The Edit tool preserves whichever a file has. **Python does
+  not**: `io.open(p, encoding='utf-8').read()` translates CRLF to LF on the way in, so a later
+  write with `newline=''` converts the whole file — which is how a 53-line change to
+  `Vault.test.jsx` reported as 794. Read with `newline=''` too, or check `git diff --stat` after
+  every scripted edit and convert back at byte level when it happens. And **`grep -c $'$'` is
+  not a usable check in this shell**: it reported every line of every file as CRLF, including
+  files `od -c` showed to be pure LF. `git diff --stat` and `od` are the checks that work.
 - **A mutation script that is killed mid-run leaves the tree mutated, and the next run reports
   `SKIP (anchor)` and moves on.** This cost D3 an hour. The first mutation pass was killed by a
   two-minute command timeout with `tier.js` modified; the second pass found its anchor missing,
@@ -3199,3 +3216,97 @@ the short form:
   6. **Whoever records first should record one pair, run `make journal-audio-check`, and stop.**
      The format check is a WAV header parse and catches 44.1 kHz and stereo immediately; finding
      that out after 240 takes is an evening nobody gets back.
+
+---
+
+**F1 — The outbox** · 2026-09-04 · commit `<sha>`
+
+- **Shipped:** §9.5's one deliberate exception to *no offline writes*, and nothing beside it. The
+  store is `src/mobile/offlineCache.js`'s second half — `readOutbox` / `writeOutbox` /
+  `clearOutbox` over `alq:journal-outbox`, native only, no expiry — under a rewritten header that
+  now carries **two** scope statements, the read-through one it always had and the outbox's. The
+  queue is `JournalContext`'s: `createEntry` catches a failed write and queues it *only* when all
+  three of `isQueueable`'s conditions hold (the error carried **no response**, so nothing can have
+  stored it; the body has **no `supersedes_id`**, so it is a new record and not an edit; and the
+  app is **native**), and resolves with a `pending: true` row so the composer closes and the screen
+  still follows the save to its day. Anything else rejects exactly as it did before. `flushOutbox`
+  posts the queue oldest-first on **three signals** — every fetch that comes back (which is also
+  what pull-to-refresh calls, now wired onto the day view), Capacitor's `resume`, and a direct
+  call — under a one-at-a-time guard. `200` and `201` are the same event. The day view draws
+  queued check-ins above the stored ones with a `PendingMark` — *Not yet synced* — in the place the
+  delete control occupies on a stored row, because there is no offline delete and the two are
+  mutually exclusive; a queued ritual stands in for the day's footer the same way; and a queued
+  entry marks its day in the month strip. The queue is cleared on the `enabled === false` branch,
+  which is a sign-out and a dead session both, exactly where `SubjectsContext` clears its cache.
+  **The Vault page changed in the same commit** (invariant 2e): *"Everything you have written is
+  stored in your database"* is momentarily untrue on a phone with something queued, so
+  `OUTBOX_CLAIM` names the exception, its scope and its plaintext-at-rest, on native only.
+
+- **The two choices the prompt asked to be stated.**
+  1. **A new trigger travels in the same request** as the check-in that names it — §7.2's
+     `label` + `client_id` shape, turned into its own row inside the same transaction — rather
+     than being posted first. Two posts can land the trigger and lose the check-in, which leaves a
+     vocabulary entry for a moment that was never recorded; worse, the queue would then have to
+     remember that one of a pair had succeeded, which is exactly the sequencing state a general
+     sync engine is made of. One request has none, and it is atomic whether it is posted now or a
+     week later.
+  2. **A body the server reads and refuses stops being retried.** A transport failure keeps
+     everything queued and stops the flush there (the rest would fail the same way). A response —
+     a `400` naming a field, a `404` for a person deleted on another device — cannot change on a
+     replay, so the item keeps the server's message, is skipped by later flushes, and **stays on
+     the day saying so**. Neither dropping it silently nor churning on it forever was acceptable
+     (invariant 13); the design document does not cover this case and now the ledger does.
+
+- **Verified:** `npm test` → **44 files / 1258 tests green**, ~30 s (43 / 1226 before; +1 file,
+  +32 tests). `cd backend && go test ./...` green (handlers 10.4 s), `go vet` clean, the
+  line-ending-insensitive `gofmt` check empty — **no backend file was touched**. `npx vite build`
+  succeeded. `make build-android` succeeded. Line endings audited per file against `HEAD` after a
+  Python rewrite of `Vault.test.jsx` turned 371 CRLF lines into LF and produced a 794-line diff;
+  it was converted back and the diff is 54 lines. Every other file kept its own style.
+
+- **Measured:**
+  - **What the outbox costs the bundle: 5.16 kB raw, 1.71 kB gzip.** The main chunk went from
+    D4's **1,012.03 kB raw / 310.34 kB gzip** to **1,017.19 / 312.05**; CSS is unchanged at
+    42.69 / 7.53. That is the whole feature — the store, the queue, the mark, pull-to-refresh on
+    the journal, and the Vault paragraph.
+  - **The debug APK is 168,246,778 B = 160.4 MB**, against C4's 119.7 MB. **None of that is
+    F1's**; it is D3's runtimes, and it is recorded here only because this is the first session
+    since D3 to build one and the C4 number was the last in the ledger.
+
+- **Deferred:**
+  - **The manual QA is unrun, all of it.** The airplane-mode check-in, the *not yet synced* mark
+    on a real screen, the network coming back, and the kill-and-relaunch with an item queued.
+    There is no phone, no emulator and no `adb` on this machine, and — because the outbox is
+    native-only, deliberately — **no browser can stand in for one**. Every behaviour above is
+    covered by tests behind a mocked `isNative`; none of it has been seen.
+  - **The ciphertext test the prompt lists was not written**, because it is conditional on E1 and
+    E1 has not started and may never. What was done instead: the outbox stores what it is handed
+    and never inspects `payload`, so the envelope goes in at `createEntry` and this module needs
+    no change; `docs/13` §2.5 and its two checklists now name the outbox beside the cache, and its
+    line anchors into `offlineCache.js` were corrected.
+  - **No UI produces a correction of an unsynced entry.** The provider replaces by `client_id`
+    and a test drives it, which is §9.5's sentence honoured at the seam — but every composer path
+    mints a fresh `client_id` in `buildCheckinRequest`, so nothing on a screen can reach it today.
+    It is a guarantee waiting for a caller, not a feature a user can see.
+  - **The day graph does not draw a queued check-in.** Pending rows are kept out of `entries`
+    because half the app reads that list through a row id they have not got, and the graph is one
+    of those readers. The day's list shows the entry immediately with its mark; the drawing gains
+    it when the post lands.
+
+- **Next session should know:**
+  1. **`node_modules` was missing at the start of this session** and `npm install` took three
+     minutes. It is not in `.gitignore` trouble — it simply was not there. If `npm test` reports
+     *'vitest' is not recognized*, that is what it means.
+  2. **The outbox is native-only, and that is the decision to revisit first if it is ever
+     wrong.** §9.5 says *"in `localStorage` on native"*, and the offline cache and
+     pull-to-refresh are both native-only for the same reason: in a browser the server is one hop
+     away and the tab reloads. The cost is that the feature cannot be exercised without a phone.
+  3. **F2 shares this file.** `usePullToRefresh` is now on the day view and `Frame` takes three
+     optional pull props defaulted for every other journal screen; the `resume` listener in
+     `JournalContext` is a second Capacitor `App` listener beside `useSessionRenewal`'s, and they
+     are independent on purpose.
+  4. **`@capacitor/app` had never been mocked anywhere in the suite before this session.**
+     `JournalContext.test.jsx` now has a listener registry for it, and `Vault.test.jsx`,
+     `Journal.test.jsx` and `offlineCache.test.js` each mock `mobile/platform` with the
+     `vi.hoisted` pattern `Profile.test.jsx` established. Copy those rather than inventing a
+     third shape.

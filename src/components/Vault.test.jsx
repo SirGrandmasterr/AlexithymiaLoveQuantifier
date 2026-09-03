@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import axios from 'axios';
-import Vault, { AI_CLAIM, buildCSV, buildJournalCSV, describeBackend } from './Vault';
+import Vault, { AI_CLAIM, OUTBOX_CLAIM, buildCSV, buildJournalCSV, describeBackend } from './Vault';
 import { JOURNAL_STORAGE_KEYS } from '../constants/journal';
 import { MAX_CLIP_MS, SILENCE_HOLD_MS } from '../journal/recorder';
 import * as tier from '../journal/inference/tier';
@@ -367,5 +367,57 @@ describe('Vault page', () => {
 
         expect(screen.getByText(/It does not encrypt the database/)).toBeInTheDocument();
         expect(screen.getByText(/There is no recovery/)).toBeInTheDocument();
+    });
+});
+
+/* ------------------------------------------------------------------------------------ */
+/* F1 — the outbox, stated on the page (invariant 2e)                                     */
+/* ------------------------------------------------------------------------------------ */
+
+const platformState = vi.hoisted(() => ({ native: false }));
+
+vi.mock('../mobile/platform', async (importOriginal) => ({
+    ...(await importOriginal()),
+    isNative: () => platformState.native
+}));
+
+describe('what the page says about the journal outbox', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        localStorage.clear();
+        mockFetch();
+    });
+
+    afterEach(() => {
+        platformState.native = false;
+    });
+
+    it('names the exception verbatim on a phone', async () => {
+        // *"Everything you have written is stored in your database"* is the sentence above it,
+        // and a queued check-in is a moment when that is not the whole truth. The page says so
+        // rather than saying less (invariant 2e).
+        platformState.native = true;
+        renderVault();
+
+        const claim = await screen.findByText(/One exception, on this phone/);
+        expect(claim).toHaveTextContent(OUTBOX_CLAIM.replace(/\*\*/g, ''));
+    });
+
+    it('claims no such thing in a browser, where there is no queue', async () => {
+        renderVault();
+
+        await waitFor(() => expect(screen.getByText(/Everything you have written is stored/)).toBeInTheDocument());
+        expect(screen.queryByText(/One exception, on this phone/)).not.toBeInTheDocument();
+    });
+
+    it('states the scope, not only the existence', async () => {
+        // The three things that make the exception safe to state at all: it is sent once, the
+        // analyses are never queued, and a sign-out takes it with them.
+        expect(OUTBOX_CLAIM).toContain('sent once when the connection is back');
+        expect(OUTBOX_CLAIM).toContain('your analyses are never queued');
+        expect(OUTBOX_CLAIM).toContain('signing out clears it');
+        // And that it is not encrypted here either, which the section below says of the
+        // database and which would otherwise be silently untrue of the device.
+        expect(OUTBOX_CLAIM).toContain('plain text');
     });
 });

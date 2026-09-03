@@ -350,3 +350,361 @@ describe('markedDays', () => {
         expect(latest.markedDays.has('2026-08-21')).toBe(false);
     });
 });
+
+/* ------------------------------------------------------------------------------------ */
+/* F1 — the outbox (§9.5)                                                                 */
+/* ------------------------------------------------------------------------------------ */
+
+const platformState = vi.hoisted(() => ({ native: false }));
+
+vi.mock('../mobile/platform', async (importOriginal) => ({
+    ...(await importOriginal()),
+    isNative: () => platformState.native
+}));
+
+/**
+ * The `resume` signal, as Android delivers it. Mocked rather than driven through the real
+ * plugin because the web implementation of `@capacitor/app` has no `resume` to fire — and the
+ * thing under test is what the provider does when one arrives, not who sent it.
+ */
+const capacitor = vi.hoisted(() => ({ listeners: new Map() }));
+
+vi.mock('@capacitor/app', () => ({
+    App: {
+        addListener: (event, listener) => {
+            const registered = capacitor.listeners.get(event) ?? new Set();
+            registered.add(listener);
+            capacitor.listeners.set(event, registered);
+            return Promise.resolve({ remove: () => registered.delete(listener) });
+        }
+    }
+}));
+
+const OUTBOX_KEY = 'alq:journal-outbox';
+
+/** A transport failure: nothing answered, so nothing can have been stored. */
+const offline = () => new Error('Network Error');
+
+/** The server answered, and refused the body. */
+const refused = (status, message) => Object.assign(new Error(`Request failed with status code ${status}`), {
+    response: { status, data: { error: message } }
+});
+
+const checkinRequest = (overrides = {}) => ({
+    client_id: 'queued-1',
+    kind: 'checkin',
+    at: '2026-08-21T18:42:10+02:00',
+    day: '2026-08-21',
+    schema_version: 1,
+    payload: { v: 1, source: 'chips', feelings: [{ id: 'calm', intensity: 2, about: [] }] },
+    mentions: [],
+    triggers: [],
+    supersedes_id: null,
+    ...overrides
+});
+
+/** Queue one entry the way a user in a tunnel does: by saving it and having nothing answer. */
+const queueOffline = async (request = checkinRequest()) => {
+    axios.post.mockRejectedValue(offline());
+    let result;
+    await act(async () => { result = await latest.createEntry(request); });
+    return result;
+};
+
+const postsFor = (clientId) => axios.post.mock.calls.filter(
+    ([url, body]) => url === '/api/journal/entries' && body?.client_id === clientId
+);
+
+const fireResume = async () => {
+    await act(async () => {
+        (capacitor.listeners.get('resume') ?? new Set()).forEach(listener => listener());
+    });
+};
+
+describe('the outbox', () => {
+    beforeEach(() => {
+        platformState.native = true;
+        capacitor.listeners.clear();
+        window.localStorage.clear();
+        // The provider logs the queued write and the refused one; both are deliberate and
+        // neither is what these tests are reading.
+        vi.spyOn(console, 'error').mockImplementation(() => { });
+    });
+
+    afterEach(() => {
+        platformState.native = false;
+        window.localStorage.clear();
+        vi.restoreAllMocks();
+    });
+
+    it('keeps a check-in saved with no connectivity, marked and on the day it belongs to', async () => {
+        renderJournal();
+        await settled();
+
+        const saved = await queueOffline();
+
+        // The composer closes on this. It has to be a row shaped like an entry, with the day
+        // the caller wrote, or the screen cannot follow the save to its day.
+        expect(saved.pending).toBe(true);
+        expect(saved.day).toBe('2026-08-21');
+        expect(saved.ID).toBeUndefined();
+
+        expect(latest.outbox).toHaveLength(1);
+        expect(latest.pendingForDay('2026-08-21')).toHaveLength(1);
+        expect(latest.pendingForDay('2026-08-20')).toEqual([]);
+        // It marks its day in the month strip, because it is the user's record of that day
+        // whether or not a server has heard about it yet.
+        expect(latest.markedDays.has('2026-08-21')).toBe(true);
+        // And it is not in `entries`: that list is what the server holds, and half the app
+        // reads it through a row id this entry has not got.
+        expect(latest.entries).toHaveLength(0);
+    });
+
+    it('is not lost when the app is killed and relaunched', async () => {
+        const { unmount } = renderJournal();
+        await settled();
+        await queueOffline();
+
+        expect(JSON.parse(window.localStorage.getItem(OUTBOX_KEY))).toHaveLength(1);
+
+        unmount();
+        // A cold start: a new provider, reading the device rather than remembering anything.
+        axios.post.mockRejectedValue(offline());
+        renderJournal();
+        await settled();
+
+        expect(latest.outbox).toHaveLength(1);
+        expect(latest.pendingForDay('2026-08-21')).toHaveLength(1);
+        expect(latest.outbox[0].request.payload.feelings[0].id).toBe('calm');
+    });
+
+    it('posts once per client_id across a retry, a resume and a pull-to-refresh', async () => {
+        renderJournal();
+        await settled();
+        await queueOffline();
+
+        // The connection is back. Everything below is a *signal*, not a second entry.
+        axios.post.mockReset();
+        axios.post.mockResolvedValue({ status: 201, data: checkin({ ID: 42, client_id: 'queued-1' }) });
+
+        // 1. A retry — the flush asked for directly.
+        await act(async () => { await latest.flushOutbox(); });
+        await waitFor(() => expect(latest.outbox).toHaveLength(0));
+        // The row the server echoed is now the day's, spliced once. Asserted here rather
+        // than at the end, because the refetch in step 3 replaces this list with what the
+        // mocked server holds — which is nothing, and which is not what is under test.
+        expect(latest.entries.map(row => row.ID)).toEqual([42]);
+        // 2. `resume`: the phone comes back to the foreground.
+        await fireResume();
+        // 3. Pull-to-refresh, which is `refresh` and nothing else — the gesture in
+        //    `usePullToRefresh` calls exactly this function.
+        await act(async () => { await latest.refresh(); });
+
+        // The count, not the final state. A queue that posted three times and was cleared
+        // three times would look identical from the outside and would be three rows on a
+        // server that was not idempotent.
+        expect(postsFor('queued-1')).toHaveLength(1);
+        expect(latest.outbox).toEqual([]);
+    });
+
+    it('posts on the next successful fetch, without being asked', async () => {
+        renderJournal();
+        await settled();
+        await queueOffline();
+
+        axios.post.mockReset();
+        axios.post.mockResolvedValue({ status: 201, data: checkin({ ID: 42, client_id: 'queued-1' }) });
+
+        await act(async () => { await latest.refresh(); });
+
+        await waitFor(() => expect(postsFor('queued-1')).toHaveLength(1));
+        expect(latest.outbox).toHaveLength(0);
+    });
+
+    it('treats a 200 — already stored — exactly as it treats a 201', async () => {
+        renderJournal();
+        await settled();
+        await queueOffline();
+
+        // §7.2: a second post of the same `client_id` answers `200` with the row that is
+        // already there. The previous attempt got through and the acknowledgement did not;
+        // the entry is stored once, and this queue is done with it.
+        axios.post.mockReset();
+        axios.post.mockResolvedValue({ status: 200, data: checkin({ ID: 42, client_id: 'queued-1' }) });
+
+        await act(async () => { await latest.flushOutbox(); });
+
+        await waitFor(() => expect(latest.outbox).toHaveLength(0));
+        expect(window.localStorage.getItem(OUTBOX_KEY)).toBeNull();
+        // And the row the server echoed is the one the day now reads, spliced exactly once.
+        expect(latest.entries.map(row => row.ID)).toEqual([42]);
+    });
+});
+
+describe('the outbox — new people, new triggers, and what it will not do', () => {
+    beforeEach(() => {
+        platformState.native = true;
+        capacitor.listeners.clear();
+        window.localStorage.clear();
+        vi.spyOn(console, 'error').mockImplementation(() => { });
+    });
+
+    afterEach(() => {
+        platformState.native = false;
+        window.localStorage.clear();
+        vi.restoreAllMocks();
+    });
+
+    it('posts a new trigger in the same request as the check-in that references it', async () => {
+        renderJournal();
+        await settled();
+
+        // §7.2's second `triggers[]` shape: a label and a client-minted id, which the server
+        // turns into its own row inside the same transaction as the check-in.
+        await queueOffline(checkinRequest({
+            triggers: [{ label: 'the deadline', client_id: 'trig-new' }],
+            payload: {
+                v: 1,
+                source: 'chips',
+                feelings: [{ id: 'irritation', intensity: 2, about: [{ kind: 'trigger', trigger: 'trig-new' }] }]
+            }
+        }));
+
+        axios.post.mockReset();
+        axios.post.mockResolvedValue({ status: 201, data: checkin({ ID: 42, client_id: 'queued-1' }) });
+
+        await act(async () => { await latest.flushOutbox(); });
+        await waitFor(() => expect(latest.outbox).toHaveLength(0));
+
+        // One request, carrying both. Not a trigger posted first and a check-in posted
+        // second: two posts can land the first and lose the second, which would leave a
+        // vocabulary entry for a moment that was never recorded — and would make this queue
+        // keep sequencing state, which is the sync engine this slice does not build.
+        const posts = axios.post.mock.calls.filter(([url]) => url === '/api/journal/entries');
+        expect(posts).toHaveLength(1);
+        expect(posts[0][1].triggers).toEqual([{ label: 'the deadline', client_id: 'trig-new' }]);
+        expect(posts[0][1].payload.feelings[0].about[0].trigger).toBe('trig-new');
+
+        // And the refetch that follows a minted trigger, for the reason `createEntry` gives:
+        // the response echoes the check-in and not the trigger row beside it.
+        await waitFor(() => {
+            const reads = axios.get.mock.calls.filter(([url]) => url === '/api/journal/entries');
+            expect(reads.length).toBeGreaterThan(1);
+        });
+    });
+
+    it('carries a new person as a name, so the server resolves it when the post lands', async () => {
+        renderJournal();
+        await settled();
+
+        await queueOffline(checkinRequest({
+            mentions: [{ ref: 0, name: 'Noor', label: 'Noor' }]
+        }));
+
+        // There is no local relationship id to conflict with anything: the queued body says
+        // who, in words, and `FindOrCreateRelationship` decides what that means at the
+        // moment the entry lands (§7.2).
+        expect(latest.outbox[0].request.mentions[0]).toEqual({ ref: 0, name: 'Noor', label: 'Noor' });
+        expect(latest.outbox[0].request.mentions[0].relationship_id).toBeUndefined();
+    });
+
+    it('replaces an unsynced entry rather than queueing a second one', async () => {
+        renderJournal();
+        await settled();
+
+        await queueOffline(checkinRequest({ payload: { v: 1, source: 'typed', note: 'the first words' } }));
+        await queueOffline(checkinRequest({ payload: { v: 1, source: 'typed', note: 'what was meant' } }));
+
+        // §9.5: a correction of an entry that is still in this queue replaces it here. Two
+        // rows would be two check-ins of the same moment, and the second would not be a
+        // correction of anything — the server has never seen the first.
+        expect(latest.outbox).toHaveLength(1);
+        expect(latest.outbox[0].request.payload.note).toBe('what was meant');
+        expect(JSON.parse(window.localStorage.getItem(OUTBOX_KEY))).toHaveLength(1);
+    });
+
+    it('refuses to queue a correction of an entry the server already holds', async () => {
+        renderJournal();
+        await settled();
+        axios.post.mockRejectedValue(offline());
+
+        // A rename in the Triggers view: `supersedes_id` is a row id, so this is an edit of
+        // something stored, and §9.5 says an edit waits for a connection rather than queueing.
+        await expect(latest.createEntry({
+            client_id: 'rename-1', kind: 'trigger', day: '2026-08-21', supersedes_id: 10
+        })).rejects.toThrow('Network Error');
+
+        expect(latest.outbox).toEqual([]);
+    });
+
+    it('queues nothing on the web, where a failed save still says so', async () => {
+        platformState.native = false;
+        renderJournal();
+        await settled();
+        axios.post.mockRejectedValue(offline());
+
+        await expect(latest.createEntry(checkinRequest())).rejects.toThrow('Network Error');
+
+        expect(latest.outbox).toEqual([]);
+        expect(window.localStorage.getItem(OUTBOX_KEY)).toBeNull();
+    });
+
+    it('keeps an entry the server refused, and stops posting it', async () => {
+        renderJournal();
+        await settled();
+        await queueOffline();
+
+        axios.post.mockReset();
+        axios.post.mockRejectedValue(refused(404, 'relationship not found'));
+
+        await act(async () => { await latest.flushOutbox(); });
+        await waitFor(() => expect(latest.outbox[0].error).toBe('relationship not found'));
+
+        // Still on the screen and still on the device — the user wrote it, and an app that
+        // dropped it silently would be worse than one that says it did not land.
+        expect(latest.pendingForDay('2026-08-21')[0].outbox_error).toBe('relationship not found');
+
+        // And not posted again: the server read this body and will read it the same way.
+        await act(async () => { await latest.flushOutbox(); });
+        await fireResume();
+        expect(postsFor('queued-1')).toHaveLength(1);
+    });
+
+    it('stops the flush at the first entry that finds no connection, and keeps the rest', async () => {
+        renderJournal();
+        await settled();
+        await queueOffline(checkinRequest({ client_id: 'queued-1' }));
+        await queueOffline(checkinRequest({ client_id: 'queued-2' }));
+
+        axios.post.mockReset();
+        axios.post.mockRejectedValue(offline());
+
+        await act(async () => { await latest.flushOutbox(); });
+
+        // One attempt, not one per queued row: the second would fail the same way, and both
+        // are still here for the next signal.
+        expect(axios.post.mock.calls.filter(([url]) => url === '/api/journal/entries')).toHaveLength(1);
+        expect(latest.outbox.map(row => row.client_id)).toEqual(['queued-1', 'queued-2']);
+    });
+
+    it('is cleared on logout, from memory and from the device', async () => {
+        const { rerender } = renderJournal();
+        await settled();
+        await queueOffline();
+
+        expect(window.localStorage.getItem(OUTBOX_KEY)).not.toBeNull();
+
+        // What `App.jsx` does when the user signs out, and what it now also does when a
+        // session dies: the provider is disabled.
+        await act(async () => {
+            rerender(
+                <SubjectsProvider>
+                    <JournalProvider enabled={false}><Probe /></JournalProvider>
+                </SubjectsProvider>
+            );
+        });
+
+        expect(latest.outbox).toEqual([]);
+        expect(window.localStorage.getItem(OUTBOX_KEY)).toBeNull();
+    });
+});

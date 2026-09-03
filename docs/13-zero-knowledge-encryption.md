@@ -1112,11 +1112,18 @@ sound fix is wrapping the DEK with a hardware-backed key from the Android Keysto
 (`setUserAuthenticationRequired(true)`, unlocked by biometric) via a native plugin — a
 meaningful piece of work, not a config flag. Do not substitute `Preferences` for it.
 
-**`offlineCache.js` must be updated.** It currently writes the fully decrypted subject list to
-`localStorage` on native ([offlineCache.js:25](../src/mobile/offlineCache.js#L25)). Under this
-design it must cache the *ciphertext* rows exactly as fetched; decryption happens on read, in
-memory. Otherwise the phone holds a plaintext copy of everything the server is no longer allowed
-to see — which would make the Android build the weakest link in the entire system.
+**`offlineCache.js` must be updated, and it now holds two things.** It writes the fully
+decrypted subject list to `localStorage` on native
+([offlineCache.js:56](../src/mobile/offlineCache.js#L56)), and since F1 (2026-09-04) it also
+holds the **journal outbox** — entries saved with no connectivity, queued as the request bodies
+they will be posted as ([offlineCache.js:131](../src/mobile/offlineCache.js#L131)). Under this
+design both must hold *ciphertext*: the cache must store the rows exactly as fetched, with
+decryption on read and in memory, and the outbox must be handed a body whose `payload` is
+already sealed. The outbox is the easier of the two — it stores what it is given and never
+inspects `payload`, so the envelope goes in at `createEntry`, not here — and it is the more
+urgent, because it is the one copy of writing the server has never seen. Otherwise the phone
+holds a plaintext copy of everything the server is no longer allowed to see, which would make
+the Android build the weakest link in the entire system.
 
 ---
 
@@ -1333,7 +1340,8 @@ resolves in practice to option one.
 | 4 | Two devices migrate the same account concurrently | `enroll-encryption` rejects unless `encryption_status = 'legacy'` under `SELECT ... FOR UPDATE`. The loser gets 409 and re-logs in against the now-`migrating` account. Two different DEKs for one account is the unrecoverable case this prevents. |
 | 5 | Old Android APK hits a migrated account | **Side-loaded APKs cannot be force-updated.** Require an `X-ALQ-Client` version header; return **426 Upgrade Required** when an encrypted account is accessed by a client below the minimum. Without this, an old client reads `blob` as an absent field and cheerfully renders an empty vault — which users will report as data loss. |
 | 6 | Password changed mid-migration | Reject `/api/me/password` with 409 while `encryption_status = 'migrating'`. |
-| 7 | `offlineCache` holds pre-migration plaintext | `clearCache()` on enroll, and re-fetch. Already exported from [offlineCache.js:53](../src/mobile/offlineCache.js#L53). |
+| 7 | `offlineCache` holds pre-migration plaintext | `clearCache()` on enroll, and re-fetch. Already exported from [offlineCache.js:87](../src/mobile/offlineCache.js#L87). |
+| 7b | The **journal outbox** holds pre-migration plaintext | It cannot simply be cleared — unlike the cache, its rows exist nowhere else. Flush it before enrolling and refuse to enrol while it is non-empty, or re-seal each queued body under the new DEK. `clearOutbox()` exists ([offlineCache.js:148](../src/mobile/offlineCache.js#L148)) and is the wrong tool here. |
 | 8 | User imports an old plaintext export after migrating | Import moves client-side: parse, encrypt, POST ciphertext. The server's [`ImportVault`](../backend/internal/handlers/vault.go#L173) must reject plaintext bodies from encrypted accounts rather than silently storing them. |
 | 9 | Half-migrated account, user edits a snapshot | Block writes while `migrating` (the flow is blocking anyway). Belt and braces: server rejects a plaintext write when `encryption_status <> 'legacy'`. |
 | 10 | Backups still contain plaintext after P3 | §1.3. Destroy pre-migration backups; they are a complete bypass of everything above. |
@@ -1427,7 +1435,9 @@ its promise, and should be fixed alongside it:
    inconsistent promise. Fix: move uploads behind `AuthMiddleware`, or encrypt them client-side
    and store the blob (the honest option, and the one consistent with everything above).
 
-2. **`offlineCache` writes plaintext to `localStorage` on Android** ([offlineCache.js:25](../src/mobile/offlineCache.js#L25)).
+2. **`offlineCache` writes plaintext to `localStorage` on Android** — the subject list
+   ([offlineCache.js:56](../src/mobile/offlineCache.js#L56)) and, since F1, the journal outbox
+   ([offlineCache.js:131](../src/mobile/offlineCache.js#L131)).
    Covered in §2.5 — restating it here because if only one thing from this document gets
    implemented late, this is the one that turns the whole exercise into theatre on the platform
    the data is most likely to be carried around on.
@@ -1672,7 +1682,7 @@ Non-negotiables:
 - [ ] `/api/migrate/{pending,batch,verify,commit}`, `/api/me/{enroll,finalize}-encryption`
 - [ ] Two-phase client loop with resume
 - [ ] `X-ALQ-Client` version gate returning 426
-- [ ] `offlineCache` stores ciphertext
+- [ ] `offlineCache` stores ciphertext — both the subject cache and the journal outbox
 - [ ] Export/import move client-side
 - [ ] `POST /api/me/password` re-wrap
 - [ ] Recovery flow

@@ -490,3 +490,135 @@ describe('MobileBottomNav', () => {
             .toHaveAttribute('aria-current', 'page');
     });
 });
+
+/* ------------------------------------------------------------------------------------ */
+/* F1 — what a queued entry looks like on the day (§9.5)                                  */
+/* ------------------------------------------------------------------------------------ */
+
+const platformState = vi.hoisted(() => ({ native: false }));
+
+vi.mock('../mobile/platform', async (importOriginal) => ({
+    ...(await importOriginal()),
+    isNative: () => platformState.native
+}));
+
+const OUTBOX_KEY = 'alq:journal-outbox';
+
+/** One entry in the outbox on the device, as a relaunched app would find it. */
+const queued = (overrides = {}) => ({
+    client_id: 'queued-1',
+    queued_at: 1_755_000_000_000,
+    error: null,
+    request: {
+        client_id: 'queued-1',
+        kind: 'checkin',
+        at: '2026-08-21T18:42:10Z',
+        day: TODAY,
+        schema_version: 1,
+        payload: {
+            v: 1,
+            source: 'typed',
+            tz_offset_min: 120,
+            note: 'On the train, no signal.',
+            feelings: [{ id: 'calm', intensity: 2, about: [] }]
+        },
+        mentions: [],
+        triggers: [],
+        supersedes_id: null
+    },
+    ...overrides
+});
+
+describe('an entry saved with no connectivity', () => {
+    beforeEach(() => {
+        platformState.native = true;
+    });
+
+    afterEach(() => {
+        platformState.native = false;
+    });
+
+    it('is on the day, with the not yet synced mark', async () => {
+        window.localStorage.setItem(OUTBOX_KEY, JSON.stringify([queued()]));
+
+        renderAt(`/journal/${TODAY}`);
+        const day = await rows();
+
+        expect(day.getByText('On the train, no signal.')).toBeInTheDocument();
+        expect(day.getByText(JOURNAL_COPY.day.notSynced)).toBeInTheDocument();
+        expect(document.querySelector('[data-entry-kind="checkin"][data-pending="true"]')).toBeInTheDocument();
+    });
+
+    it('is still there after the app is killed and relaunched', async () => {
+        window.localStorage.setItem(OUTBOX_KEY, JSON.stringify([queued()]));
+
+        const first = renderAt(`/journal/${TODAY}`);
+        await rows();
+        first.unmount();
+
+        // Nothing is handed across: the second mount reads the device, as a cold start does.
+        renderAt(`/journal/${TODAY}`);
+        const day = await rows();
+
+        expect(day.getByText('On the train, no signal.')).toBeInTheDocument();
+        expect(day.getByText(JOURNAL_COPY.day.notSynced)).toBeInTheDocument();
+    });
+
+    it('offers no delete control, because there is no offline delete', async () => {
+        window.localStorage.setItem(OUTBOX_KEY, JSON.stringify([queued()]));
+
+        renderAt(`/journal/${TODAY}`);
+        await rows();
+
+        // §9.5. The row id a `DELETE` would name is the server's and this entry has none, and
+        // dropping it from the queue instead would be an offline delete — which this slice
+        // deliberately does not build. The mark stands where the trash icon stands.
+        const pending = document.querySelector('[data-entry-kind="checkin"][data-pending="true"]');
+        expect(within(pending).queryByLabelText(JOURNAL_COPY.checkin.delete.action)).toBeNull();
+        expect(within(pending).getByText(JOURNAL_COPY.day.notSynced)).toBeInTheDocument();
+    });
+
+    it('keeps the day out of its empty state', async () => {
+        window.localStorage.setItem(OUTBOX_KEY, JSON.stringify([queued()]));
+
+        renderAt(`/journal/${TODAY}`);
+        await rows();
+
+        // A day the user wrote a check-in on is not a day with nothing on it, whatever the
+        // radio was doing at the time.
+        expect(screen.queryByText(JOURNAL_COPY.empty.today)).toBeNull();
+        expect(screen.queryByText(JOURNAL_COPY.empty.pastDay)).toBeNull();
+    });
+
+    it('marks its day in the month strip', async () => {
+        window.localStorage.setItem(OUTBOX_KEY, JSON.stringify([queued()]));
+
+        renderAt(`/journal/${TODAY}`);
+        await rows();
+
+        const cell = screen.getByLabelText(TODAY);
+        expect(cell.querySelector('[data-marked]')).toBeInTheDocument();
+    });
+
+    it('says what the server said when the server refused it', async () => {
+        window.localStorage.setItem(OUTBOX_KEY, JSON.stringify([queued({ error: 'unknown feeling id: bliss' })]));
+
+        renderAt(`/journal/${TODAY}`);
+        const day = await rows();
+
+        // Not "not yet synced" — that would be a promise the code cannot keep, since this
+        // body will be refused again. The entry stays on the screen and says why.
+        expect(day.queryByText(JOURNAL_COPY.day.notSynced)).toBeNull();
+        expect(day.getByText('Not sent — unknown feeling id: bliss')).toBeInTheDocument();
+    });
+
+    it('does not exist on the web, where a failed save says so instead', async () => {
+        platformState.native = false;
+        window.localStorage.setItem(OUTBOX_KEY, JSON.stringify([queued()]));
+
+        renderAt(`/journal/${TODAY}`);
+
+        await waitFor(() => expect(screen.getByText(JOURNAL_COPY.empty.today)).toBeInTheDocument());
+        expect(screen.queryByText(JOURNAL_COPY.day.notSynced)).toBeNull();
+    });
+});

@@ -260,6 +260,7 @@ split. Design notes in
 | :------ | :---- | :--- |
 | **Pull-to-refresh** | [`usePullToRefresh`](../src/mobile/usePullToRefresh.js) | The list is fetched once on mount and mutated locally after. Free to correct on a desktop with a reload; a phone is resumed, not reloaded. |
 | **Offline read-through cache** | [`offlineCache.js`](../src/mobile/offlineCache.js) | Last-known-good list, shown with its age when the server is unreachable. **Read-only by design** — queueing writes against a find-or-create path with server-assigned ids is a synchronisation feature needing conflict rules this app has never defined. Cleared on logout. |
+| **The journal outbox** — the one exception to that | [`offlineCache.js`](../src/mobile/offlineCache.js) (the store) and [`JournalContext.jsx`](../src/context/JournalContext.jsx) (the queue) | A journal entry saved with no connectivity is kept, marked *not yet synced* in the day view, and posted later. Safe for one reason and only that reason — see below. Same store, own key (`alq:journal-outbox`), cleared on logout. |
 | **Check-in reminders** | [`cadenceReminders.js`](../src/mobile/cadenceReminders.js) | Local notifications only — nothing is sent to a server, preserving the claim in `cadence.js` that due dates never leave the machine. Bound by that file's product rule: the body is `nudgeSentence()` verbatim, **no badge count**, one notification per relationship, scheduled for 10:00. |
 | **Hardware back button** | [`useNativeShell.js`](../src/mobile/useNativeShell.js) | Owned explicitly. Capacitor's default pops WebView history, which walks behind the React Router stack and can strand the app on a blank document. |
 | **Haptics** | `usePullToRefresh`, [`knobFeedback.js`](../src/mobile/knobFeedback.js), `RitualCards.jsx` | One light tap when the refresh gesture arms; one **selection** haptic per committed ritual card, and none at all in discretion mode; a **selection** haptic per dial detent — the API Android tunes for picker wheels, where an `impact` per unit at thumb speed is a buzz rather than a click. Rate-limited to 32ms. |
@@ -268,6 +269,39 @@ split. Design notes in
 Deliberately **not** built: swipe-to-delete on cards. Deleting a relationship removes its entire
 history and the app already routes that through a confirm dialog naming the snapshot count. A
 gesture with no confirmation step is the wrong affordance for that action.
+
+#### The journal outbox: why the exception exists, and how far it goes
+
+The row above the cache says the app does not queue writes. The row below it says the journal
+does. Both are true, and the difference between them is one property of one endpoint.
+
+`POST /api/journal/entries` is **idempotent on a client-minted `client_id`**: the client mints a
+UUID before the first attempt, the first post stores the row and answers `201`, and every later
+post of that same `client_id` answers **`200` with the row already stored** — not `201` with a
+second one, and not `409`. So a retry cannot duplicate, and the queue never has to know whether
+the attempt that timed out got through. That is the whole safety argument. Nothing else about
+the journal is special; take that property away and this feature is unsafe the same day.
+
+The snapshot path has no such property — `POST /api/subjects` creates a row and resolves its
+relationship by name, so a replayed write is a second analysis — which is why the cache above
+stays read-through.
+
+The scope, which is narrow *because* narrow is what makes it safe:
+
+| | |
+| :- | :- |
+| **What is queued** | Journal entries only, and only new ones. An entry carrying `supersedes_id` is an edit of a row the server already holds, and it is not queued: **no offline edit, no offline delete**. A correction of an entry that is still *in* the queue replaces it there, keyed by `client_id`. |
+| **What is not** | Snapshots, relationships, ritual settings, anything else. There is no general sync engine and no conflict resolution. |
+| **When it posts** | On the next fetch that comes back (which is also what pull-to-refresh calls), and on `resume`. One flush at a time. |
+| **When it stops** | A transport failure keeps everything queued for the next signal. A response — a `400` naming a field, a `404` for a person deleted elsewhere — means the server read the body and refused it, so the item stops being retried, keeps the server's message, and stays visible on the day with it. Nothing the user wrote is dropped silently. |
+| **Where it lives** | `localStorage`, key `alq:journal-outbox`, native only. Cleared when the provider is disabled, which is both a deliberate sign-out and a session that died. |
+| **What it is not** | It is a queue for *writes*. There is no read-through cache for the journal: a day that cannot be fetched says so. |
+
+Under docs/13, the queued body would be the same ciphertext the row is — the outbox stores what
+it is handed and never inspects `payload`. That envelope is session E1's and is conditional.
+
+The design is [`06-emotional-journal.md` §9.5](../product_vision/06-emotional-journal.md#95-offline-the-one-deliberate-exception-to-no-offline-writes);
+the provider's side of it is in [`docs/06-frontend.md`](06-frontend.md).
 
 ---
 
@@ -287,7 +321,7 @@ src/mobile/                  the platform layer
   serverUrl.js               base URL, synchronously; asset rebasing
   useNativeShell.js          back button, status bar, keyboard, the tier report
   usePullToRefresh.js        pull-to-refresh over the document scroller
-  offlineCache.js            last-known-good subject list
+  offlineCache.js            last-known-good subject list; the journal outbox's store
   cadenceReminders.js        local notifications for the check-in rhythm
   journalPlugin.js           the journal plugin's JS side: capture deps, downloader, tier
 src/components/

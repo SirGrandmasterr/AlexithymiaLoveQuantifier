@@ -1,0 +1,1448 @@
+{
+  "date": "2026-09-03",
+  "environment": {
+    "platform": "win32",
+    "arch": "x64",
+    "node": "v22.14.0",
+    "commit": "8ca0c14"
+  },
+  "suite": {
+    "cases": 120,
+    "pairs": 60,
+    "en": 60,
+    "de": 59,
+    "other": 1,
+    "ambiguityCases": 20,
+    "clips": 29,
+    "speakers": 1,
+    "suiteSha": null,
+    "promptVersion": 1,
+    "feelingIds": 21
+  },
+  "runs": [
+    {
+      "candidate": {
+        "id": "full-web",
+        "tier": "full",
+        "label": "Full tier, desktop browser — Gemma 4 E2B, one pass over audio",
+        "model": "google/gemma-4-E2B-it",
+        "packaging": "ONNX, q4f16, four sessions",
+        "modelSet": "gemma-4-e2b-onnx",
+        "file": "onnx-community/gemma-4-E2B-it-ONNX",
+        "runtime": "llama-mtmd-cli",
+        "mode": "audio",
+        "transcriber": null,
+        "grammar": "PROPOSAL_SCHEMA",
+        "appRuntimeId": "web",
+        "device": "the reference desktop; state CPU, RAM and GPU in the report",
+        "isDefaultFor": "full",
+        "caveat": "The app runs these weights under transformers.js over WebGPU, which has no grammar and no CLI. A pass here is evidence about the model, not about the web runtime; the web path stays unmeasured until it can be driven (D3 warning)."
+      },
+      "revision": "9f4bef82ea6e296bc69f8a2f5939f73af81b07a6",
+      "runner": {
+        "command": "C:\\Users\\vogle\\llama.cpp\\llama-mtmd-cli.exe -m C:\\Users\\vogle\\weights\\gemma-4-E2B-it-Q4_K_M.gguf --mmproj C:\\Users\\vogle\\weights\\mmproj-gemma-4-E2B-f16.gguf --temp 0 --seed 0 -jf schema.json -f prompt.txt --audio clip.wav --jinja",
+        "note": "temperature 0; the output schema as a GBNF grammar"
+      },
+      "overall": {
+        "clips": 29,
+        "casesFullyOk": 16,
+        "mustIncludeTotal": 31,
+        "mustIncludeHit": 28,
+        "mustIncludeRecall": 0.9032258064516129,
+        "mustNotIncludeTotal": 9,
+        "mustNotViolations": 2,
+        "mustNotViolationRate": 0.2222222222222222,
+        "ambiguityCases": 6,
+        "ambiguityCorrect": 0,
+        "ambiguityAccuracy": 0,
+        "ambiguityAccuracyAllCases": 0.7586206896551724,
+        "newTriggerCases": 2,
+        "newTriggerHit": 0,
+        "knownTriggerCases": 4,
+        "knownTriggerHit": 3
+      },
+      "gate": {
+        "criteria": [
+          {
+            "name": "must-include recall",
+            "statement": "≥ 0.8",
+            "actual": 0.9032258064516129,
+            "pass": true,
+            "detail": "28/31 required ids present"
+          },
+          {
+            "name": "must-not-include rate",
+            "statement": "≤ 0.05",
+            "actual": 0.2222222222222222,
+            "pass": false,
+            "detail": "2/9 forbidden ids proposed"
+          },
+          {
+            "name": "ambiguity accuracy",
+            "statement": "≥ 0.9 of the ambiguity cases",
+            "actual": 0,
+            "pass": false,
+            "detail": "0/6 non-\"none\" cases correct"
+          },
+          {
+            "name": "German WER margin (clean)",
+            "statement": "de − en ≤ 0.05 absolute",
+            "actual": null,
+            "pass": null,
+            "detail": "not measured — one language has no clean clips"
+          }
+        ],
+        "thresholds": {
+          "mustIncludeRecall": 0.8,
+          "mustNotViolationRate": 0.05,
+          "ambiguityAccuracy": 0.9,
+          "germanWerMargin": 0.05
+        },
+        "passed": false,
+        "failed": [
+          "must-not-include rate",
+          "ambiguity accuracy"
+        ],
+        "unmeasured": [
+          "German WER margin (clean)"
+        ],
+        "verdict": "fail"
+      },
+      "wer": [
+        {
+          "language": "de",
+          "condition": "clean",
+          "wer": 0.23623853211009174,
+          "meanWer": 0.38037082337871697,
+          "clips": 29,
+          "referenceWords": 436,
+          "errors": 103,
+          "withCeiling": 29,
+          "overCeiling": 11
+        }
+      ],
+      "perId": [
+        {
+          "id": "anger",
+          "truePositive": 2,
+          "falsePositive": 2,
+          "falseNegative": 0,
+          "precision": 0.5,
+          "recall": 1,
+          "f1": 0.6666666666666666,
+          "support": 2
+        },
+        {
+          "id": "anxiety",
+          "truePositive": 2,
+          "falsePositive": 2,
+          "falseNegative": 0,
+          "precision": 0.5,
+          "recall": 1,
+          "f1": 0.6666666666666666,
+          "support": 2
+        },
+        {
+          "id": "boredom",
+          "truePositive": 2,
+          "falsePositive": 1,
+          "falseNegative": 0,
+          "precision": 0.6666666666666666,
+          "recall": 1,
+          "f1": 0.8,
+          "support": 2
+        },
+        {
+          "id": "calm",
+          "truePositive": 1,
+          "falsePositive": 2,
+          "falseNegative": 0,
+          "precision": 0.3333333333333333,
+          "recall": 1,
+          "f1": 0.5,
+          "support": 1
+        },
+        {
+          "id": "curiosity",
+          "truePositive": 1,
+          "falsePositive": 2,
+          "falseNegative": 0,
+          "precision": 0.3333333333333333,
+          "recall": 1,
+          "f1": 0.5,
+          "support": 1
+        },
+        {
+          "id": "excitement",
+          "truePositive": 1,
+          "falsePositive": 2,
+          "falseNegative": 0,
+          "precision": 0.3333333333333333,
+          "recall": 1,
+          "f1": 0.5,
+          "support": 1
+        },
+        {
+          "id": "gratitude",
+          "truePositive": 2,
+          "falsePositive": 0,
+          "falseNegative": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "support": 2
+        },
+        {
+          "id": "irritation",
+          "truePositive": 1,
+          "falsePositive": 3,
+          "falseNegative": 1,
+          "precision": 0.25,
+          "recall": 0.5,
+          "f1": 0.3333333333333333,
+          "support": 2
+        },
+        {
+          "id": "joy",
+          "truePositive": 1,
+          "falsePositive": 1,
+          "falseNegative": 0,
+          "precision": 0.5,
+          "recall": 1,
+          "f1": 0.6666666666666666,
+          "support": 1
+        },
+        {
+          "id": "loneliness",
+          "truePositive": 1,
+          "falsePositive": 5,
+          "falseNegative": 0,
+          "precision": 0.16666666666666666,
+          "recall": 1,
+          "f1": 0.2857142857142857,
+          "support": 1
+        },
+        {
+          "id": "longing",
+          "truePositive": 1,
+          "falsePositive": 2,
+          "falseNegative": 0,
+          "precision": 0.3333333333333333,
+          "recall": 1,
+          "f1": 0.5,
+          "support": 1
+        },
+        {
+          "id": "neutral",
+          "truePositive": 1,
+          "falsePositive": 9,
+          "falseNegative": 0,
+          "precision": 0.1,
+          "recall": 1,
+          "f1": 0.18181818181818182,
+          "support": 1
+        },
+        {
+          "id": "overwhelm",
+          "truePositive": 1,
+          "falsePositive": 0,
+          "falseNegative": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "support": 1
+        },
+        {
+          "id": "pleasure",
+          "truePositive": 3,
+          "falsePositive": 3,
+          "falseNegative": 0,
+          "precision": 0.5,
+          "recall": 1,
+          "f1": 0.6666666666666666,
+          "support": 3
+        },
+        {
+          "id": "pride",
+          "truePositive": 1,
+          "falsePositive": 1,
+          "falseNegative": 1,
+          "precision": 0.5,
+          "recall": 0.5,
+          "f1": 0.5,
+          "support": 2
+        },
+        {
+          "id": "rapport",
+          "truePositive": 3,
+          "falsePositive": 1,
+          "falseNegative": 0,
+          "precision": 0.75,
+          "recall": 1,
+          "f1": 0.8571428571428571,
+          "support": 3
+        },
+        {
+          "id": "sadness",
+          "truePositive": 1,
+          "falsePositive": 4,
+          "falseNegative": 0,
+          "precision": 0.2,
+          "recall": 1,
+          "f1": 0.33333333333333337,
+          "support": 1
+        },
+        {
+          "id": "shame",
+          "truePositive": 2,
+          "falsePositive": 0,
+          "falseNegative": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "support": 2
+        },
+        {
+          "id": "stress",
+          "truePositive": 3,
+          "falsePositive": 4,
+          "falseNegative": 0,
+          "precision": 0.42857142857142855,
+          "recall": 1,
+          "f1": 0.6,
+          "support": 3
+        },
+        {
+          "id": "tiredness",
+          "truePositive": 1,
+          "falsePositive": 6,
+          "falseNegative": 0,
+          "precision": 0.14285714285714285,
+          "recall": 1,
+          "f1": 0.25,
+          "support": 1
+        },
+        {
+          "id": "unclear",
+          "truePositive": 0,
+          "falsePositive": 6,
+          "falseNegative": 1,
+          "precision": 0,
+          "recall": 0,
+          "f1": null,
+          "support": 1
+        }
+      ],
+      "latency": {
+        "median": 4976.8568,
+        "p90": 5576.2037,
+        "slowest": {
+          "ms": 6107.3355,
+          "id": "rambling.de.clean"
+        }
+      },
+      "memory": {
+        "peakBytes": 2592247808,
+        "how": "sampled from the child process every 100 ms — a floor, not a true peak (see runners.mjs)"
+      },
+      "rows": [
+        {
+          "case": "lucie.de",
+          "pair": "lucie",
+          "language": "de",
+          "condition": "clean",
+          "speaker": "sp01",
+          "clip": "src\\journal\\inference\\golden\\audio\\sp01\\lucie.de.clean.wav",
+          "ok": false,
+          "failures": [
+            "has facts"
+          ],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "pleasure",
+              "rapport",
+              "stress"
+            ],
+            "actual": [
+              "rapport",
+              "stress",
+              "pleasure"
+            ]
+          },
+          "wer": 0.19047619047619047,
+          "wer_ceiling": 0.15,
+          "over_ceiling": true,
+          "ms": 4865.1591,
+          "peak_bytes": 2556837888,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": null
+        },
+        {
+          "case": "negation.de",
+          "pair": "negation",
+          "language": "de",
+          "condition": "clean",
+          "speaker": "sp01",
+          "clip": "src\\journal\\inference\\golden\\audio\\sp01\\negation.de.clean.wav",
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "tiredness"
+            ],
+            "actual": [
+              "tiredness",
+              "neutral"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": 0.15,
+          "over_ceiling": false,
+          "ms": 4402.467,
+          "peak_bytes": 2550837248,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": null
+        },
+        {
+          "case": "two-people.de",
+          "pair": "two-people",
+          "language": "de",
+          "condition": "clean",
+          "speaker": "sp01",
+          "clip": "src\\journal\\inference\\golden\\audio\\sp01\\two-people.de.clean.wav",
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "rapport",
+              "pleasure"
+            ],
+            "actual": [
+              "rapport",
+              "pleasure",
+              "calm",
+              "unclear",
+              "neutral"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": 0.15,
+          "over_ceiling": false,
+          "ms": 5077.8947,
+          "peak_bytes": 2589126656,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": null
+        },
+        {
+          "case": "known-trigger.de",
+          "pair": "known-trigger",
+          "language": "de",
+          "condition": "clean",
+          "speaker": "sp01",
+          "clip": "src\\journal\\inference\\golden\\audio\\sp01\\known-trigger.de.clean.wav",
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "stress"
+            ],
+            "actual": [
+              "stress",
+              "tiredness"
+            ]
+          },
+          "wer": 0.1111111111111111,
+          "wer_ceiling": 0.15,
+          "over_ceiling": false,
+          "ms": 4484.3194,
+          "peak_bytes": 2546044928,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": null
+        },
+        {
+          "case": "new-trigger.de",
+          "pair": "new-trigger",
+          "language": "de",
+          "condition": "clean",
+          "speaker": "sp01",
+          "clip": "src\\journal\\inference\\golden\\audio\\sp01\\new-trigger.de.clean.wav",
+          "ok": false,
+          "failures": [
+            "no new trigger"
+          ],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "anxiety"
+            ],
+            "actual": [
+              "anxiety",
+              "stress"
+            ]
+          },
+          "wer": 0.26666666666666666,
+          "wer_ceiling": 0.15,
+          "over_ceiling": true,
+          "ms": 4976.8568,
+          "peak_bytes": 2558763008,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": null
+        },
+        {
+          "case": "no-feeling.de",
+          "pair": "no-feeling",
+          "language": "de",
+          "condition": "clean",
+          "speaker": "sp01",
+          "clip": "src\\journal\\inference\\golden\\audio\\sp01\\no-feeling.de.clean.wav",
+          "ok": false,
+          "failures": [
+            "ambiguity none",
+            "has neutral",
+            "people Port"
+          ],
+          "ambiguity": {
+            "expected": "feeling",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [],
+            "actual": [
+              "neutral"
+            ]
+          },
+          "wer": 0.36363636363636365,
+          "wer_ceiling": 0.15,
+          "over_ceiling": true,
+          "ms": 4942.6501,
+          "peak_bytes": 2562191360,
+          "schema_valid": true,
+          "dropped_by_filter": 4,
+          "drops": [
+            {
+              "path": "feelings[1]",
+              "reason": "duplicate"
+            },
+            {
+              "path": "feelings[2]",
+              "reason": "duplicate"
+            },
+            {
+              "path": "feelings[3]",
+              "reason": "duplicate"
+            },
+            {
+              "path": "feelings[4]",
+              "reason": "duplicate"
+            }
+          ],
+          "runner_note": null
+        },
+        {
+          "case": "unclear.de",
+          "pair": "unclear",
+          "language": "de",
+          "condition": "clean",
+          "speaker": "sp01",
+          "clip": "src\\journal\\inference\\golden\\audio\\sp01\\unclear.de.clean.wav",
+          "ok": false,
+          "failures": [
+            "ambiguity feeling",
+            "missing unclear"
+          ],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "feeling"
+          },
+          "feelings": {
+            "expected": [
+              "unclear"
+            ],
+            "actual": []
+          },
+          "wer": 0.7,
+          "wer_ceiling": 0.15,
+          "over_ceiling": true,
+          "ms": 5397.8543,
+          "peak_bytes": 2591215616,
+          "schema_valid": true,
+          "dropped_by_filter": 5,
+          "drops": [
+            {
+              "path": "feelings[0]",
+              "reason": "inconsistent"
+            },
+            {
+              "path": "feelings[1]",
+              "reason": "inconsistent"
+            },
+            {
+              "path": "feelings[2]",
+              "reason": "inconsistent"
+            },
+            {
+              "path": "feelings[3]",
+              "reason": "inconsistent"
+            },
+            {
+              "path": "feelings[4]",
+              "reason": "inconsistent"
+            }
+          ],
+          "runner_note": null
+        },
+        {
+          "case": "target.de",
+          "pair": "target",
+          "language": "de",
+          "condition": "clean",
+          "speaker": "sp01",
+          "clip": "src\\journal\\inference\\golden\\audio\\sp01\\target.de.clean.wav",
+          "ok": false,
+          "failures": [
+            "ambiguity none"
+          ],
+          "ambiguity": {
+            "expected": "target",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "anxiety"
+            ],
+            "actual": [
+              "anxiety",
+              "stress",
+              "unclear"
+            ]
+          },
+          "wer": 0.09090909090909091,
+          "wer_ceiling": 0.15,
+          "over_ceiling": false,
+          "ms": 5115.3811,
+          "peak_bytes": 2566033408,
+          "schema_valid": true,
+          "dropped_by_filter": 2,
+          "drops": [
+            {
+              "path": "feelings[3]",
+              "reason": "duplicate"
+            },
+            {
+              "path": "feelings[4]",
+              "reason": "duplicate"
+            }
+          ],
+          "runner_note": null
+        },
+        {
+          "case": "conflict.de",
+          "pair": "conflict",
+          "language": "de",
+          "condition": "clean",
+          "speaker": "sp01",
+          "clip": "src\\journal\\inference\\golden\\audio\\sp01\\conflict.de.clean.wav",
+          "ok": false,
+          "failures": [
+            "ambiguity target",
+            "missing irritation"
+          ],
+          "ambiguity": {
+            "expected": "conflict",
+            "actual": "target"
+          },
+          "feelings": {
+            "expected": [
+              "irritation",
+              "sadness"
+            ],
+            "actual": [
+              "anger",
+              "sadness",
+              "unclear",
+              "loneliness",
+              "neutral"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": 0.15,
+          "over_ceiling": false,
+          "ms": 5469.4524,
+          "peak_bytes": 2587549696,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": null
+        },
+        {
+          "case": "fact.de",
+          "pair": "fact",
+          "language": "de",
+          "condition": "clean",
+          "speaker": "sp01",
+          "clip": "src\\journal\\inference\\golden\\audio\\sp01\\fact.de.clean.wav",
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "rapport"
+            ],
+            "actual": [
+              "rapport",
+              "curiosity",
+              "neutral",
+              "unclear",
+              "loneliness"
+            ]
+          },
+          "wer": 0.9473684210526315,
+          "wer_ceiling": 0.15,
+          "over_ceiling": true,
+          "ms": 5426.7524,
+          "peak_bytes": 2589114368,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": null
+        },
+        {
+          "case": "tag-conflict.de",
+          "pair": "tag-conflict",
+          "language": "de",
+          "condition": "clean",
+          "speaker": "sp01",
+          "clip": "src\\journal\\inference\\golden\\audio\\sp01\\tag-conflict.de.clean.wav",
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "anger"
+            ],
+            "actual": [
+              "anger",
+              "irritation"
+            ]
+          },
+          "wer": 0.9230769230769231,
+          "wer_ceiling": 0.15,
+          "over_ceiling": true,
+          "ms": 4843.0388,
+          "peak_bytes": 2556104704,
+          "schema_valid": true,
+          "dropped_by_filter": 1,
+          "drops": [
+            {
+              "path": "feelings[2]",
+              "reason": "duplicate"
+            }
+          ],
+          "runner_note": null
+        },
+        {
+          "case": "neutral.de",
+          "pair": "neutral",
+          "language": "de",
+          "condition": "clean",
+          "speaker": "sp01",
+          "clip": "src\\journal\\inference\\golden\\audio\\sp01\\neutral.de.clean.wav",
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "neutral"
+            ],
+            "actual": [
+              "calm",
+              "neutral",
+              "tiredness"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": 0.15,
+          "over_ceiling": false,
+          "ms": 5186.7249,
+          "peak_bytes": 2565419008,
+          "schema_valid": true,
+          "dropped_by_filter": 2,
+          "drops": [
+            {
+              "path": "feelings[3]",
+              "reason": "duplicate"
+            },
+            {
+              "path": "feelings[4]",
+              "reason": "duplicate"
+            }
+          ],
+          "runner_note": null
+        },
+        {
+          "case": "gratitude.de",
+          "pair": "gratitude",
+          "language": "de",
+          "condition": "clean",
+          "speaker": "sp01",
+          "clip": "src\\journal\\inference\\golden\\audio\\sp01\\gratitude.de.clean.wav",
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "gratitude"
+            ],
+            "actual": [
+              "gratitude",
+              "pleasure"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": 0.15,
+          "over_ceiling": false,
+          "ms": 5132.7889,
+          "peak_bytes": 2564710400,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": null
+        },
+        {
+          "case": "intensity-low.de",
+          "pair": "intensity-low",
+          "language": "de",
+          "condition": "clean",
+          "speaker": "sp01",
+          "clip": "src\\journal\\inference\\golden\\audio\\sp01\\intensity-low.de.clean.wav",
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "boredom"
+            ],
+            "actual": [
+              "boredom",
+              "neutral"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": 0.15,
+          "over_ceiling": false,
+          "ms": 4749.1971,
+          "peak_bytes": 2560851968,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": null
+        },
+        {
+          "case": "intensity-high.de",
+          "pair": "intensity-high",
+          "language": "de",
+          "condition": "clean",
+          "speaker": "sp01",
+          "clip": "src\\journal\\inference\\golden\\audio\\sp01\\intensity-high.de.clean.wav",
+          "ok": false,
+          "failures": [
+            "missing label der Umzug"
+          ],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "overwhelm"
+            ],
+            "actual": [
+              "overwhelm",
+              "stress",
+              "anxiety"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": 0.15,
+          "over_ceiling": false,
+          "ms": 5301.5294,
+          "peak_bytes": 2574155776,
+          "schema_valid": true,
+          "dropped_by_filter": 1,
+          "drops": [
+            {
+              "path": "feelings[2]",
+              "reason": "duplicate"
+            }
+          ],
+          "runner_note": null
+        },
+        {
+          "case": "longing.de",
+          "pair": "longing",
+          "language": "de",
+          "condition": "clean",
+          "speaker": "sp01",
+          "clip": "src\\journal\\inference\\golden\\audio\\sp01\\longing.de.clean.wav",
+          "ok": false,
+          "failures": [
+            "has sadness"
+          ],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "longing"
+            ],
+            "actual": [
+              "longing",
+              "loneliness",
+              "sadness"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": 0.15,
+          "over_ceiling": false,
+          "ms": 4959.1831,
+          "peak_bytes": 2587570176,
+          "schema_valid": true,
+          "dropped_by_filter": 1,
+          "drops": [
+            {
+              "path": "feelings[3]",
+              "reason": "duplicate"
+            }
+          ],
+          "runner_note": null
+        },
+        {
+          "case": "new-person.de",
+          "pair": "new-person",
+          "language": "de",
+          "condition": "clean",
+          "speaker": "sp01",
+          "clip": "src\\journal\\inference\\golden\\audio\\sp01\\new-person.de.clean.wav",
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "pleasure"
+            ],
+            "actual": [
+              "pleasure",
+              "rapport"
+            ]
+          },
+          "wer": 0.46153846153846156,
+          "wer_ceiling": 0.15,
+          "over_ceiling": true,
+          "ms": 4757.5116,
+          "peak_bytes": 2585112576,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": null
+        },
+        {
+          "case": "forbidden-in-transcript.de",
+          "pair": "forbidden-in-transcript",
+          "language": "de",
+          "condition": "clean",
+          "speaker": "sp01",
+          "clip": "src\\journal\\inference\\golden\\audio\\sp01\\forbidden-in-transcript.de.clean.wav",
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "shame"
+            ],
+            "actual": [
+              "shame",
+              "sadness",
+              "irritation",
+              "stress",
+              "unclear"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": 0.15,
+          "over_ceiling": false,
+          "ms": 4824.2079,
+          "peak_bytes": 2592247808,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": null
+        },
+        {
+          "case": "six-feelings.de",
+          "pair": "six-feelings",
+          "language": "de",
+          "condition": "clean",
+          "speaker": "sp01",
+          "clip": "src\\journal\\inference\\golden\\audio\\sp01\\six-feelings.de.clean.wav",
+          "ok": false,
+          "failures": [
+            "missing pride",
+            "no new trigger"
+          ],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "excitement",
+              "pride",
+              "gratitude",
+              "calm",
+              "curiosity"
+            ],
+            "actual": [
+              "gratitude",
+              "curiosity",
+              "tiredness",
+              "calm",
+              "excitement"
+            ]
+          },
+          "wer": 0.16,
+          "wer_ceiling": 0.15,
+          "over_ceiling": true,
+          "ms": 4943.1454,
+          "peak_bytes": 2549071872,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": null
+        },
+        {
+          "case": "said-calmly.de",
+          "pair": "said-calmly",
+          "language": "de",
+          "condition": "clean",
+          "speaker": "sp01",
+          "clip": "src\\journal\\inference\\golden\\audio\\sp01\\said-calmly.de.clean.wav",
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "anger"
+            ],
+            "actual": [
+              "anger",
+              "irritation"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": 0.15,
+          "over_ceiling": false,
+          "ms": 5000.2514,
+          "peak_bytes": 2555834368,
+          "schema_valid": true,
+          "dropped_by_filter": 1,
+          "drops": [
+            {
+              "path": "feelings[2]",
+              "reason": "duplicate"
+            }
+          ],
+          "runner_note": null
+        },
+        {
+          "case": "self-evaluation.de",
+          "pair": "self-evaluation",
+          "language": "de",
+          "condition": "clean",
+          "speaker": "sp01",
+          "clip": "src\\journal\\inference\\golden\\audio\\sp01\\self-evaluation.de.clean.wav",
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "shame"
+            ],
+            "actual": [
+              "tiredness",
+              "sadness",
+              "shame",
+              "boredom",
+              "loneliness"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": 0.15,
+          "over_ceiling": false,
+          "ms": 5308.29,
+          "peak_bytes": 2558390272,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": null
+        },
+        {
+          "case": "mark-me.de",
+          "pair": "mark-me",
+          "language": "de",
+          "condition": "clean",
+          "speaker": "sp01",
+          "clip": "src\\journal\\inference\\golden\\audio\\sp01\\mark-me.de.clean.wav",
+          "ok": false,
+          "failures": [
+            "ambiguity none"
+          ],
+          "ambiguity": {
+            "expected": "feeling",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [],
+            "actual": [
+              "tiredness",
+              "longing"
+            ]
+          },
+          "wer": 6,
+          "wer_ceiling": 0.15,
+          "over_ceiling": true,
+          "ms": 4848.0419,
+          "peak_bytes": 2548277248,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": null
+        },
+        {
+          "case": "ignore-list.de",
+          "pair": "ignore-list",
+          "language": "de",
+          "condition": "clean",
+          "speaker": "sp01",
+          "clip": "src\\journal\\inference\\golden\\audio\\sp01\\ignore-list.de.clean.wav",
+          "ok": false,
+          "failures": [
+            "ambiguity none"
+          ],
+          "ambiguity": {
+            "expected": "feeling",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [],
+            "actual": [
+              "neutral"
+            ]
+          },
+          "wer": 0.3,
+          "wer_ceiling": 0.15,
+          "over_ceiling": true,
+          "ms": 4863.1379,
+          "peak_bytes": 2567417856,
+          "schema_valid": true,
+          "dropped_by_filter": 1,
+          "drops": [
+            {
+              "path": "feelings[1]",
+              "reason": "duplicate"
+            }
+          ],
+          "runner_note": null
+        },
+        {
+          "case": "fact-no-feeling.de",
+          "pair": "fact-no-feeling",
+          "language": "de",
+          "condition": "clean",
+          "speaker": "sp01",
+          "clip": "src\\journal\\inference\\golden\\audio\\sp01\\fact-no-feeling.de.clean.wav",
+          "ok": false,
+          "failures": [
+            "ambiguity none"
+          ],
+          "ambiguity": {
+            "expected": "feeling",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [],
+            "actual": [
+              "joy",
+              "excitement",
+              "pride",
+              "pleasure",
+              "curiosity"
+            ]
+          },
+          "wer": 0.14285714285714285,
+          "wer_ceiling": 0.15,
+          "over_ceiling": false,
+          "ms": 5681.0863,
+          "peak_bytes": 2559348736,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": null
+        },
+        {
+          "case": "two-people-two-feelings.de",
+          "pair": "two-people-two-feelings",
+          "language": "de",
+          "condition": "clean",
+          "speaker": "sp01",
+          "clip": "src\\journal\\inference\\golden\\audio\\sp01\\two-people-two-feelings.de.clean.wav",
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "pride",
+              "irritation"
+            ],
+            "actual": [
+              "pride",
+              "irritation",
+              "anger",
+              "neutral",
+              "unclear"
+            ]
+          },
+          "wer": 0.05263157894736842,
+          "wer_ceiling": 0.15,
+          "over_ceiling": false,
+          "ms": 5576.2037,
+          "peak_bytes": 2583728128,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": null
+        },
+        {
+          "case": "trigger-and-person.de",
+          "pair": "trigger-and-person",
+          "language": "de",
+          "condition": "clean",
+          "speaker": "sp01",
+          "clip": "src\\journal\\inference\\golden\\audio\\sp01\\trigger-and-person.de.clean.wav",
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "stress"
+            ],
+            "actual": [
+              "stress",
+              "anxiety"
+            ]
+          },
+          "wer": 0.2,
+          "wer_ceiling": 0.15,
+          "over_ceiling": true,
+          "ms": 5007.0236,
+          "peak_bytes": 2556215296,
+          "schema_valid": true,
+          "dropped_by_filter": 3,
+          "drops": [
+            {
+              "path": "feelings[1]",
+              "reason": "duplicate"
+            },
+            {
+              "path": "feelings[2]",
+              "reason": "duplicate"
+            },
+            {
+              "path": "feelings[4]",
+              "reason": "duplicate"
+            }
+          ],
+          "runner_note": null
+        },
+        {
+          "case": "trip.de",
+          "pair": "trip",
+          "language": "de",
+          "condition": "clean",
+          "speaker": "sp01",
+          "clip": "src\\journal\\inference\\golden\\audio\\sp01\\trip.de.clean.wav",
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "joy"
+            ],
+            "actual": [
+              "joy",
+              "excitement",
+              "pleasure",
+              "longing"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": 0.15,
+          "over_ceiling": false,
+          "ms": 4821.5199,
+          "peak_bytes": 2581102592,
+          "schema_valid": true,
+          "dropped_by_filter": 0,
+          "drops": [],
+          "runner_note": null
+        },
+        {
+          "case": "alone.de",
+          "pair": "alone",
+          "language": "de",
+          "condition": "clean",
+          "speaker": "sp01",
+          "clip": "src\\journal\\inference\\golden\\audio\\sp01\\alone.de.clean.wav",
+          "ok": false,
+          "failures": [
+            "people me"
+          ],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "loneliness"
+            ],
+            "actual": [
+              "loneliness",
+              "sadness"
+            ]
+          },
+          "wer": 0,
+          "wer_ceiling": 0.15,
+          "over_ceiling": false,
+          "ms": 4848.0893,
+          "peak_bytes": 2586910720,
+          "schema_valid": true,
+          "dropped_by_filter": 1,
+          "drops": [
+            {
+              "path": "feelings[2]",
+              "reason": "duplicate"
+            }
+          ],
+          "runner_note": null
+        },
+        {
+          "case": "rambling.de",
+          "pair": "rambling",
+          "language": "de",
+          "condition": "clean",
+          "speaker": "sp01",
+          "clip": "src\\journal\\inference\\golden\\audio\\sp01\\rambling.de.clean.wav",
+          "ok": true,
+          "failures": [],
+          "ambiguity": {
+            "expected": "none",
+            "actual": "none"
+          },
+          "feelings": {
+            "expected": [
+              "boredom"
+            ],
+            "actual": [
+              "boredom",
+              "neutral",
+              "tiredness",
+              "loneliness"
+            ]
+          },
+          "wer": 0.12048192771084337,
+          "wer_ceiling": 0.3,
+          "over_ceiling": false,
+          "ms": 6107.3355,
+          "peak_bytes": 2591473664,
+          "schema_valid": true,
+          "dropped_by_filter": 2,
+          "drops": [
+            {
+              "path": "feelings[4]",
+              "reason": "duplicate"
+            },
+            {
+              "path": "facts[0]",
+              "reason": "orphan_fact"
+            }
+          ],
+          "runner_note": null
+        }
+      ]
+    }
+  ]
+}

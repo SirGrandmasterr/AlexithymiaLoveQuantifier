@@ -131,8 +131,8 @@ graph TD
 | [`mobile/journalPlugin.fake.js`](../src/mobile/journalPlugin.fake.js) | 150 | The fake plugin with the real one's surface, recording every call in order. **Tests only.** |
 | [`context/DiscretionContext.jsx`](../src/context/DiscretionContext.jsx) | 96 | Discretion mode: initials, blur class, `Ctrl+.`, tab title. |
 | [`context/SubjectsContext.jsx`](../src/context/SubjectsContext.jsx) | 225 | Shared subject **and relationship** lists, the derived stacks, load state, and six mutations. |
-| [`context/JournalContext.jsx`](../src/context/JournalContext.jsx) | 314 | The journal's loaded day range, its entries and day counts, the trigger vocabulary, `createEntry`/`deleteEntry`/`removePersonFromJournal`, and F1's outbox seam. Mounted **inside** `SubjectsProvider` and reads relationships from it. |
-| [`Journal.jsx`](../src/components/Journal.jsx) | 689 | `/journal` and `/journal/:day` — the month strip, the day header, the day's check-ins, and the ritual as its footer. Also the journal's shared shell and chips, exported for the two vocabulary views. |
+| [`context/JournalContext.jsx`](../src/context/JournalContext.jsx) | 580 | The journal's loaded day range, its entries and day counts, the trigger vocabulary, `createEntry`/`deleteEntry`/`removePersonFromJournal`, and **the outbox** (§9.5) — the queue, its three flush signals, and the `client_id` idempotency that makes a blind retry safe. Mounted **inside** `SubjectsProvider` and reads relationships from it. |
+| [`Journal.jsx`](../src/components/Journal.jsx) | 782 | `/journal` and `/journal/:day` — the month strip, the day header, the day's check-ins, the ritual as its footer, pull-to-refresh, and `PendingMark` on a queued entry. Also the journal's shared shell and chips, exported for the two vocabulary views. |
 | [`CheckinComposer.jsx`](../src/components/CheckinComposer.jsx) | 646 | The check-in sheet (§2e): the two ways in, the picked-feeling cards, the tags and the note, and — for a composer the microphone opened — `VoiceCapture` and, with *Show suggestions* on, the proposal card as a second body. Saves through `createEntry` on both paths. |
 | [`CheckinControls.jsx`](../src/components/CheckinControls.jsx) | 451 | What the composer and the card share (§2ea): `chipClass`, the strength dots, `FeelingGrid`, the three pickers, `aboutText`, `buildCheckinRequest`. Moved out of the composer verbatim in D2 so the graph stays a tree. No opinion about proposals. |
 | [`ProposalCard.jsx`](../src/components/ProposalCard.jsx) | 1061 | **The proposal card** (§2ea): §4.4's anatomy, dashed until tapped; `resolvePerson`, `resolveTriggerLabel`, `cardStateFromProposal`, `mergeProposal`, `confirmedPicked` and `buildProvenance` exported and pure. The save body is the card's confirmed state; the proposal rides beside it as provenance. No facts, by S0's decision. |
@@ -424,7 +424,9 @@ itself, which is invariant 17 applied to the newer half of the app.
 | `markedDays` | The `Set` of days with something on them, from `days` **and** from entries written since the last fetch. |
 | `triggers` / `resolveTrigger` | The live trigger vocabulary, and the walk from an id a check-in stored to the label it means now. |
 | `personName(mention)` | The relationship's current name, falling back to the label the entry quoted. |
-| `outbox` | Empty, and F1's. It is in the value now so a screen can be written against a shape that will not change under it. |
+| `outbox` | The queue of entries saved with no connectivity (§9.5), oldest first. Each item is `{ client_id, request, queued_at, error }`, where `request` is the §7.2 body posted verbatim. Native only; `[]` in a browser. |
+| `pendingEntries` / `pendingForDay(day)` | The same queue in entry shape, with `pending: true` and `outbox_error`, for the day view to draw with the *not yet synced* mark. Kept **beside** `entries`, never merged into it. |
+| `flushOutbox()` | Post everything queued. Called on every fetch that comes back and on `resume`; exposed so a screen can retry deliberately. |
 | `loading` / `loadError` / `dismissLoadError` | The screen renders the error in its own slot and keeps drawing (Recipe 5). |
 | `triggerEntries` | The raw `kind: "trigger"` rows. The Triggers view needs them and `triggers` is not enough: a correction carries `supersedes_id`, which is the **row** id and only exists here. |
 | `loadRange` / `loadAll` / `refresh` | Move the window, widen it to the whole history, or fetch it again. |
@@ -437,7 +439,7 @@ Decisions worth knowing before changing it:
   either becomes one `loadError`.
 - **`createEntry` mints the `client_id`** with `clientId()` when the caller did not bring one.
   That is what makes every writer in the app idempotent by construction — the same entry
-  posted twice is one row — and it is the property F1's outbox needs to retry safely.
+  posted twice is one row — and it is the property the outbox below retries on.
 - **`createEntry` refetches when, and only when, the request minted a trigger.** A new
   trigger is created as its own row inside the entry's transaction (§7.2) and the response
   echoes only the entry that named it, so the row is in no list this provider holds. Without
@@ -452,12 +454,51 @@ Decisions worth knowing before changing it:
 - **`removePersonFromJournal` refetches rather than splicing.** The change is spread across
   entries of three kinds and a mention column this client does not hold; the range is the one
   the screen already asked for, so asking for it again is the honest answer.
-- **There is no offline cache here.** `SubjectsContext` has one because a read-through cache
-  is safe; the journal's answer to no connectivity is the outbox in §9.5 of the design, and
-  half of one now would be a promise the code cannot keep.
-- **A day is marked from two sources.** `days` is the cheap grouped count the strip is built
-  on; the entries in state carry a check-in saved a moment ago, so its day marks itself
-  without waiting for a refetch.
+- **There is no offline cache here, and there is deliberately none.** `SubjectsContext` has one
+  because a read-through cache is safe. The journal's answer to no connectivity is the outbox,
+  and that is an answer about *writes*: a day that cannot be fetched still says so.
+- **A day is marked from three sources.** `days` is the cheap grouped count the strip is built
+  on; the entries in state carry a check-in saved a moment ago; and a queued one marks its day
+  too, because it is the user's record of that day whether or not a server has heard about it.
+
+### The outbox (§9.5), in this provider
+
+An entry saved with no connectivity is kept, marked, and posted later — **exactly once**,
+however many times the post is retried. The safety argument is one sentence: the entry carries
+a client-minted `client_id` and `POST /api/journal/entries` answers a repeat with **`200` and
+the row already stored** rather than a second `201` (§7.2), so a blind retry cannot duplicate.
+Take that property away and the feature is unsafe.
+
+- **`createEntry` queues on exactly three conditions, all of them** (`isQueueable`): the error
+  carries **no response** (the request never reached anything that could have stored it), the
+  body has **no `supersedes_id`** (it is a new record, not an edit of a stored row), and the app
+  is **native**. Anything else rejects exactly as it did before, and the caller shows its own
+  message. On the queueing branch it resolves with a `pending: true` row carrying the caller's
+  own `day`, so the composer closes and the screen still follows the save to its day.
+- **Enqueue is keyed by `client_id`**, which is §9.5's *"a correction of an unsynced entry
+  replaces it in the outbox"* — and it makes a double-tapped save idempotent for free.
+- **A new trigger travels in the same request**, not in one posted before it. §7.2 allows
+  either; one request is atomic on the server whether it is posted now or a week later, and two
+  would leave this queue holding sequencing state — which is the sync engine this deliberately
+  is not.
+- **A new person travels as `name`, never as an id.** Resolution happens server-side through
+  `FindOrCreateRelationship` when the post lands, so there is no local id to conflict.
+- **Three flush signals**: every fetch that comes back (pull-to-refresh reaches it through
+  `refresh`, which is exactly what `usePullToRefresh` calls on the day view), Capacitor's
+  `resume`, and a direct `flushOutbox()`. They overlap on purpose and a `flushing` ref keeps
+  one at a time — the guard is about the wasted round trip, not about correctness.
+- **`200` and `201` are the same event.** Only a rejection keeps an item. **No response** means
+  there is still no connection, so the flush stops rather than posting a queue's worth of
+  doomed requests; **a response** means the server read the body and refused it, so the item
+  keeps the server's message, stops being retried, and stays on the screen saying so.
+- **Cleared on the `enabled === false` branch** — a sign-out and a dead session both — from
+  memory and from the device, exactly as `SubjectsContext` clears its cache there.
+- **The pending rows are kept out of `entries`.** Half the app reads that list through a row
+  id: the day graph opens a check-in by `ID`, the delete dialog names one, the vocabulary views
+  count them. A pending entry has no id, so merging it would put an id-shaped hole into every
+  one of those at once. The day view asks for both lists and draws the pending ones with their
+  mark; nothing else has to know. The day graph therefore draws a queued check-in only once it
+  lands.
 
 ---
 
