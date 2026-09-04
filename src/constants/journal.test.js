@@ -38,6 +38,13 @@ import {
     rfc3339Local,
     personCandidates,
     triggerCandidates,
+    labelSimilarity,
+    SIMILAR_FLOOR,
+    FEELING_FAMILIES,
+    TRIGGER_ROLES,
+    MAX_QUOTE_LENGTH,
+    INSIGHTS_PATH,
+    feelingCoordinates,
     clientId,
     fillCopy,
     countCopy,
@@ -190,7 +197,7 @@ describe('id parity with backend/internal/domain/journal.go', () => {
     it('reads the Go file it is asserting against', () => {
         // If the file moves or the declarations are rewritten, this test must fail loudly
         // rather than silently compare two empty lists.
-        expect(goList('FeelingIDs')).toHaveLength(21);
+        expect(goList('FeelingIDs')).toHaveLength(30);
         expect(goList('RitualQuestionIDs')).toHaveLength(13);
         expect(goList('JournalKinds')).toHaveLength(4);
     });
@@ -950,8 +957,20 @@ describe('personCandidates', () => {
         expect(personCandidates('Jose', [person(1, 'José')])[0].name).toBe('José');
     });
 
-    it('does not match a partial word', () => {
-        expect(personCandidates('Luc', [person(1, 'Lucie')])).toEqual([]);
+    it('offers a partial word as a look-alike, never as a prefix and never as a match', () => {
+        // The EmotionGuesser's review band: *Luc* is put in front of the user as a question.
+        const candidates = personCandidates('Luc', [person(1, 'Lucie')]);
+        expect(candidates).toHaveLength(1);
+        expect(candidates[0].match).toBe('similar');
+        expect(candidates[0].exact).toBe(false);
+        expect(candidates[0].score).toBeGreaterThanOrEqual(SIMILAR_FLOOR);
+        // Two letters say nothing worth asking about.
+        expect(personCandidates('Lu', [person(1, 'Lucie')])).toEqual([]);
+    });
+
+    it('offers a spelling variant — Lucy for Lucie — as a look-alike and never links it', () => {
+        const candidates = personCandidates('Lucy', [person(1, 'Lucie'), person(2, 'Alex')]);
+        expect(candidates.map(entry => [entry.name, entry.match, entry.exact])).toEqual([['Lucie', 'similar', false]]);
     });
 
     it('never offers more than three', () => {
@@ -997,9 +1016,32 @@ describe('triggerCandidates', () => {
         expect(triggerCandidates('work', [trigger('id-arbeit', 'Arbeit')])).toEqual([]);
     });
 
-    it('has no prefix rule — the merge is the user\'s to make, not a substring\'s', () => {
-        expect(triggerCandidates('work', [trigger('id-workshop', 'workshop')])).toEqual([]);
-        expect(triggerCandidates('workshop', [trigger('id-work', 'work')])).toEqual([]);
+    it('has no prefix rule — a near miss is offered as a look-alike, and the merge stays the user\'s to make', () => {
+        const forWork = triggerCandidates('work', [trigger('id-workshop', 'workshop')]);
+        const forWorkshop = triggerCandidates('workshop', [trigger('id-work', 'work')]);
+        [forWork, forWorkshop].forEach(candidates => {
+            expect(candidates).toHaveLength(1);
+            expect(candidates[0].match).toBe('similar');
+            expect(candidates[0].exact).toBe(false);
+            expect(candidates[0].score).toBeGreaterThanOrEqual(SIMILAR_FLOOR);
+            expect(candidates[0].score).toBeLessThan(1);
+        });
+    });
+
+    it('offers the EmotionGuesser\'s cases — meetings for meeting, my boss for meeting boss — and not Arbeit for work', () => {
+        expect(triggerCandidates('meetings', [trigger('id-a', 'meeting')])[0]).toMatchObject({ label: 'meeting', match: 'similar' });
+        expect(triggerCandidates('my boss', [trigger('id-a', 'meeting boss')])[0]).toMatchObject({ label: 'meeting boss', match: 'similar' });
+        expect(triggerCandidates('the commute', [trigger('id-a', 'commuting')])[0]).toMatchObject({ label: 'commuting', match: 'similar' });
+        expect(triggerCandidates('work', [trigger('id-arbeit', 'Arbeit')])).toEqual([]);
+        expect(triggerCandidates('dinner', [trigger('id-a', 'meeting')])).toEqual([]);
+    });
+
+    it('puts an insensitive match before a look-alike, and never offers more than three', () => {
+        const rows = [trigger('id-1', 'Meeting'), trigger('id-2', 'meetings'), trigger('id-3', 'meeting room'), trigger('id-4', 'the meeting')];
+        const candidates = triggerCandidates('meeting', rows);
+        expect(candidates).toHaveLength(MAX_CANDIDATES);
+        expect(candidates[0]).toMatchObject({ clientId: 'id-1', match: 'insensitive' });
+        expect(candidates.slice(1).every(entry => entry.match === 'similar')).toBe(true);
     });
 
     it('marks an exact match exact and returns it alone', () => {
@@ -1380,5 +1422,114 @@ describe('the two corrections', () => {
         expect(resolved.merged).toBe(true);
         // And the merged-away row is not offered as vocabulary any more.
         expect(activeTriggers(vocabulary).map(entry => entry.client_id)).toEqual(['id-arbeit']);
+    });
+});
+
+/* The EmotionGuesser integration */
+
+describe('FEELINGS, on three axes and in families', () => {
+    it('places every entry on the third axis too, in range, and in a family or in none', () => {
+        FEELINGS.forEach(feeling => {
+            expect(feeling.dominance).toBeGreaterThanOrEqual(-1);
+            expect(feeling.dominance).toBeLessThanOrEqual(1);
+            expect(feeling.family === null || FEELING_FAMILIES.includes(feeling.family)).toBe(true);
+        });
+        expect(FEELING_FAMILIES).toEqual(['joy', 'trust', 'anticipation', 'fear', 'sadness', 'disgust', 'anger', 'quiet']);
+    });
+
+    it('keeps "can’t tell" out of every family — it is not a share of anything', () => {
+        expect(FEELINGS.find(feeling => feeling.id === 'unclear').family).toBeNull();
+    });
+
+    it('appended the nine Geneva-wheel entries after the original twenty-one, and retired none', () => {
+        expect(FEELINGS).toHaveLength(30);
+        expect(FEELINGS.slice(21).map(feeling => feeling.id)).toEqual([
+            'amusement', 'affection', 'admiration', 'relief', 'compassion', 'regret', 'disappointment', 'disgust', 'contempt'
+        ]);
+        expect(FEELINGS.some(feeling => feeling.retired)).toBe(false);
+    });
+
+    it('answers coordinates for a known id and null for an unknown one', () => {
+        expect(feelingCoordinates('pride')).toEqual({ valence: 0.6, energy: 0.6, dominance: 0.8 });
+        expect(feelingCoordinates('bliss')).toBeNull();
+    });
+});
+
+describe('the constants the integration added', () => {
+    it('names the two trigger halves, the quote cap and the Insights route', () => {
+        expect(TRIGGER_ROLES).toEqual(['entity', 'interaction']);
+        expect(MAX_QUOTE_LENGTH).toBe(300);
+        expect(INSIGHTS_PATH).toBe('/journal/insights');
+    });
+
+    it('has the Insights copy under the walk, with the level and axis words the screen reads by key', () => {
+        const found = walkStrings(JOURNAL_COPY).map(entry => entry.path);
+        ['insights.caveat', 'insights.level.pair', 'insights.drift.axisAway.valence', 'insights.series1.slopeNone',
+            'insights.radar.families.quiet', 'insights.empty', 'triggers.roles.interaction', 'proposal.quote']
+            .forEach(path => expect(found).toContain(path));
+        ['pair', 'person', 'trigger'].forEach(level => expect(typeof JOURNAL_COPY.insights.level[level]).toBe('string'));
+        ['valence', 'energy', 'dominance'].forEach(axis => {
+            expect(typeof JOURNAL_COPY.insights.drift.axis[axis]).toBe('string');
+            expect(typeof JOURNAL_COPY.insights.drift.dimensions[axis]).toBe('string');
+        });
+        FEELING_FAMILIES.forEach(family => expect(typeof JOURNAL_COPY.insights.radar.families[family]).toBe('string'));
+    });
+});
+
+describe('labelSimilarity', () => {
+    it('is 1 for the same words in another case or with a stop word, and 0 for nothing', () => {
+        expect(labelSimilarity('Meeting', 'meeting')).toBe(1);
+        expect(labelSimilarity('the meeting', 'meeting')).toBe(1);
+        expect(labelSimilarity('', 'meeting')).toBe(0);
+        expect(labelSimilarity('meeting', null)).toBe(0);
+    });
+
+    it('scores the EmotionGuesser’s examples on its side of the review band', () => {
+        expect(labelSimilarity('Lucy', 'Lucie')).toBeGreaterThanOrEqual(SIMILAR_FLOOR);
+        expect(labelSimilarity('boss', 'meeting boss')).toBeGreaterThanOrEqual(SIMILAR_FLOOR);
+        expect(labelSimilarity('meetings', 'meeting')).toBeGreaterThanOrEqual(SIMILAR_FLOOR);
+        expect(labelSimilarity('work', 'Arbeit')).toBeLessThan(SIMILAR_FLOOR);
+        expect(labelSimilarity('dinner', 'meeting')).toBeLessThan(SIMILAR_FLOOR);
+    });
+
+    it('is symmetric and bounded', () => {
+        [['Lucy', 'Lucie'], ['work', 'workshop'], ['the gym', 'gym session']].forEach(([a, b]) => {
+            expect(labelSimilarity(a, b)).toBeCloseTo(labelSimilarity(b, a), 10);
+            expect(labelSimilarity(a, b)).toBeGreaterThanOrEqual(0);
+            expect(labelSimilarity(a, b)).toBeLessThanOrEqual(1);
+        });
+    });
+});
+
+describe('readCheckin, with a quote', () => {
+    it('reads a feeling’s quote, and adds no key when there is none', () => {
+        const read = readCheckin({
+            v: 1,
+            feelings: [
+                { id: 'stress', intensity: 2, quote: 'work was stressful', about: [] },
+                { id: 'calm', intensity: 1, about: [] }
+            ]
+        });
+        expect(read.feelings[0].quote).toBe('work was stressful');
+        expect('quote' in read.feelings[1]).toBe(false);
+    });
+});
+
+describe('readTrigger, with a role', () => {
+    const trigger = (id, payload) => ({ client_id: id, kind: 'trigger', payload: { v: 1, ...payload } });
+
+    it('reads a role, and null for a row minted before roles existed or with a role it does not know', () => {
+        expect(readTrigger(trigger('id-a', { label: 'meeting', role: 'interaction' }), []).role).toBe('interaction');
+        expect(readTrigger(trigger('id-b', { label: 'work' }), []).role).toBeNull();
+        expect(readTrigger(trigger('id-c', { label: 'work', role: 'place' }), []).role).toBeNull();
+    });
+
+    it('carries the role through a rename and a merge, and leaves it absent when it was absent', () => {
+        const meeting = { ...readTrigger(trigger('id-a', { label: 'meeting', role: 'interaction' }), []), raw: { ID: 4, client_id: 'id-a' } };
+        expect(renameTriggerRequest({ trigger: meeting, label: 'meetings' }).payload.role).toBe('interaction');
+        expect(mergeTriggerRequest({ trigger: meeting, into: 'id-z' }).payload.role).toBe('interaction');
+
+        const work = { ...readTrigger(trigger('id-b', { label: 'work' }), []), raw: { ID: 5, client_id: 'id-b' } };
+        expect('role' in renameTriggerRequest({ trigger: work, label: 'the job' }).payload).toBe(false);
     });
 });

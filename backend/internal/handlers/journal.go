@@ -39,6 +39,10 @@ const (
 	// A trigger label is a tag by another name, so it borrows the tag limit rather than
 	// inventing a second one.
 	maxTriggerLabelRunes = maxTagLength
+	// The words behind a feeling, quoted from the transcript by the model (the
+	// EmotionGuesser integration). A quotation, so it is capped and never filtered —
+	// mirrors MAX_QUOTE_LENGTH in src/constants/journal.js.
+	maxQuoteRunes = 300
 
 	maxFutureSkew = 24 * time.Hour
 	maxDaySkew    = 36 * time.Hour
@@ -57,6 +61,9 @@ type JournalTriggerInput struct {
 	Trigger  string `json:"trigger"`
 	Label    string `json:"label"`
 	ClientID string `json:"client_id"`
+	// Role is which half of a trigger a new one is (domain.TriggerRoles), or empty. Only
+	// read when minting; an existing trigger keeps the role it was minted with.
+	Role string `json:"role"`
 }
 
 type CreateJournalEntryInput struct {
@@ -167,6 +174,7 @@ type checkinPayload struct {
 		ID        string `json:"id"`
 		Intensity *int   `json:"intensity"`
 		Uncertain *bool  `json:"uncertain"`
+		Quote     string `json:"quote"`
 		About     []struct {
 			Kind    string `json:"kind"`
 			Ref     *int   `json:"ref"`
@@ -210,6 +218,11 @@ func validateCheckinPayload(payload map[string]interface{}, mentionCount int) er
 		}
 		if feeling.Intensity != nil && (*feeling.Intensity < 1 || *feeling.Intensity > maxFeelingIntensity) {
 			return fmt.Errorf("feelings[%d].intensity must be between 1 and %d", i, maxFeelingIntensity)
+		}
+		// Capped, not filtered: it is the user's own words, quoted (§5.4's transcript
+		// carve-out applies to a piece of the transcript as much as to the whole).
+		if utf8.RuneCountInString(feeling.Quote) > maxQuoteRunes {
+			return fmt.Errorf("feelings[%d].quote exceeds %d characters", i, maxQuoteRunes)
 		}
 		for j, about := range feeling.About {
 			switch about.Kind {
@@ -318,6 +331,16 @@ type triggerPayload struct {
 	V          *float64 `json:"v"`
 	Label      string   `json:"label"`
 	MergedInto *string  `json:"merged_into"`
+	Role       *string  `json:"role"`
+}
+
+// validateTriggerRole accepts an absent or empty role (a trigger written before roles
+// existed) and one of domain.TriggerRoles; anything else names itself in the error.
+func validateTriggerRole(field, role string) error {
+	if role == "" || domain.IsTriggerRole(role) {
+		return nil
+	}
+	return fmt.Errorf("%s must be one of %s, got %q", field, strings.Join(domain.TriggerRoles, " or "), role)
 }
 
 func validateTriggerPayload(payload map[string]interface{}, clientID string) (string, error) {
@@ -337,6 +360,12 @@ func validateTriggerPayload(payload map[string]interface{}, clientID string) (st
 		return "", fmt.Errorf("label exceeds %d characters: %s", maxTriggerLabelRunes, label)
 	}
 	payload["label"] = label
+
+	if typed.Role != nil {
+		if err := validateTriggerRole("role", *typed.Role); err != nil {
+			return "", err
+		}
+	}
 
 	if typed.MergedInto == nil || *typed.MergedInto == "" {
 		return "", nil
@@ -401,6 +430,9 @@ func validateTriggerRefs(payload map[string]interface{}, triggers []JournalTrigg
 			}
 			if utf8.RuneCountInString(label) > maxTriggerLabelRunes {
 				return fmt.Errorf("triggers[%d].label exceeds %d characters: %s", i, maxTriggerLabelRunes, label)
+			}
+			if err := validateTriggerRole(fmt.Sprintf("triggers[%d].role", i), strings.TrimSpace(trigger.Role)); err != nil {
+				return err
 			}
 			listed[minted] = true
 		default:
@@ -609,6 +641,17 @@ func CreateJournalEntry(c *gin.Context) {
 			}
 
 			label := strings.TrimSpace(trigger.Label)
+			payload := map[string]interface{}{
+				"v":            float64(journalSchemaVersion),
+				"label":        label,
+				"merged_into":  nil,
+				"created_from": input.ClientID,
+			}
+			// Absent stays absent (invariant 14): a trigger minted with no role reads as an
+			// entity, and writing that word for it would record a choice nobody made.
+			if role := strings.TrimSpace(trigger.Role); role != "" {
+				payload["role"] = role
+			}
 			created := models.JournalEntry{
 				UserID:        userID,
 				ClientID:      minted,
@@ -616,12 +659,7 @@ func CreateJournalEntry(c *gin.Context) {
 				Day:           input.Day,
 				At:            at,
 				SchemaVersion: journalSchemaVersion,
-				Payload: map[string]interface{}{
-					"v":            float64(journalSchemaVersion),
-					"label":        label,
-					"merged_into":  nil,
-					"created_from": input.ClientID,
-				},
+				Payload:       payload,
 			}
 			if err := tx.Create(&created).Error; err != nil {
 				if isDuplicateClientID(err) {

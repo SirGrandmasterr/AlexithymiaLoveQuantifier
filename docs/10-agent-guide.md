@@ -53,7 +53,8 @@ Breaking any of these produces a silent or confusing failure rather than a clean
 | 2c | **The cadence nudge never guilt-trips.** No streaks, no badges, no counts of missed check-ins, no red, no urgency vocabulary. | It is a product rule, not a style preference — a missed month must not read as a failure. `nudgeSentence` is tested against a forbidden-word list; keep it that way. |
 | 2d | **Reminders are computed on the device, never scheduled on the server.** | "Nothing leaves this machine" is a claim the Vault page makes in writing. A server-side scheduler or an email digest would make it false. There are **two** channels since 6-F — the check-in cadence and the journal's nightly ritual — and both are decided in JavaScript and handed to the OS through `LocalNotifications` on the phone; the body of each is a fixed, content-free string bound by invariant 2c. A third channel is allowed and a server-side one is not. See trap 20 for the way the two channels collide over `getPending()`. |
 | 2e | **Every claim on the Vault page must be true of the code as written — and since Phase 6, true of *this device* as well as of the build.** | It says every request goes to this app's own origin, and that the database is not encrypted. It no longer says *"there are no AI features"*: three models can run, all on the device, all off by default, and the page therefore has **two paragraphs that are chosen at render time** from the same `localStorage` keys the settings screen writes — `voiceIsOn()` and `embeddingsAreOn()` in [`Vault.jsx`](../src/components/Vault.jsx), each of which asks the *device* (the tier, and whether an index could exist here) as well as the key, so a `true` written by a better browser on the same profile cannot make this page describe a model that is not running. Two further consequences of the same rule: the *voice on* paragraph has a **third** variant because the Light tier is genuinely two models and *"one model"* would be false on it, and the outbox sentence renders **only on the phone**, because that is the only place the queue exists. `Vault.test.jsx` asserts all of them **verbatim**, in both opt-in states and on every tier, and a paraphrase is exactly what those tests exist to refuse. If you add a network call, a background service, a fourth model, or a fourth tier, that page is the first thing to fix — and the test will tell you which sentence. |
-| 3 | **Category `id`s are permanent, and now live in two languages — and they are no longer the only vocabulary that does.** | They are the stored `stats` keys, the `uncertain` entries, the `guide_answers` outer keys, *and* the server's validation allowlist ([`domain.CategoryIDs`](../backend/internal/domain/categories.go)). Renaming one orphans every historical value and starts 400-ing the new one. **Feeling ids and ritual-question ids are the third and fourth permanent id vocabulary** ([`domain.FeelingIDs` and `domain.RitualQuestionIDs`](../backend/internal/domain/journal.go), mirrored by `FEELINGS` and `RITUAL_QUESTIONS` in [`src/constants/journal.js`](../src/constants/journal.js)), with `domain.JournalKinds` under the same rule. The Go side holds **ids only** — labels, glosses and colours are the frontend's, exactly as `domain/categories.go` splits them; the parity between the two languages is asserted by a test that reads `domain/journal.go` from disk (`journal.test.js`). Adding one is two edits in two languages and no schema change; **removing one is forbidden** — retire it with `retired: true` in the frontend constant, so the UI stops offering it while the server keeps accepting it for the rows already written and for an import of them. |
+| 3 | **Category `id`s are permanent, and now live in two languages — and they are no longer the only vocabulary that does.** | They are the stored `stats` keys, the `uncertain` entries, the `guide_answers` outer keys, *and* the server's validation allowlist ([`domain.CategoryIDs`](../backend/internal/domain/categories.go)). Renaming one orphans every historical value and starts 400-ing the new one. **Feeling ids and ritual-question ids are the third and fourth permanent id vocabulary** ([`domain.FeelingIDs` and `domain.RitualQuestionIDs`](../backend/internal/domain/journal.go), mirrored by `FEELINGS` and `RITUAL_QUESTIONS` in [`src/constants/journal.js`](../src/constants/journal.js)), with `domain.JournalKinds` and `domain.TriggerRoles` under the same rule. The Go side holds **ids only** — labels, glosses, colours and the three coordinates are the frontend's, exactly as `domain/categories.go` splits them; the parity between the two languages is asserted by a test that reads `domain/journal.go` from disk (`journal.test.js`). Adding one is two edits in two languages and no schema change — thirty feelings today, the last nine **appended** by the EmotionGuesser integration, never inserted, because list order is the tie-break `topFeelings`, `dominantFeeling` and the day graph read; **removing one is forbidden** — retire it with `retired: true` in the frontend constant, so the UI stops offering it while the server keeps accepting it for the rows already written and for an import of them. |
+| 3a | **A feeling's coordinates are fixed lookups. Do not retune one once data exists.** | `valence`, `energy` and (since the EmotionGuesser integration) `dominance` on each `FEELINGS` entry are what the day graph and every Insights drawing position a check-in by. They are never stored — a row holds the id — so changing one silently moves every entry ever written. The same rule the EmotionGuesser stated for its VAD centroids. |
 | 4 | **Tailwind colour classes must be complete literal strings.** | The JIT scanner cannot see `` `bg-${x}-400` ``; interpolated classes are purged and render colourless. |
 | 5 | **Register protected routes inside the `protected` group** in `main.go`. | Outside it, the route is public with no warning — that is how `/uploads` became unauthenticated. |
 | 6 | **Read the user id from `c.Get("userID")`, never from the request body.** | It is the only trusted identity source. |
@@ -209,6 +210,21 @@ Ranked by how much time they waste.
     may prune on its absence — `EmbeddingContext` drops a vector only when the vocabulary can
     say the id is dead. The version that pruned on absence re-embedded the whole journal every
     time the user walked to another month, and looked exactly like a slow device.
+23. **A look-alike is an offer, never a link.** `triggerCandidates` and `personCandidates` return
+    `match: 'similar'` rows (the EmotionGuesser's review band, `SIMILAR_FLOOR`) after the exact,
+    insensitive and prefix ones, and every consumer — `resolveTriggerLabel`, `resolvePerson`, the
+    two pickers — treats them as a question beside *new trigger* / *new person*, never as the
+    resolution. A caller that takes `candidates[0]` as a hit without reading `match` links *Lucy*
+    to *Lucie* silently, which is precisely the merge no metric is allowed to make. And a quote is
+    the one model-authored slot that is *checked* rather than word-filtered: `validateProposal`
+    drops a `quote` the transcript does not contain and never reads it against the forbidden
+    list, because it is the user's own words. Reading it against the list would censor the
+    user's speech; skipping the containment check would let the model put words in it.
+24. **Insights is derived on read, from the whole record.** `JournalInsights` calls `loadAll()`
+    the way the People and Triggers views do; an analytics pass over `entriesForDay` or a month
+    is a drift chart of one month that looks exactly like a drift chart. Nothing it computes is
+    stored, nothing reaches a request body, and a trigger's role is read through `resolveTrigger`
+    (so a merged-away id lands on the survivor's role), never off the `about`.
 
 ---
 
@@ -417,7 +433,7 @@ means "not present" ([Data Model §journal](03-data-model.md#journalentry)).
 ## 5. Before you finish
 
 ```bash
-npm test                        # vitest run — must stay all-pass (1493 tests)
+npm test                        # vitest run — must stay all-pass (1571 tests)
 cd backend && gofmt -l .        # must print nothing
 cd backend && go vet ./...
 cd backend && go test ./...     # must stay all-pass
@@ -474,6 +490,14 @@ Then check, specifically:
 | The export document's shape | `ExportDocument` and friends, [`vault.go`](../backend/internal/handlers/vault.go) |
 | What counts as a duplicate on import | `isDuplicateSnapshot`, [`vault.go`](../backend/internal/handlers/vault.go) |
 | Name masking and the blur class | [`DiscretionContext.jsx`](../src/context/DiscretionContext.jsx) |
+| The feeling vocabulary's three axes and families | `FEELINGS`, `FEELING_FAMILIES`, `feelingCoordinates`, [`constants/journal.js`](../src/constants/journal.js) |
+| A trigger's two halves, and the quote cap | `TRIGGER_ROLES`, `MAX_QUOTE_LENGTH`, [`constants/journal.js`](../src/constants/journal.js); `domain.TriggerRoles`, [`domain/journal.go`](../backend/internal/domain/journal.go) |
+| Look-alike matching (the review band) | `labelSimilarity`, `SIMILAR_FLOOR`, `triggerCandidates`, `personCandidates`, [`constants/journal.js`](../src/constants/journal.js) |
+| The observation table and its three groupings | `observationsOf`, `atLevel`, `seriesOf`, [`journal/analytics/observations.js`](../src/journal/analytics/observations.js) |
+| Drift arithmetic (EWMA, slope, distance, weekly mood, heatmap, families) | [`journal/analytics/drift.js`](../src/journal/analytics/drift.js) |
+| The Insights drawings' geometry | [`journal/analytics/charts.js`](../src/journal/analytics/charts.js) |
+| The Insights screen | [`JournalInsights.jsx`](../src/components/JournalInsights.jsx), `INSIGHTS_PATH` |
+| The model prompt, its version and its two examples | `buildPrompt`, `PROMPT_VERSION`, [`journal/inference/prompt.js`](../src/journal/inference/prompt.js) |
 | Resolving a name to a relationship | `FindOrCreateRelationship`, [`backfill.go`](../backend/internal/database/backfill.go) |
 | Rename / merge / delete a whole stack | [`relationships.go`](../backend/internal/handlers/relationships.go) + [`RelationshipDialogs.jsx`](../src/components/RelationshipDialogs.jsx) |
 | Card-stack wheel + transforms | `CardStack`, [`Dashboard.jsx`](../src/components/Dashboard.jsx) |

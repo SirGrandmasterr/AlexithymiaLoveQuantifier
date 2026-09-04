@@ -10,7 +10,8 @@ import {
     FeelingChip,
     Frame,
     LoadFailed,
-    Loading
+    Loading,
+    QuoteLine
 } from './Journal';
 import {
     JOURNAL_COPY,
@@ -65,8 +66,9 @@ const TriggerEntry = ({ entry, liveId, resolve }) => {
             {feelings.length > 0 && (
                 <ul className="flex flex-wrap gap-2">
                     {feelings.map((feeling, index) => (
-                        <li key={`${feeling.id ?? 'feeling'}-${index}`}>
+                        <li key={`${feeling.id ?? 'feeling'}-${index}`} className="flex flex-wrap items-center gap-2">
                             <FeelingChip feeling={feeling} />
+                            <QuoteLine quote={feeling.quote} />
                         </li>
                     ))}
                 </ul>
@@ -284,6 +286,11 @@ const TriggerRow = ({ trigger, summary, others, resolve }) => {
                         </span>
                         <span className="block text-xs text-slate-500">
                             {countCopy(summary.count, JOURNAL_COPY.triggers.entryCount)}
+                            {trigger.role && JOURNAL_COPY.triggers.roles[trigger.role] && (
+                                <span data-trigger-role={trigger.role} className="text-slate-400">
+                                    {' · '}{JOURNAL_COPY.triggers.roles[trigger.role]}
+                                </span>
+                            )}
                         </span>
                         <AttachedFeelings
                             feelings={summary.feelings}

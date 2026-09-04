@@ -824,6 +824,79 @@ thing* and merge covers *this is the same as that*.
 
 **Discretion** blurs labels and transcripts.
 
+**Since the EmotionGuesser integration (2026-09-04)** a row also says which half the trigger is —
+*who or what* or *what happened* (`readTrigger(...).role`, `JOURNAL_COPY.triggers.roles`) — and a
+row with no role says nothing, because a trigger minted before roles existed made no such claim.
+Under each entry the feelings that named the trigger show their **quote** (`QuoteLine`, exported
+from `Journal.jsx`) beside the chip, so the row reads as evidence and not only as a count.
+
+---
+
+## 2i. `JournalInsights.jsx` and `journal/analytics/` — `/journal/insights`, the journal as drift
+
+The EmotionGuesser prototype's *Triggers & drift* and *Overview* tabs, rebuilt in this app's
+material: hand-drawn SVG over pure geometry (invariant 19), slate neutrals, one rose accent, and
+every number on screen stated as a sentence the ⓘ can explain. Nothing it draws is stored, and
+nothing it computes reaches a request body — it is a reader over `useJournal().entries` after
+`loadAll()`, on the People and Triggers views' precedent (§2g).
+
+### The table, and the three ways to key it
+
+`observationsOf(entries, { resolveTrigger, personName })` in
+[`journal/analytics/observations.js`](../src/journal/analytics/observations.js) is the prototype's
+`Journal.observations()`: one long-format row per check-in × feeling × thing it was about, each
+carrying the feeling's **three coordinates** — `valence` and `energy` from the day graph, and
+`dominance` (overwhelmed ↔ in control), the third axis the vocabulary gained for this — plus the
+strength as a level (1–3, an absent one at the day graph's `UNSTATED_INTENSITY`) and as a weight.
+A trigger with role `interaction` is a *happening*; a person, or a trigger with role `entity` or
+no role, is a *side*; a feeling with sides and happenings spreads into one row per pair.
+
+`atLevel(rows, level)` re-keys the table — `pair` (*Lucie · meeting*, the two halves kept apart),
+`person` (everything about Lucie, pooled) or `trigger` (everything about *meeting*, pooled over
+everyone) — and counts a feeling **once per key**, however many rows it spread into. That one
+function is why every drawing below answers all three questions without knowing which is asked.
+
+### The arithmetic
+
+[`journal/analytics/drift.js`](../src/journal/analytics/drift.js), computed on read, per key, in
+time order: `d_*` (the delta to the previous observation), `ewma_*` (pandas' adjusted exponential
+average, half-life `EWMA_HALFLIFE` = 3 observations), `slope_*` (least squares over a trailing
+`SLOPE_WINDOW` = 6, reported per `SLOPE_DAYS` = 30) and `distanceFromFirst` (Euclidean over the
+three axes). `triggerSummary` is one row per key named at least twice — the smoothed position now,
+the drift since the first time, the dominant feeling (ties to list order, `topFeelings`' rule).
+`weeklyMood` places each check-in at its feelings' coordinates weighted by strength and averages a
+Monday-keyed week; a week with nothing in it is left out, never drawn at zero. `labelHeatmap` is
+key × feeling summed strength; `familyProfile` sums by `FEELING_FAMILIES` (Plutchik's seven and
+`quiet`; *can't tell* belongs to none).
+
+### The drawings
+
+[`journal/analytics/charts.js`](../src/journal/analytics/charts.js) returns numbers in a viewBox
+and the component maps over them: `circumplexLayout` (valence across, energy up, every feeling as
+a faint anchor, each series a faint path of dots sized by strength with the latest ringed),
+`driftBarsLayout` (signed bars from a centre line, `POLARITY.toward` / `POLARITY.away`),
+`timeseriesLayout` (one key on one axis, dots and the smoothed line), `heatmapLayout` (one hue,
+opacity by magnitude), `weeklyLayout` (three small multiples, one per axis, because the axes have
+different ranges and one shared axis would lie) and `radarLayout` (the family polygon, dashed and
+filled exactly as `LoveShape` draws). Identity is categorical (`SERIES_COLORS`, eight, fixed
+order), magnitude is one hue, polarity is two — the prototype's colour rule.
+
+### The screen
+
+Group-by control, a series picker (the most-named `DEFAULT_SERIES` until the user picks, at most
+`MAX_SERIES`), then the six cards. Under *One over time* the four figures are **sentences**
+(`JOURNAL_COPY.insights.series1.*`), and the ⓘ states the four drawing choices (`insightsInfo()`),
+with the constants filled in from the code so the sentence cannot drift from the number. The copy
+is under the forbidden-word walk like every other group; it says *toward pleasant* and *toward
+unpleasant*, never *better* or *worse*, and the caveat is the day graph's: arithmetic over what was
+recorded, not a claim about the person. Discretion masks a person's label and blurs a trigger's,
+in the SVG text as on the chips.
+
+`JournalInsights.test.jsx` counts the SVG's `[data-series]`, `[data-point]`, `[data-bar]` and
+`[data-strip]` for real, and the three analytics modules have their own suites, ported from the
+prototype's `tests/test_pipeline.py` case for case (levels, the second delta as a vocabulary
+subtraction, the summary, the heatmap).
+
 ---
 ## 3. `Dashboard.jsx` — the core screen
 
@@ -1973,6 +2046,11 @@ constant that already owns the number, and lengths are **code points** — what 
 There is no slot for a relationship id or a trigger id (§5.1). A person is a `name`, a trigger is a
 `label`, and the client resolves both.
 
+Two slots arrived with the EmotionGuesser integration, both **optional in the schema** so every
+reference written before them still validates, and both asked for on every call by the prompt: a
+feeling's `quote` (≤ `LIMITS.quote`, the words that show it) and a trigger `about`'s `role`
+(`TRIGGER_ROLES` — `entity` or `interaction`, which half the label is).
+
 `checkSchema(value, schema)` is a deliberately small evaluator — exactly the keywords §5.2 uses,
 and it **throws on any other**, so a `pattern` added to the schema without support here fails
 loudly instead of sitting there looking like a rule. It is what makes the schema the specification
@@ -1989,6 +2067,16 @@ it sounded* — plus a sentence for the adversarial cases: instructions inside t
 that were said, and nothing more. `PROMPT_VERSION` goes on every model-assisted entry's provenance;
 **bump it on any change to the text.** The prompt is English whatever the note's language, and the
 note is answered in its own.
+
+**Version 2 (the EmotionGuesser integration)** added the prototype's rules in the same register:
+a trigger is two halves and the model gives each as its own `about` with a `role`, never repeating
+a person's or a thing's name inside the *what happened* half; every feeling carries a `quote`
+copied from the note; only the speaker's own feelings are reported, and negation and sarcasm count
+(*"not angry, just tired"* is tiredness); someone who took part but was not what the feeling was
+about goes in `people` alone. The user's trigger labels are listed **apart** — *things* and
+*happenings*, from `context.triggerRoles` — so the model reuses each in its own slot, and a second
+worked example shows a pair (*Lucie · breakup*), a happening with no thing (*commuting*), and a
+bystander.
 
 ### `validate.js` — the filter
 
@@ -2027,6 +2115,15 @@ model-authored slots — `name`, `label`, `text` — are the whole attack surfac
 they are the only strings the file reads against the list. The test asserts, in the same case, that
 the identical sentence in a label *would* be dropped: that is what makes it a carve-out rather than
 a gap.
+
+**The second carve-out is the quote**, and it is a different kind: the one model-authored slot
+whose truth can be *checked*. `validateProposal` keeps a `quote` only when the transcript contains
+it — as words, in order, adjacent, after folding case, accents and punctuation
+(`transcriptContains`) — and drops it otherwise (`DROP_REASONS.quote`, the feeling stays). In text
+mode the caller hands the input in as `options.transcript`, so the check reads the user's words
+rather than the model's echo. It is never read against the forbidden list: it is a piece of the
+transcript. A `role` is a closed vocabulary, so a wrong one is dropped and counted
+(`unknown_role`) and the label kept without it.
 
 The forbidden list lives in `constants/forbiddenWords.js` so the copy walk and the filter read one
 list; the walk pins all eighteen entries by name. The filter matches the way the walk always has —

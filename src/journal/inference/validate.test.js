@@ -7,7 +7,8 @@ import {
     truncateTranscript,
     parseRaw,
     emptyProposal,
-    DROP_REASONS
+    DROP_REASONS,
+    transcriptContains
 } from './validate';
 import {
     buildSchema,
@@ -94,7 +95,7 @@ describe('the schema', () => {
         expect(schemaFeelingIds()).toEqual(ids);
         // A guard on the guard: if `activeFeelings` ever returned nothing, the assertion above
         // would compare two empty lists and prove nothing.
-        expect(ids).toHaveLength(21);
+        expect(ids).toHaveLength(30);
         expect(ids).toEqual(FEELINGS.filter(feeling => !feeling.retired).map(feeling => feeling.id));
     });
 
@@ -115,7 +116,7 @@ describe('the schema', () => {
 
     it('carries §5.2\'s numbers, each from the constant that already owns it', () => {
         expect(LIMITS).toEqual({
-            transcript: 4000, language: 8, name: 60, label: 40, text: 120,
+            transcript: 4000, language: 8, name: 60, label: 40, text: 120, quote: 300,
             feelings: 5, about: 3, people: 6, facts: 3
         });
         expect(LIMITS.transcript).toBe(MAX_TRANSCRIPT_LENGTH);
@@ -127,7 +128,7 @@ describe('the schema', () => {
     it('has no slot for an id the client resolves — a person is a name, a trigger is a label', () => {
         const about = PROPOSAL_SCHEMA.properties.feelings.items.properties.about.items.oneOf;
         expect(about.map(branch => Object.keys(branch.properties))).toEqual([
-            ['kind', 'name'], ['kind', 'tag'], ['kind', 'label']
+            ['kind', 'name'], ['kind', 'tag'], ['kind', 'label', 'role']
         ]);
         expect(JSON.stringify(PROPOSAL_SCHEMA)).not.toMatch(/relationship_id|trigger_id|client_id|"ref"/);
     });
@@ -225,7 +226,8 @@ describe('the prompt', () => {
     it('says so when the user has named nobody and nothing yet', () => {
         const prompt = buildPrompt(buildContext({ relationships: [], triggers: [] }));
         expect(prompt).toContain('People this person has named before: none yet.');
-        expect(prompt).toContain('Trigger labels this person has used before: none yet.');
+        expect(prompt).toContain('Things this person has named before, as "entity" triggers: none yet.');
+        expect(prompt).toContain('Happenings this person has named before, as "interaction" triggers: none yet.');
     });
 
     it('escapes a name that would otherwise break its line', () => {
@@ -625,5 +627,103 @@ describe('the golden transcripts', () => {
         const wrong = clone(lucie.reference);
         wrong.feelings.push({ id: 'anger', intensity: 1, about: [] });
         expect(satisfies(wrong, lucie.expect, en())).toEqual(['has anger']);
+    });
+});
+
+/* 6. The EmotionGuesser integration: quotes and roles */
+
+describe('quotes and roles', () => {
+    const withQuotes = () => {
+        const raw = clone(LUCIE);
+        raw.feelings[0].quote = 'I had a nice day with Lucie today';
+        raw.feelings[1].quote = 'Felt very connected to her,';
+        raw.feelings[2].quote = 'work was stressful';
+        raw.feelings[2].about[0].role = 'entity';
+        return raw;
+    };
+
+    it('admits quote and role in the schema as optional, so a reference without them still validates', () => {
+        expect(checkSchema(LUCIE, PROPOSAL_SCHEMA)).toEqual([]);
+        expect(checkSchema(withQuotes(), PROPOSAL_SCHEMA)).toEqual([]);
+        const bad = withQuotes();
+        bad.feelings[2].about[0].role = 'place';
+        expect(checkSchema(bad, PROPOSAL_SCHEMA).map(error => error.path)).toEqual(['feelings[2].about[0]']);
+    });
+
+    it('keeps a quote the transcript contains, whatever the case or punctuation, and the role beside its label', () => {
+        const { proposal, provenance } = validateProposal(withQuotes(), en());
+        expect(proposal.feelings.map(feeling => feeling.quote)).toEqual([
+            'I had a nice day with Lucie today', 'Felt very connected to her,', 'work was stressful'
+        ]);
+        expect(proposal.feelings[2].about[0]).toEqual({ kind: 'trigger', label: 'work', role: 'entity' });
+        expect(provenance).toEqual({ schema_valid: true, dropped_by_filter: 0, drops: [] });
+    });
+
+    it('drops a quote the transcript does not contain — a paraphrase is not a quotation — and keeps the feeling', () => {
+        const raw = withQuotes();
+        raw.feelings[0].quote = 'a pleasant day with Lucie';
+        raw.feelings[1].quote = 'x'.repeat(LIMITS.quote + 1);
+
+        const { proposal, provenance } = validateProposal(raw, en());
+
+        expect('quote' in proposal.feelings[0]).toBe(false);
+        expect('quote' in proposal.feelings[1]).toBe(false);
+        expect(proposal.feelings[2].quote).toBe('work was stressful');
+        expect(provenance.drops).toEqual([
+            { path: 'feelings[0].quote', reason: DROP_REASONS.quote },
+            { path: 'feelings[1].quote', reason: DROP_REASONS.quote }
+        ]);
+        expect(proposal.feelings.map(feeling => feeling.id)).toEqual(['pleasure', 'rapport', 'stress']);
+    });
+
+    it('reads quotes against the caller’s transcript in text mode, not the model’s echo', () => {
+        const raw = withQuotes();
+        raw.transcript = 'something else entirely';
+        const { proposal } = validateProposal(raw, en(), { transcript: LUCIE.transcript });
+        expect(proposal.feelings[2].quote).toBe('work was stressful');
+    });
+
+    it('does not let a quote carry a word across a boundary — "a nice" is in the note, "ice day" is not', () => {
+        expect(transcriptContains(LUCIE.transcript, 'a nice')).toBe(true);
+        expect(transcriptContains(LUCIE.transcript, 'ice day')).toBe(false);
+        expect(transcriptContains(LUCIE.transcript, '')).toBe(false);
+    });
+
+    it('drops a role it does not know, counts it, and keeps the label without one', () => {
+        const raw = withQuotes();
+        raw.feelings[2].about[0].role = 'place';
+
+        const { proposal, provenance } = validateProposal(raw, en());
+
+        expect(proposal.feelings[2].about[0]).toEqual({ kind: 'trigger', label: 'work' });
+        expect(provenance.drops).toEqual([{ path: 'feelings[2].about[0].role', reason: DROP_REASONS.unknown_role }]);
+        expect(provenance.schema_valid).toBe(false);
+    });
+
+    it('never filters a quote for register — it is the user’s own words, like the transcript', () => {
+        const spoken = 'A bad day, I felt lazy and behind.';
+        const raw = { ...clone(LUCIE), transcript: spoken };
+        raw.feelings = [{ id: 'shame', intensity: 2, quote: 'I felt lazy and behind', about: [] }];
+
+        const { proposal, provenance } = validateProposal(raw, en());
+
+        expect(proposal.feelings[0].quote).toBe('I felt lazy and behind');
+        expect(provenance.dropped_by_filter).toBe(0);
+        expect(isForbidden('I felt lazy and behind')).toBe(true);
+    });
+
+    it('lists things and happenings apart in the prompt, by the roles the context carries', () => {
+        const context = buildContext({
+            relationships: [{ ID: 1, name: 'Lucie' }],
+            triggers: [{ label: 'work', role: 'entity' }, { label: 'meeting', role: 'interaction' }, { label: 'the move' }]
+        });
+        expect(context.triggerRoles).toEqual({ work: 'entity', meeting: 'interaction' });
+
+        const prompt = buildPrompt(context);
+        expect(prompt).toContain('as "entity" triggers (reuse one exactly when it is the same thing): ["work","the move"]');
+        expect(prompt).toContain('as "interaction" triggers (reuse one exactly when it is the same kind of thing): ["meeting"]');
+        expect(PROMPT_VERSION).toBe(2);
+        expect(prompt).toContain('"quote"');
+        expect(prompt).toContain('Negation and sarcasm count');
     });
 });

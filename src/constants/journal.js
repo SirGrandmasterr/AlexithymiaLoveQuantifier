@@ -2,31 +2,65 @@ import { MAX_TAG_LENGTH } from './contextTags';
 
 /* 1. Feelings */
 
+/**
+ * The coarse families the Insights radar sums a feeling into — Plutchik's seven, plus `quiet`
+ * for the low-energy entries that are a report of not much rather than of any one of them.
+ * `unclear` belongs to none: "can't tell" is not a share of anything.
+ */
+export const FEELING_FAMILIES = ['joy', 'trust', 'anticipation', 'fear', 'sadness', 'disgust', 'anger', 'quiet'];
+
+/**
+ * Every entry sits on three axes. `valence` (−1 unpleasant … +1 pleasant) and `energy`
+ * (0 still … 1 activated) are the day graph's two (§8.1); `dominance` (−1 overwhelmed …
+ * +1 in control) is the third the drift maths reads, brought in with the EmotionGuesser
+ * integration. All three are fixed lookups from the id, so a label and its coordinates can
+ * never disagree — and, like the other two, **do not retune one once data exists**, or old
+ * entries silently move.
+ */
 export const FEELINGS = [
-    { id: 'joy', label: 'joy', gloss: 'lit up, and wholly pleasant', valence: 0.8, energy: 0.7, hex: '#fbbf24' },
-    { id: 'excitement', label: 'excitement', gloss: 'keyed up, something coming', valence: 0.6, energy: 0.9, hex: '#fb923c' },
-    { id: 'pleasure', label: 'pleasure', gloss: 'this is nice, right now', valence: 0.7, energy: 0.5, hex: '#f472b6' },
+    { id: 'joy', label: 'joy', gloss: 'lit up, and wholly pleasant', valence: 0.8, energy: 0.7, dominance: 0.55, family: 'joy', hex: '#fbbf24' },
+    { id: 'excitement', label: 'excitement', gloss: 'keyed up, something coming', valence: 0.6, energy: 0.9, dominance: 0.45, family: 'anticipation', hex: '#fb923c' },
+    { id: 'pleasure', label: 'pleasure', gloss: 'this is nice, right now', valence: 0.7, energy: 0.5, dominance: 0.45, family: 'joy', hex: '#f472b6' },
     // "rapport" as the id, "connectedness" in the copy: the id is permanent and the label
     // is not, so the word that reads best on a chip can change without moving any data.
-    { id: 'rapport', label: 'connectedness', gloss: 'close to someone, in step', valence: 0.7, energy: 0.4, hex: '#fb7185' },
-    { id: 'gratitude', label: 'gratitude', gloss: 'glad something was given', valence: 0.6, energy: 0.3, hex: '#34d399' },
-    { id: 'pride', label: 'pride', gloss: 'this one was yours to do', valence: 0.6, energy: 0.6, hex: '#a3e635' },
-    { id: 'curiosity', label: 'curiosity', gloss: 'pulled toward finding out', valence: 0.4, energy: 0.6, hex: '#22d3ee' },
-    { id: 'calm', label: 'calm', gloss: 'settled, nothing pressing', valence: 0.5, energy: 0.2, hex: '#2dd4bf' },
-    { id: 'neutral', label: 'level', gloss: 'nothing in particular', valence: 0.0, energy: 0.3, hex: '#94a3b8' },
-    { id: 'unclear', label: "can't tell", gloss: 'something is there, and it has no name yet', valence: 0.0, energy: 0.4, hex: '#a1a1aa' },
-    { id: 'tiredness', label: 'tiredness', gloss: 'run down, low on fuel', valence: -0.2, energy: 0.1, hex: '#38bdf8' },
-    { id: 'boredom', label: 'boredom', gloss: 'nothing here holds you', valence: -0.3, energy: 0.2, hex: '#60a5fa' },
-    { id: 'longing', label: 'longing', gloss: 'reaching for what is not here', valence: -0.2, energy: 0.5, hex: '#a78bfa' },
-    { id: 'loneliness', label: 'loneliness', gloss: 'apart from people, and feeling it', valence: -0.6, energy: 0.3, hex: '#818cf8' },
-    { id: 'sadness', label: 'sadness', gloss: 'heavy, and slow', valence: -0.7, energy: 0.2, hex: '#6366f1' },
-    { id: 'shame', label: 'shame', gloss: 'wanting to be unseen', valence: -0.7, energy: 0.5, hex: '#e879f9' },
-    { id: 'irritation', label: 'irritation', gloss: 'rubbed the wrong way', valence: -0.4, energy: 0.6, hex: '#f97316' },
-    { id: 'stress', label: 'stress', gloss: 'too much at once, and pressing', valence: -0.5, energy: 0.8, hex: '#f43f5e' },
-    { id: 'anxiety', label: 'anxiety', gloss: 'braced for something', valence: -0.6, energy: 0.8, hex: '#a855f7' },
-    { id: 'overwhelm', label: 'overwhelm', gloss: 'more than can be held', valence: -0.5, energy: 0.9, hex: '#d946ef' },
-    { id: 'anger', label: 'anger', gloss: 'hot, and pushed against', valence: -0.7, energy: 0.9, hex: '#ef4444' }
+    { id: 'rapport', label: 'connectedness', gloss: 'close to someone, in step', valence: 0.7, energy: 0.4, dominance: 0.3, family: 'trust', hex: '#fb7185' },
+    { id: 'gratitude', label: 'gratitude', gloss: 'glad something was given', valence: 0.6, energy: 0.3, dominance: 0.2, family: 'trust', hex: '#34d399' },
+    { id: 'pride', label: 'pride', gloss: 'this one was yours to do', valence: 0.6, energy: 0.6, dominance: 0.8, family: 'joy', hex: '#a3e635' },
+    { id: 'curiosity', label: 'curiosity', gloss: 'pulled toward finding out', valence: 0.4, energy: 0.6, dominance: 0.4, family: 'anticipation', hex: '#22d3ee' },
+    { id: 'calm', label: 'calm', gloss: 'settled, nothing pressing', valence: 0.5, energy: 0.2, dominance: 0.35, family: 'joy', hex: '#2dd4bf' },
+    { id: 'neutral', label: 'level', gloss: 'nothing in particular', valence: 0.0, energy: 0.3, dominance: 0.0, family: 'quiet', hex: '#94a3b8' },
+    { id: 'unclear', label: "can't tell", gloss: 'something is there, and it has no name yet', valence: 0.0, energy: 0.4, dominance: 0.0, family: null, hex: '#a1a1aa' },
+    { id: 'tiredness', label: 'tiredness', gloss: 'run down, low on fuel', valence: -0.2, energy: 0.1, dominance: -0.4, family: 'quiet', hex: '#38bdf8' },
+    { id: 'boredom', label: 'boredom', gloss: 'nothing here holds you', valence: -0.3, energy: 0.2, dominance: -0.1, family: 'quiet', hex: '#60a5fa' },
+    { id: 'longing', label: 'longing', gloss: 'reaching for what is not here', valence: -0.2, energy: 0.5, dominance: -0.35, family: 'sadness', hex: '#a78bfa' },
+    { id: 'loneliness', label: 'loneliness', gloss: 'apart from people, and feeling it', valence: -0.6, energy: 0.3, dominance: -0.5, family: 'sadness', hex: '#818cf8' },
+    { id: 'sadness', label: 'sadness', gloss: 'heavy, and slow', valence: -0.7, energy: 0.2, dominance: -0.55, family: 'sadness', hex: '#6366f1' },
+    { id: 'shame', label: 'shame', gloss: 'wanting to be unseen', valence: -0.7, energy: 0.5, dominance: -0.7, family: 'sadness', hex: '#e879f9' },
+    { id: 'irritation', label: 'irritation', gloss: 'rubbed the wrong way', valence: -0.4, energy: 0.6, dominance: 0.35, family: 'anger', hex: '#f97316' },
+    { id: 'stress', label: 'stress', gloss: 'too much at once, and pressing', valence: -0.5, energy: 0.8, dominance: -0.45, family: 'fear', hex: '#f43f5e' },
+    { id: 'anxiety', label: 'anxiety', gloss: 'braced for something', valence: -0.6, energy: 0.8, dominance: -0.6, family: 'fear', hex: '#a855f7' },
+    { id: 'overwhelm', label: 'overwhelm', gloss: 'more than can be held', valence: -0.5, energy: 0.9, dominance: -0.75, family: 'fear', hex: '#d946ef' },
+    { id: 'anger', label: 'anger', gloss: 'hot, and pushed against', valence: -0.7, energy: 0.9, dominance: 0.45, family: 'anger', hex: '#ef4444' },
+    // The nine below arrived with the EmotionGuesser integration (2026-09-04): the Geneva
+    // Emotion Wheel families the list above had no word for. Appended, never inserted — the
+    // order is the tie-break `topFeelings` and the day graph read, and a retired id would
+    // stay in place for the same reason.
+    { id: 'amusement', label: 'amusement', gloss: 'entertained, close to laughing', valence: 0.75, energy: 0.7, dominance: 0.4, family: 'joy', hex: '#fde047' },
+    { id: 'affection', label: 'affection', gloss: 'warmth toward someone, tenderness', valence: 0.8, energy: 0.45, dominance: 0.3, family: 'trust', hex: '#f9a8d4' },
+    { id: 'admiration', label: 'admiration', gloss: 'impressed by someone', valence: 0.65, energy: 0.55, dominance: 0.05, family: 'trust', hex: '#5eead4' },
+    { id: 'relief', label: 'relief', gloss: 'a tension gone, a worry lifted', valence: 0.6, energy: 0.3, dominance: 0.25, family: 'joy', hex: '#86efac' },
+    { id: 'compassion', label: 'compassion', gloss: 'moved by what someone else is going through', valence: 0.35, energy: 0.4, dominance: 0.2, family: 'trust', hex: '#a7f3d0' },
+    { id: 'regret', label: 'regret', gloss: 'wishing it had gone another way', valence: -0.55, energy: 0.35, dominance: -0.4, family: 'sadness', hex: '#7c3aed' },
+    { id: 'disappointment', label: 'disappointment', gloss: 'let down, an expectation not met', valence: -0.6, energy: 0.35, dominance: -0.35, family: 'sadness', hex: '#4f46e5' },
+    { id: 'disgust', label: 'disgust', gloss: 'repelled, wanting distance from it', valence: -0.7, energy: 0.65, dominance: 0.15, family: 'disgust', hex: '#65a30d' },
+    { id: 'contempt', label: 'contempt', gloss: 'looking down on someone or something', valence: -0.55, energy: 0.55, dominance: 0.6, family: 'disgust', hex: '#9f1239' }
 ];
+
+/** A feeling's three coordinates, as the drift maths reads them. `null` for an id it does not know. */
+export const feelingCoordinates = (id) => {
+    const known = FEELINGS.find(feeling => feeling.id === id);
+    return known ? { valence: known.valence, energy: known.energy, dominance: known.dominance } : null;
+};
 
 /** The feeling the graph draws dashed alongside anything the user marked uncertain. */
 export const UNCLEAR_FEELING_ID = 'unclear';
@@ -158,6 +192,19 @@ export const MAX_TRANSCRIPT_LENGTH = 4000;
 
 export const MAX_TRIGGER_LABEL = MAX_TAG_LENGTH;
 
+/**
+ * A trigger's two halves (the EmotionGuesser integration). An `entity` is who or what a
+ * feeling was about when it was not a person — *work*, *the gym*, *my flat*; an
+ * `interaction` is what happened with it — *meeting*, *breakup*, *being ignored* — a short
+ * generic phrase that can recur across people and things, so *meetings with anyone* and
+ * *everything with Lucie* are both readable later. A trigger row minted before this existed
+ * carries no role and reads as an entity.
+ */
+export const TRIGGER_ROLES = ['entity', 'interaction'];
+
+/** The words from the note that show a feeling: a quotation, so it is capped rather than filtered. */
+export const MAX_QUOTE_LENGTH = 300;
+
 /** Intensity is 1–3. Its words live in JOURNAL_COPY so the forbidden-word walk sees them. */
 export const INTENSITY_LEVELS = [1, 2, 3];
 
@@ -174,6 +221,9 @@ export const PEOPLE_PATH = `${JOURNAL_ROOT}/people`;
 export const TRIGGERS_PATH = `${JOURNAL_ROOT}/triggers`;
 
 export const SEARCH_PATH = `${JOURNAL_ROOT}/search`;
+
+/** The drift analytics screen (the EmotionGuesser integration). A static segment, like the others. */
+export const INSIGHTS_PATH = `${JOURNAL_ROOT}/insights`;
 
 export const RECORD_PARAM = 'record';
 export const RECORD_PARAM_VALUE = '1';
@@ -429,6 +479,9 @@ export const JOURNAL_COPY = {
         triggers: {
             keep: 'Keep the new trigger {label}'
         },
+        // The words behind a proposed feeling — the model's evidence, quoted from the note.
+        // Shown so a wrong suggestion can be put down at a glance rather than after a re-read.
+        quote: 'From what you said: “{quote}”',
         ambiguity: {
             feeling: 'Which of these is closest to how that felt?',
             // `{options}` is filled from the mentions the model did find, each as
@@ -561,6 +614,11 @@ export const JOURNAL_COPY = {
         // check-in, so this says where they come from rather than offering to make one.
         empty: 'Triggers appear here once a check-in names one.',
         entries: 'Where this comes up',
+        // The two halves a trigger can be (TRIGGER_ROLES). A row with no role says nothing.
+        roles: {
+            entity: 'who or what',
+            interaction: 'what happened'
+        },
         // The row's own disclosure. It opens the entries below it rather than a route:
         // §9.1 gives the vocabulary one screen and the detail lives inside it.
         expand: 'Show what names {label}',
@@ -708,6 +766,125 @@ export const JOURNAL_COPY = {
         }
     },
 
+    // The Insights screen (the EmotionGuesser integration). Every sentence describes an
+    // arithmetic over what was recorded; none of them grades the person who recorded it.
+    insights: {
+        heading: 'Insights',
+        subheading: 'How the same people and triggers have felt over time.',
+        // The ⓘ. The first sentence is the whole screen's caveat, on the day graph's rule.
+        caveat: 'Every drawing here is arithmetic over what you recorded, not a claim about you.',
+        coordinates: 'Each feeling sits at a fixed point on three axes — pleasant to unpleasant, still to energetic, overwhelmed to in control — and a check-in is drawn at the point of the feeling you chose, weighted by its strength.',
+        unstated: 'A feeling recorded without a strength is counted at {strength} of three, the same as the day graph draws it.',
+        smoothing: 'Smoothed means a weighted average in which the newest entries count most and older ones fade by half every {halflife} entries.',
+        infoLabel: 'About these drawings',
+
+        level: {
+            label: 'Group by',
+            person: 'Person',
+            trigger: 'Trigger',
+            pair: 'Person or thing · what happened',
+            personHint: 'Everything felt about one person, pooled over whatever happened.',
+            triggerHint: 'Everything felt about one trigger, pooled over everyone it happened with.',
+            pairHint: 'One person or thing together with one thing that happened, kept apart from the rest.'
+        },
+
+        series: {
+            label: 'What to draw',
+            hint: 'Up to {max} at once. Tap one to add it or put it down.',
+            entries: {
+                one: '{count} entry',
+                many: '{count} entries'
+            }
+        },
+
+        circumplex: {
+            heading: 'Where each one sits',
+            hint: 'Left to right is unpleasant to pleasant; bottom to top is still to energetic. Each dot is a check-in, sized by its strength, and the ring marks the most recent one.',
+            smoothed: 'Smoothed',
+            raw: 'As recorded',
+            axisX: 'unpleasant → pleasant',
+            axisY: 'still → energetic',
+            corner: {
+                highPleasant: 'energetic · pleasant',
+                highUnpleasant: 'energetic · unpleasant',
+                lowPleasant: 'still · pleasant',
+                lowUnpleasant: 'still · unpleasant'
+            }
+        },
+
+        drift: {
+            heading: 'How far each one has moved',
+            hint: 'The smoothed position now, less the very first check-in that named it. Only what has been named at least twice is drawn.',
+            axis: {
+                valence: 'toward pleasant',
+                energy: 'toward energetic',
+                dominance: 'toward in control'
+            },
+            axisAway: {
+                valence: 'toward unpleasant',
+                energy: 'toward still',
+                dominance: 'toward overwhelmed'
+            },
+            dimension: 'Axis',
+            dimensions: {
+                valence: 'Pleasant',
+                energy: 'Energy',
+                dominance: 'Control'
+            },
+            empty: 'Nothing here has been named twice yet.'
+        },
+
+        series1: {
+            heading: 'One over time',
+            hint: 'Each dot is a check-in on the chosen axis; the line is the smoothed position.',
+            pick: 'Which one',
+            dimension: 'Axis',
+            intensity: 'Strength',
+            // The four figures under the drawing, each a sentence, on `SummaryLine`'s rule.
+            count: 'Named in {count} check-ins.',
+            now: 'Smoothed position now: {value}.',
+            since: 'Since the first time: {value}.',
+            slope: 'Direction over the last few: {value} per thirty days.',
+            slopeNone: 'Direction over the last few: too few to say.',
+            distance: 'Distance moved across all three axes: {value}.',
+            interactions: 'What happened with it: {list}.',
+            entities: 'Who or what it happened with: {list}.',
+            withNothing: 'nothing named'
+        },
+
+        heatmap: {
+            heading: 'Which feelings each one brings',
+            hint: 'Strength summed per feeling, across every check-in that names it. Darker is more.',
+            empty: 'No feelings attached to anything yet.'
+        },
+
+        weekly: {
+            heading: 'The weeks, on three axes',
+            hint: 'Each week is the average of that week\'s check-ins on each axis, weighted by strength. A week with nothing in it is left out rather than drawn at zero.',
+            valence: 'pleasant',
+            energy: 'energy',
+            dominance: 'control'
+        },
+
+        radar: {
+            heading: 'Feeling families',
+            hint: 'Strength summed by family, for what is drawn above.',
+            families: {
+                joy: 'joy',
+                trust: 'trust',
+                anticipation: 'anticipation',
+                fear: 'fear',
+                sadness: 'sadness',
+                disgust: 'disgust',
+                anger: 'anger',
+                quiet: 'quiet'
+            }
+        },
+
+        empty: 'Nothing to draw yet. Insights appear once check-ins name a person or a trigger.',
+        loadError: 'Could not load your journal. Check that the server is running, then reload.'
+    },
+
     nav: {
         label: 'Journal',
         back: 'Back to the journal'
@@ -770,7 +947,10 @@ const readFeelingEntry = (feeling) => ({
     id: asString(feeling?.id),
     intensity: asNumber(feeling?.intensity),
     uncertain: asBool(feeling?.uncertain),
-    about: asArray(feeling?.about).map(readAboutTarget).filter(Boolean)
+    about: asArray(feeling?.about).map(readAboutTarget).filter(Boolean),
+    // The words behind it, when a model quoted them and the user kept the feeling. Absent
+    // on every check-in written before the EmotionGuesser integration, and on every chip.
+    ...(typeof feeling?.quote === 'string' && feeling.quote ? { quote: feeling.quote } : {})
 });
 
 /** The model's provenance block, present only when a model was consulted. */
@@ -948,6 +1128,9 @@ export const readTrigger = (entry, allTriggerEntries = []) => {
         clientId: startId,
         // The label that is current for it.
         label: asString(payload.label),
+        // Which half of a trigger it is (TRIGGER_ROLES), or null on a row minted before roles
+        // existed — which every reader treats as an entity.
+        role: TRIGGER_ROLES.includes(payload.role) ? payload.role : null,
         // The surviving trigger as the payload named it, when this id has been merged away;
         // null when it has not.
         mergedInto,
@@ -986,7 +1169,9 @@ const correctionBase = (trigger, now) => {
             corrects: [...new Set([...asArray(trigger?.corrects).filter(id => typeof id === 'string'), identity].filter(Boolean))],
             // Carried rather than re-derived: it records the check-in this trigger was first
             // confirmed in, and a correction is not a new birth.
-            created_from: asString(trigger?.createdFrom)
+            created_from: asString(trigger?.createdFrom),
+            // Carried for the same reason. Absent stays absent (invariant 14).
+            ...(TRIGGER_ROLES.includes(trigger?.role) ? { role: trigger.role } : {})
         },
         mentions: [],
         triggers: [],
@@ -1227,18 +1412,106 @@ const isTokenPrefix = (text, prefix) => (
 /** No suggestion list is ever longer than this. Three fit under a field; a fourth is a menu. */
 export const MAX_CANDIDATES = 3;
 
+/* 7a. Looks-alike matching (the EmotionGuesser integration) */
+
+/**
+ * How alike two labels have to look before one is *offered* for the other. The
+ * EmotionGuesser's review band: below this a label is new; at or above it the existing
+ * word is put in front of the user as a question. Nothing is ever linked on this score
+ * alone — *Lucy* is proposed as *Lucie*, never merged, because no arithmetic can tell a
+ * spelling variant from a different person.
+ */
+export const SIMILAR_FLOOR = 0.62;
+
+/** Shorter than this after folding, and the ratio says nothing worth asking about. */
+const SIMILAR_MIN_LENGTH = 3;
+
+const STOP_WORDS = new Set(['my', 'the', 'a', 'an', 'our', 'with', 'at', 'of', 'to', 'in', 'on', 'some', 'this', 'that',
+    'mein', 'meine', 'der', 'die', 'das', 'ein', 'eine', 'mit', 'bei', 'von', 'zu', 'im', 'am']);
+
+/** Lower-case, accent-free, letters and digits only, stop words dropped. */
+const foldForSimilarity = (value) => (
+    fold(value)
+        .replace(/[^\p{L}\p{N}' ]+/gu, ' ')
+        .split(/\s+/)
+        .filter(word => word && !STOP_WORDS.has(word))
+        .join(' ')
+);
+
+/** Ratcliff/Obershelp: twice the matched characters over the total, as Python's SequenceMatcher reads it. */
+const matchedCharacters = (a, b) => {
+    if (!a.length || !b.length) return 0;
+
+    let bestA = 0;
+    let bestB = 0;
+    let bestLength = 0;
+    for (let i = 0; i < a.length; i += 1) {
+        for (let j = 0; j < b.length; j += 1) {
+            let length = 0;
+            while (i + length < a.length && j + length < b.length && a[i + length] === b[j + length]) length += 1;
+            if (length > bestLength) {
+                bestLength = length;
+                bestA = i;
+                bestB = j;
+            }
+        }
+    }
+    if (bestLength === 0) return 0;
+
+    return bestLength
+        + matchedCharacters(a.slice(0, bestA), b.slice(0, bestB))
+        + matchedCharacters(a.slice(bestA + bestLength), b.slice(bestB + bestLength));
+};
+
+const sequenceRatio = (a, b) => (
+    a.length + b.length === 0 ? 0 : (2 * matchedCharacters(a, b)) / (a.length + b.length)
+);
+
+/**
+ * 0…1, how alike two labels look: the best of token overlap (Jaccard), token containment
+ * (so *boss* against *meeting boss* scores high), and the character-sequence ratio. The
+ * EmotionGuesser's `_string_similarity`, carried over whole so its review band means the
+ * same thing here.
+ */
+export const labelSimilarity = (a, b) => {
+    const left = foldForSimilarity(a);
+    const right = foldForSimilarity(b);
+    if (!left || !right) return 0;
+    if (left === right) return 1;
+    if (left.length < SIMILAR_MIN_LENGTH || right.length < SIMILAR_MIN_LENGTH) return 0;
+
+    const leftTokens = new Set(left.split(' '));
+    const rightTokens = new Set(right.split(' '));
+    let shared = 0;
+    leftTokens.forEach(token => { if (rightTokens.has(token)) shared += 1; });
+    const union = new Set([...leftTokens, ...rightTokens]).size;
+    const jaccard = union === 0 ? 0 : shared / union;
+    const containment = shared / Math.min(leftTokens.size, rightTokens.size);
+
+    return Math.max(jaccard, 0.85 * containment, sequenceRatio(left, right));
+};
+
+/** The rows that look like `query`, best first, each with its score. Never an exact match. */
+const similarRows = (query, rows, labelOf) => (
+    rows
+        .map(row => ({ row, score: labelSimilarity(query, labelOf(row)) }))
+        .filter(({ score }) => score >= SIMILAR_FLOOR && score < 1)
+        .sort((a, b) => b.score - a.score || labelOf(a.row).localeCompare(labelOf(b.row)))
+);
+
 export const personCandidates = (name, relationships = []) => {
     const trimmed = String(name ?? '').trim();
     if (!trimmed) return [];
 
     const rows = asArray(relationships).filter(person => typeof person?.name === 'string');
 
-    const candidate = (person, match) => ({
+    const candidate = (person, match, score = null) => ({
         relationship: person,
         relationshipId: person.ID,
         name: person.name,
         exact: match === 'exact',
-        match
+        match,
+        ...(score === null ? {} : { score })
     });
 
     const exact = rows.find(person => person.name.trim() === trimmed);
@@ -1251,10 +1524,14 @@ export const personCandidates = (name, relationships = []) => {
         if (folded === query) return false;
         return isTokenPrefix(folded, query) || isTokenPrefix(query, folded);
     });
+    const placed = new Set([...insensitive, ...prefix].map(person => person.ID));
+    // Spelling variants — *Lucy* for *Lucie* — after the rules above, and only as an offer.
+    const similar = similarRows(trimmed, rows.filter(person => !placed.has(person.ID)), person => person.name);
 
     return [
         ...insensitive.map(person => candidate(person, 'insensitive')),
-        ...prefix.map(person => candidate(person, 'prefix'))
+        ...prefix.map(person => candidate(person, 'prefix')),
+        ...similar.map(({ row, score }) => candidate(row, 'similar', score))
     ].slice(0, MAX_CANDIDATES);
 };
 
@@ -1270,16 +1547,25 @@ export const triggerCandidates = (label, triggers = []) => {
         }))
         .filter(row => typeof row.label === 'string' && row.label.trim());
 
-    const candidate = (row, match) => ({ ...row, exact: match === 'exact', match });
+    const candidate = (row, match, score = null) => ({
+        ...row, exact: match === 'exact', match, ...(score === null ? {} : { score })
+    });
 
     const exact = rows.find(row => row.label.trim() === trimmed);
     if (exact) return [candidate(exact, 'exact')];
 
     const query = fold(trimmed);
-    return rows
-        .filter(row => fold(row.label) === query)
-        .map(row => candidate(row, 'insensitive'))
-        .slice(0, MAX_CANDIDATES);
+    const insensitive = rows.filter(row => fold(row.label) === query);
+    const placed = new Set(insensitive.map(row => row.clientId));
+    // A near miss — *meeting* for *meetings*, *Arbeit* for *arbeit im Büro* — is offered
+    // beside *new trigger* and never in its place: §4.5b's rule that the user grows the
+    // vocabulary one confirmed word at a time is unchanged, the offer only saves a merge.
+    const similar = similarRows(trimmed, rows.filter(row => !placed.has(row.clientId)), row => row.label);
+
+    return [
+        ...insensitive.map(row => candidate(row, 'insensitive')),
+        ...similar.map(({ row, score }) => candidate(row, 'similar', score))
+    ].slice(0, MAX_CANDIDATES);
 };
 
 /* 8. Client ids */

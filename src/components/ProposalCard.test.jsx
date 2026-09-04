@@ -471,9 +471,13 @@ describe('editing the transcript', () => {
         renderComposer({ kit });
         await landAndOpen(kit);
 
-        // Misheard: no relationship is called Lucy, so the card offers a new person.
-        expect(personRow('lucy')).toHaveAttribute('data-person-state', 'new');
+        // Misheard: no relationship is called Lucy. The card offers a new person — and, since
+        // the EmotionGuesser integration, puts Lucie beside it as a look-alike to pick, never
+        // as a link: a spelling variant is a question for the user, not a merge.
+        expect(personRow('lucy')).toHaveAttribute('data-person-state', 'candidates');
         expect(personRow('lucy')).toHaveAttribute('data-person-confirmed', 'false');
+        expect(personRow('lucy').querySelector('[data-person-candidate="5"]')).toBeInTheDocument();
+        expect(personRow('lucy').querySelector('[data-person-keep-new]')).toBeInTheDocument();
         await userEvent.click(toggle('rapport'));
 
         const box = screen.getByLabelText(JOURNAL_COPY.voice.transcriptLabel);
@@ -943,5 +947,89 @@ describe('ambiguitySentence', () => {
         expect(ambiguitySentence(state)).toBe('Was that about Lucie, about work, or something else?');
         expect(ambiguitySentence(state, () => 'L.')).toBe('Was that about L., about work, or something else?');
         expect(ambiguitySentence({ ...state, ambiguity: 'none' })).toBeNull();
+    });
+});
+
+/* 9. The EmotionGuesser integration: quotes, look-alikes and roles on the card */
+
+describe('quotes, look-alikes and roles', () => {
+    const quoted = () => proposal({
+        transcript: 'The meeting with my boss ran long and I was on edge the whole time.',
+        feelings: [{
+            id: 'anxiety', intensity: 2, quote: 'I was on edge the whole time',
+            about: [{ kind: 'trigger', label: 'meetings', role: 'interaction' }]
+        }]
+    });
+
+    const meetingTrigger = {
+        ...workTrigger, ID: 11, client_id: '0b7e4c1a-5d2a-4f0c-9e2f-7f3a8c1d4b7f',
+        payload: { v: 1, label: 'meeting', role: 'interaction' }
+    };
+
+    it('shows the words behind a proposed feeling, and saves them with it when it is kept', async () => {
+        const kit = kitFor(quoted());
+        renderComposer({ kit, entries: [] });
+        await landAndOpen(kit);
+        echoPost();
+
+        expect(row('anxiety').querySelector('[data-feeling-quote]')).toHaveTextContent('I was on edge the whole time');
+
+        await userEvent.click(toggle('anxiety'));
+        await userEvent.click(row('anxiety').querySelector('[data-trigger-keep]'));
+        await save();
+
+        expect(sentBody().payload.feelings[0].quote).toBe('I was on edge the whole time');
+        // The new trigger is minted with the half the model gave it.
+        expect(sentBody().triggers).toEqual([{ label: 'meetings', client_id: expect.stringMatching(UUID), role: 'interaction' }]);
+    });
+
+    it('offers a look-alike the user already has beside the new trigger, and takes it only on a tap', async () => {
+        const kit = kitFor(quoted());
+        renderComposer({ kit, entries: [meetingTrigger] });
+        await landAndOpen(kit);
+        echoPost();
+
+        // Nothing is linked: *meetings* is new, and *meeting* is a question beside it.
+        expect(row('anxiety').querySelector('[data-trigger-keep]')).toBeInTheDocument();
+        const offers = row('anxiety').querySelector('[data-similar-triggers="lexical"]');
+        expect(offers).toBeInTheDocument();
+        expect(offers).toHaveTextContent(fillCopy(JOURNAL_COPY.similar.offer, { label: 'meeting' }));
+
+        await userEvent.click(offers.querySelector(`[data-similar-trigger="${meetingTrigger.client_id}"]`));
+        expect(row('anxiety').querySelector('[data-trigger-keep]')).toBeNull();
+        expect(row('anxiety').querySelector('[data-similar-triggers="lexical"]')).toBeNull();
+
+        await userEvent.click(toggle('anxiety'));
+        await save();
+
+        expect(sentBody().triggers).toEqual([{ trigger: meetingTrigger.client_id }]);
+        expect(sentBody().payload.feelings[0].about).toEqual([{ kind: 'trigger', trigger: meetingTrigger.client_id }]);
+        // A look-alike taken by words is not the embedding index's offer, so no retrieval block.
+        expect(sentBody().payload.retrieval).toBeUndefined();
+    });
+
+    it('keeps an existing trigger’s own role rather than the model’s, and never sends a role for one', async () => {
+        const kit = kitFor(proposal({
+            transcript: 'Work again.',
+            feelings: [{ id: 'stress', intensity: 1, about: [{ kind: 'trigger', label: 'work', role: 'interaction' }] }]
+        }));
+        renderComposer({ kit, entries: [workTrigger] });
+        await landAndOpen(kit);
+        echoPost();
+
+        await userEvent.click(toggle('stress'));
+        await save();
+        expect(sentBody().triggers).toEqual([{ trigger: WORK_ID }]);
+    });
+
+    it('drops a quote the note does not contain before the card sees it', async () => {
+        const invented = quoted();
+        invented.feelings[0].quote = 'I was terrified';
+        const kit = kitFor(invented);
+        renderComposer({ kit, entries: [] });
+        await landAndOpen(kit);
+
+        expect(row('anxiety')).toBeInTheDocument();
+        expect(row('anxiety').querySelector('[data-feeling-quote]')).toBeNull();
     });
 });

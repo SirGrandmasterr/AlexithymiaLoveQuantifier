@@ -1497,3 +1497,120 @@ func TestGetJournalDaysEmptyRange(t *testing.T) {
 		t.Errorf("Expected 401 without a user, got %d", anon.Code)
 	}
 }
+
+/* The EmotionGuesser integration: a trigger's role, and a feeling's quote */
+
+func TestCreateJournalEntryMintsATriggerWithARole(t *testing.T) {
+	db := setupSQLiteDB(t)
+
+	createJournal(t, 1, checkinBody(entryOne,
+		fmt.Sprintf(`{"id":"stress","intensity":2,"quote":"the meeting ran long","about":[{"kind":"trigger","trigger":%q}]}`, triggerWork),
+		``,
+		fmt.Sprintf(`{"label":"meeting","client_id":%q,"role":"interaction"}`, triggerWork)))
+
+	var trigger models.JournalEntry
+	if err := db.Where("user_id = ? AND client_id = ?", 1, triggerWork).First(&trigger).Error; err != nil {
+		t.Fatalf("Expected the trigger to have been created: %v", err)
+	}
+	if trigger.Payload["role"] != "interaction" {
+		t.Errorf("Expected the role to be stored on the minted trigger, got %v", trigger.Payload["role"])
+	}
+
+	var checkin models.JournalEntry
+	if err := db.Where("user_id = ? AND client_id = ?", 1, entryOne).First(&checkin).Error; err != nil {
+		t.Fatalf("Expected the check-in to have been created: %v", err)
+	}
+	feelings := checkin.Payload["feelings"].([]interface{})
+	if quote := feelings[0].(map[string]interface{})["quote"]; quote != "the meeting ran long" {
+		t.Errorf("Expected the quote to travel with the feeling, got %v", quote)
+	}
+}
+
+func TestCreateJournalEntryMintsATriggerWithNoRoleAsAbsent(t *testing.T) {
+	db := setupSQLiteDB(t)
+
+	createJournal(t, 1, checkinBody(entryOne,
+		fmt.Sprintf(`{"id":"stress","intensity":2,"about":[{"kind":"trigger","trigger":%q}]}`, triggerWork),
+		``,
+		fmt.Sprintf(`{"label":"work","client_id":%q}`, triggerWork)))
+
+	var trigger models.JournalEntry
+	if err := db.Where("user_id = ? AND client_id = ?", 1, triggerWork).First(&trigger).Error; err != nil {
+		t.Fatalf("Expected the trigger to have been created: %v", err)
+	}
+	// Absent, never an empty string or a default (invariant 14).
+	if _, present := trigger.Payload["role"]; present {
+		t.Errorf("Expected no role key on a trigger minted without one, got %v", trigger.Payload["role"])
+	}
+}
+
+func TestCreateJournalEntryTriggerCorrectionCarriesARole(t *testing.T) {
+	db := setupSQLiteDB(t)
+	work := seedTrigger(t, db, 1, triggerWork, "work")
+
+	body := fmt.Sprintf(`{
+		"client_id": %q, "kind": "trigger", "at": %q, "day": %q, "schema_version": 1,
+		"payload": { "v": 1, "label": "paid work", "merged_into": null, "corrects": [%q], "role": "entity" },
+		"supersedes_id": %d
+	}`, entryTwo, atExample, dayExample, triggerWork, work.ID)
+	created := createJournal(t, 1, body)
+	if created.Payload["role"] != "entity" {
+		t.Errorf("Expected the correction to keep its role, got %v", created.Payload["role"])
+	}
+}
+
+func TestCreateJournalEntryRejectsABadRoleOrAnOverlongQuote(t *testing.T) {
+	db := setupSQLiteDB(t)
+	work := seedTrigger(t, db, 1, triggerWork, "work")
+
+	cases := []struct {
+		name          string
+		body          string
+		expectedError string
+	}{
+		{
+			name: "Minted Trigger With An Unknown Role",
+			body: checkinBody(entryOne,
+				fmt.Sprintf(`{"id":"stress","intensity":2,"about":[{"kind":"trigger","trigger":%q}]}`, triggerMove),
+				``,
+				fmt.Sprintf(`{"label":"the move","client_id":%q,"role":"place"}`, triggerMove)),
+			expectedError: `triggers[0].role must be one of entity or interaction, got "place"`,
+		},
+		{
+			name: "Trigger Correction With An Unknown Role",
+			body: fmt.Sprintf(`{
+				"client_id": %q, "kind": "trigger", "at": %q, "day": %q, "schema_version": 1,
+				"payload": { "v": 1, "label": "paid work", "merged_into": null, "role": "thing" },
+				"supersedes_id": %d
+			}`, entryTwo, atExample, dayExample, work.ID),
+			expectedError: `role must be one of entity or interaction, got "thing"`,
+		},
+		{
+			name: "Quote Over The Cap",
+			body: checkinBody(entryThree,
+				fmt.Sprintf(`{"id":"calm","intensity":1,"quote":%q}`, strings.Repeat("a", maxQuoteRunes+1)),
+				``, ``),
+			expectedError: "feelings[0].quote exceeds 300 characters",
+		},
+	}
+
+	before := countEntries(t, db)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := postJournal(t, 1, tc.body)
+			if w.Code != http.StatusBadRequest {
+				t.Fatalf("Expected 400 but got %d (body: %s)", w.Code, w.Body.String())
+			}
+			var response map[string]string
+			if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+				t.Fatalf("Failed to parse response: %v", err)
+			}
+			if response["error"] != tc.expectedError {
+				t.Errorf("Expected error %q, got %q", tc.expectedError, response["error"])
+			}
+		})
+	}
+	if after := countEntries(t, db); after != before {
+		t.Errorf("Expected nothing to be written, found %d new entries", after-before)
+	}
+}

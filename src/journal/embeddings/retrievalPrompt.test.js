@@ -128,7 +128,7 @@ describe('retrieval-influenced prompts (the item 3 guard)', () => {
 
             differing.forEach(at => {
                 const line = plain.split('\n')[at];
-                expect(line).toMatch(/People this person has named before|Trigger labels this person has used before/);
+                expect(line).toMatch(/People this person has named before|Things this person has named before|Happenings this person has named before/);
             });
         });
     });
