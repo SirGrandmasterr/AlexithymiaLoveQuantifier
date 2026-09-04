@@ -14,9 +14,6 @@ import (
 
 var DB *gorm.DB
 
-// Models is every table AutoMigrate owns, in dependency order. The migrate command reads
-// the same list, so `make migrate-check` can only ever disagree with the server about
-// schema shape if the models themselves changed.
 func Models() []interface{} {
 	return []interface{}{
 		&models.User{},
@@ -28,9 +25,6 @@ func Models() []interface{} {
 	}
 }
 
-// Open dials the configured database and sets DB, without touching the schema. Split out
-// from Connect so the migrate command can inspect a live database — `-check` must be able
-// to report drift without creating the very columns it is checking for.
 func Open() (*gorm.DB, error) {
 	var db *gorm.DB
 	var err error
@@ -61,9 +55,6 @@ func Open() (*gorm.DB, error) {
 	return db, nil
 }
 
-// Migrate brings the schema up to the models and links any legacy rows. It is what the
-// server runs on boot and what `make migrate` runs standalone — one code path, so a
-// migration cannot succeed under one and fail under the other.
 func Migrate(db *gorm.DB) error {
 	log.Println("Running migrations...")
 	if err := db.AutoMigrate(Models()...); err != nil {
@@ -71,9 +62,6 @@ func Migrate(db *gorm.DB) error {
 	}
 	log.Println("Database migrated")
 
-	// Idempotent, so it runs on every boot: the first one after upgrading links the
-	// existing snapshots, every one after that reports zero. Back up the database before
-	// the first run — see docs/09-deployment.md.
 	result, err := BackfillRelationships(db)
 	if err != nil {
 		return fmt.Errorf("backfill relationships: %w", err)

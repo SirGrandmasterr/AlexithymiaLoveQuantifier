@@ -14,26 +14,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
- * The weight store: where the model files live on the device, and the one way they get
- * there — from the configured server, one file at a time, resumed if a previous attempt
- * was cut short, and kept only once the whole file hashes to the sum the app passed in.
- *
- * It is the native half of C3's download manager and follows its rules exactly (§5.6):
- * length is checked before the hash because it is free and because a `/models/` path that
- * fell through to the SPA answers `200` with a page of HTML; a wrong sum deletes what was
- * fetched and reports `checksum`, and there is no way past that outcome; cancel keeps the
- * partial file so the next attempt resumes with a `Range` request rather than starting
- * over. The pins are **not** here — the JavaScript manifest in `models.js` is the one
- * copy, and this class hashes whatever it is told to hash.
- *
- * Files land under the app's private files directory, which `allowBackup="false"` keeps
- * off Google's backup. Nothing here reads the session token, and the only URL it ever
- * opens is `<baseUrl>/models/<path>`.
- *
- * Plain Java on purpose: no Android import, so the JVM harness can drive it against a local
- * server, including the cancel-and-resume and the tampered-file cases.
- */
 public final class ModelStore {
 
     /** One file the caller wants, with what it must be. */
@@ -125,11 +105,6 @@ public final class ModelStore {
         return all;
     }
 
-    /**
-     * Fetch every file that is not already present, verifying each before it is kept.
-     *
-     * @param cancel set by another thread to stop; the partial file is kept for a resume
-     */
     public void fetch(String baseUrl, List<FileSpec> files, Listener listener, AtomicBoolean cancel) throws Failure {
         long total = 0;
         for (FileSpec spec : files) total += spec.bytes;

@@ -11,10 +11,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// This package was previously untestable: jwtKey was captured at package init, so no test
-// could set JWT_SECRET from inside a test function. LoadSecret re-reads it, which is what
-// makes everything below possible.
-
 func TestLoadSecretRejectsAnEmptyKey(t *testing.T) {
 	t.Setenv("JWT_SECRET", "")
 
@@ -104,8 +100,6 @@ func TestExpiredTokenIsRejected(t *testing.T) {
 	}
 }
 
-// TestForgedClaimsAreRejected is the attack the signature exists to stop: keep a valid
-// signature, swap the payload for one naming a different user.
 func TestForgedClaimsAreRejected(t *testing.T) {
 	t.Setenv("JWT_SECRET", "a-real-secret")
 	if err := LoadSecret(); err != nil {

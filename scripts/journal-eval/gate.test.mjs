@@ -1,10 +1,3 @@
-/**
- * The gate itself. Pure, and in `npm test` for the reason `wer.test.mjs` gives at its top.
- *
- * The cases below are written as the four ways a run can end: it holds, it fails on one
- * criterion, it was not fully measured, and it clears English but not German — the last of
- * which the D4 prompt says to stop and ask about rather than decide.
- */
 import { describe, expect, it } from 'vitest';
 import { applyGate, clearsEnglishButNotGerman, clipCeiling, THRESHOLDS } from './gate.mjs';
 

@@ -3,9 +3,6 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import VaultKnob from './VaultKnob';
 
-// The feedback channels are mocked rather than exercised: jsdom has no AudioContext and no
-// vibration motor, and what is worth asserting here is *when* a detent fires, not what it
-// sounds like.
 vi.mock('../mobile/knobFeedback', () => ({
     startTurn: vi.fn(),
     detent: vi.fn(),
@@ -100,9 +97,6 @@ describe('VaultKnob — turning it', () => {
 
     it('shows the reading while held, since the finger is on the dial', () => {
         render(<Harness initial={40} />);
-        // The badge is decorative to a screen reader — the dial's own aria-valuenow is the
-        // accessible reading — so it is found by structure rather than by role.
-        // `:scope >` so the dial's own decorative <svg> is not what gets found.
         const badge = () => dial().parentElement.querySelector(':scope > [aria-hidden="true"]');
 
         expect(badge()).toBeNull();

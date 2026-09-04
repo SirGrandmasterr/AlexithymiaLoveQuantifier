@@ -17,9 +17,7 @@ import {
     ERROR_KINDS
 } from './recorder';
 
-/* ------------------------------------------------------------------------------------ */
-/* The fakes. No device, no Web Audio, no timers of their own.                             */
-/* ------------------------------------------------------------------------------------ */
+/* The fakes. No device, no Web Audio, no timers of their own. */
 
 /** A `MediaRecorder` that records nothing and reports everything. */
 const makeFakeMediaRecorder = () => {
@@ -120,9 +118,7 @@ const recordOnce = async (harness) => {
 beforeEach(() => { vi.useFakeTimers(); });
 afterEach(() => { vi.useRealTimers(); });
 
-/* ------------------------------------------------------------------------------------ */
-/* 1. Tap to start, tap to stop                                                           */
-/* ------------------------------------------------------------------------------------ */
+/* 1. Tap to start, tap to stop */
 
 describe('the tap contract', () => {
     it('starts on a tap and stops on the next one', async () => {
@@ -189,9 +185,7 @@ describe('the tap contract', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 2. The two automatic stops                                                             */
-/* ------------------------------------------------------------------------------------ */
+/* 2. The two automatic stops */
 
 describe('stopping without a second tap', () => {
     it('stops after two seconds of silence once something has been said', async () => {
@@ -253,9 +247,7 @@ describe('stopping without a second tap', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 3. add more                                                                            */
-/* ------------------------------------------------------------------------------------ */
+/* 3. add more */
 
 describe('add more', () => {
     it('records a second clip that lands on the same card', async () => {
@@ -303,9 +295,7 @@ describe('add more', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 4. Discarding — the promise that audio is never kept                                   */
-/* ------------------------------------------------------------------------------------ */
+/* 4. Discarding — the promise that audio is never kept */
 
 describe('discarding', () => {
     it.each([
@@ -416,9 +406,7 @@ describe('watchLifecycle', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 5. The meter, and the flag that comes from it                                          */
-/* ------------------------------------------------------------------------------------ */
+/* 5. The meter, and the flag that comes from it */
 
 describe('the level meter', () => {
     it('emits the level it read', async () => {
@@ -465,9 +453,6 @@ describe('the level meter', () => {
     });
 
     it('a room whose floor never drops below the silence level runs to the limit', async () => {
-        // The documented consequence of the two thresholds being the same number: if the
-        // room is never quiet, the silence stop cannot fire, and the flag is how the user
-        // finds out why the take ran the full thirty seconds.
         const { recorder, meter } = setup();
         await recorder.tap();
         await speak(meter, 1_000);
@@ -479,9 +464,7 @@ describe('the level meter', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 6. The web capture parts                                                               */
-/* ------------------------------------------------------------------------------------ */
+/* 6. The web capture parts */
 
 describe('web capture', () => {
     it('picks the first container the engine actually supports', () => {
@@ -551,15 +534,10 @@ describe('the numbers the design fixes', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* C4: on Android the permission prompt is not the background                            */
-/* ------------------------------------------------------------------------------------ */
+/* C4: on Android the permission prompt is not the background */
 
 describe('watchLifecycle on Android', () => {
     it('leaves a pending permission request alone, and still discards a recording', async () => {
-        // The prompt is an activity of its own: showing it pauses the app and
-        // `appStateChange` fires. Nothing has been captured in `requesting`, so a discard
-        // there would only cancel the request the user is in the middle of granting.
         let openNow;
         const harness = setup({
             requestStream: () => new Promise(resolve => { openNow = () => resolve(makeFakeStream()); })

@@ -3,13 +3,6 @@ import axios from 'axios';
 import { latestSnapshotDate } from '../constants/cadence';
 import { readCache, writeCache, clearCache } from '../mobile/offlineCache';
 
-/**
- * One copy of the subject list, shared by every screen that reads it.
- *
- * Before this existed the dashboard owned `people` and handed the timeline a captured
- * array, so an edit made while the timeline was open left it showing stale numbers. Now
- * both screens derive from the same state and a mutation is visible everywhere at once.
- */
 const SubjectsContext = createContext(null);
 
 export const useSubjects = () => {
@@ -18,23 +11,10 @@ export const useSubjects = () => {
     return value;
 };
 
-/**
- * The key a snapshot groups under. Every snapshot carries a relationship_id: the server's
- * find-or-create sets it on write and the startup backfill sets it on everything older.
- * A row arriving without one would be a server bug, so it gets a stack of its own rather
- * than silently merging with every other unlinked row.
- */
 export const stackKey = (person) => (
     person.relationship_id ?? `unlinked-${person.ID}`
 );
 
-/**
- * The stack abstraction: all versions of one relationship.
- *
- * Grouping used to be exact equality on the name string, which is why a stack could not be
- * renamed and two different people called Alex merged into one. It is now the relationship
- * id, so the name is just a label — see docs/01-concepts.md#the-stack-abstraction.
- */
 export const groupPeople = (people) => {
     const groups = new Map();
     people.forEach(person => {
@@ -50,14 +30,6 @@ export const findStack = (people, relationshipId) => (
     people.filter(person => person.relationship_id === relationshipId)
 );
 
-/**
- * Pairs each group of versions with the relationship it belongs to.
- *
- * The server owns identity and ordering; the count comes from the versions actually
- * loaded, so what a stack reports is always what the user can see. A group whose
- * relationship is missing from the list falls back to the name denormalized on its
- * snapshots, so a card is never silently dropped.
- */
 export const buildStacks = (people, relationships) => {
     const byId = new Map(relationships.map(relationship => [relationship.ID, relationship]));
 
@@ -67,17 +39,8 @@ export const buildStacks = (people, relationships) => {
             relationship: {
                 ID: versions[0].relationship_id,
                 name: known?.name ?? versions[0].name,
-                // The rhythm is the server's to hold; the count and the latest date are
-                // derived from the versions actually loaded, so both stay correct the
-                // instant a snapshot is added without waiting for a refetch.
                 cadence_days: known?.cadence_days ?? null,
                 snapshot_count: versions.length,
-                // The journal's count, unlike the two above, has no client-side source to
-                // derive it from — the dashboard holds no entries. It comes through as the
-                // server sent it, and falls back to 0 for a stack whose relationship is
-                // missing from the list, which is the same case the name falls back in.
-                // The delete dialog omits its journal clause at 0, so a fallback understates
-                // rather than inventing a number.
                 mention_count: known?.mention_count ?? 0,
                 latest_date: latestSnapshotDate(versions)
             },
@@ -86,15 +49,6 @@ export const buildStacks = (people, relationships) => {
     });
 };
 
-/**
- * @param {boolean} enabled false while signed out — nothing to fetch, nothing to keep.
- *   This is also how a lost session refetches: it sets the token to null and signing back in
- *   sets it again, so this flips false and true and the effect below re-runs on its own.
- * @param {number} reloadKey a refetch seam for a caller that needs one without `enabled`
- *   changing. **App no longer passes it.** It existed for re-authenticating *in place*,
- *   behind an overlay, and that path was removed — a dead session now signs the user out.
- *   Kept because it costs one line and forcing a refetch is a reasonable thing to want.
- */
 export function SubjectsProvider({ children, enabled = true, reloadKey = 0 }) {
     const [people, setPeople] = useState([]);
     const [relationships, setRelationships] = useState([]);
@@ -123,9 +77,6 @@ export function SubjectsProvider({ children, enabled = true, reloadKey = 0 }) {
         } catch (error) {
             console.error('Failed to fetch subjects', error);
 
-            // A transport failure on a phone is ordinary — a tunnel, a dropped Wi-Fi hop —
-            // and the last good list is a better answer than an empty screen. A response
-            // *with* a status is the server talking, so it is reported as before.
             const cached = error.response ? null : readCache();
             if (cached) {
                 setPeople(cached.people);
@@ -153,14 +104,6 @@ export function SubjectsProvider({ children, enabled = true, reloadKey = 0 }) {
             setRelationships([]);
             setLoading(false);
             setStaleSince(null);
-            // Logging out must not leave the previous user's snapshots on disk for the next
-            // one to find. The in-memory reset above would otherwise be undone by the first
-            // failed fetch after a new sign-in.
-            //
-            // This now also runs when a session is *lost* rather than only when the user
-            // signs out deliberately. It did not before: a dead session used to keep `token`
-            // set behind an overlay, so `enabled` stayed true and the Android offline cache
-            // outlived the session it belonged to.
             clearCache();
         }
         // `reloadKey` stays in the dependency list so the seam works for any caller that

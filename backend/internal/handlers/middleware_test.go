@@ -11,9 +11,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// callProtected routes a request through the real AuthMiddleware — the other handler tests
-// stub the middleware out by setting userID directly, so this is the only place the header
-// parsing and the account check are actually exercised.
 func callProtected(t *testing.T, authHeader string) *httptest.ResponseRecorder {
 	t.Helper()
 
@@ -63,11 +60,6 @@ func TestAuthMiddleware_AcceptsTokenForExistingUser(t *testing.T) {
 	}
 }
 
-// The regression this file exists for: a token that is perfectly valid but names a user row
-// that no longer exists — a dropped volume, a `docker compose down -v`, a deleted account.
-// Before, the token sailed through and /me answered 404 while the list endpoints answered
-// `[]`, leaving the browser holding a token it would keep sending forever. 401 is what the
-// frontend's response interceptor watches for.
 func TestAuthMiddleware_RejectsTokenForDeletedUser(t *testing.T) {
 	setupSQLiteDB(t) // migrated, but with no users in it
 
@@ -78,8 +70,6 @@ func TestAuthMiddleware_RejectsTokenForDeletedUser(t *testing.T) {
 	}
 }
 
-// A soft-deleted user is deleted: gorm.Model's default scope hides the row, and the session
-// should end with it rather than continuing against an account the user closed.
 func TestAuthMiddleware_RejectsTokenForSoftDeletedUser(t *testing.T) {
 	db := setupSQLiteDB(t)
 	user := models.User{Email: "gone@example.com", Password: "hash"}

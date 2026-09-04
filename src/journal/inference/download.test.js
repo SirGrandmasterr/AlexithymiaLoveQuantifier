@@ -9,9 +9,7 @@ import {
 } from './download';
 import { modelFileUrl, MODEL_CACHE_NAME } from './models';
 
-/* ------------------------------------------------------------------------------------ */
-/* Fakes: no network, no Cache Storage, no WebCrypto                                      */
-/* ------------------------------------------------------------------------------------ */
+/* Fakes: no network, no Cache Storage, no WebCrypto */
 
 const bytesFor = (text) => new TextEncoder().encode(text).buffer;
 const sha256Of = (text) => createHash('sha256').update(text).digest('hex');
@@ -66,8 +64,6 @@ const setup = (overrides = {}) => {
     return { downloader, held, fetchImpl, cache };
 };
 
-/* ------------------------------------------------------------------------------------ */
-
 describe('sha256Hex', () => {
     it('is hex, lower case, the form every sum in the Makefile is written in', async () => {
         expect(await sha256Hex(bytesFor('alpha'), subtle)).toBe(sha256Of('alpha'));
@@ -75,9 +71,6 @@ describe('sha256Hex', () => {
     });
 
     it('refuses rather than skipping where there is no WebCrypto', async () => {
-        // A self-hosted app reached over plain http:// has no `crypto.subtle` at all. The
-        // honest outcome is a refusal, never an unverified download.
-        // `null`, not `undefined`: a default parameter would hand it the real WebCrypto.
         await expect(sha256Hex(bytesFor('alpha'), null)).rejects.toMatchObject({
             kind: DOWNLOAD_ERRORS.unsupported
         });
@@ -117,9 +110,6 @@ describe('the download manager', () => {
         const tampered = vi.fn(async (url) => ({
             ok: true,
             status: 200,
-            // **Same length, different bytes** — which is the tampering the hash exists for,
-            // and the only way to reach the checksum branch at all: a different length is
-            // caught a step earlier, as the test below shows.
             arrayBuffer: async () => bytesFor(url.endsWith('c.onnx') ? 'gamma-weightz' : contentFor(url))
         }));
         const { downloader, held } = setup({ fetch: tampered });
@@ -137,9 +127,6 @@ describe('the download manager', () => {
     });
 
     it('catches a wrong length before it hashes, which is what an HTML error page looks like', async () => {
-        // C1's warning: without `try_files $uri =404` a missing weight is answered by the SPA
-        // with 200 and a page of HTML, which arrives at the runtime as a corrupt model rather
-        // than a missing one. The length says something more useful than the hash would.
         const html = vi.fn(async () => ({
             ok: true, status: 200, arrayBuffer: async () => bytesFor('<!doctype html><html>…')
         }));

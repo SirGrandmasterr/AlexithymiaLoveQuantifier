@@ -1,42 +1,12 @@
-/**
- * What the Light tier downloads, where it comes from, and what its bytes must hash to.
- *
- * This table is a **second copy** of the `MODEL_MANIFEST` in the repository's `Makefile`,
- * and that is deliberate rather than sloppy: the operator's `make models-fetch` fills the
- * volume, and the browser verifies what it was served. Two independent checks of the same
- * bytes catch a truncated volume, a half-written file and a proxy that answered with HTML,
- * none of which a single check on either side would see. `models.test.js` reads the Makefile
- * and asserts the two agree, so they cannot drift — the same rail `journal.test.js` uses to
- * hold `FEELINGS` to `domain/journal.go`.
- *
- * Every path is relative to `/models/`, which Nginx serves from the `models_data` volume
- * (C1, `docs/09-deployment.md` §2) and which is **this app's own origin**. A model hub URL
- * here would falsify the Vault page and be refused by `connect-src 'self'` a layer lower;
- * there is nothing to configure to make that happen, because there is nowhere else to look.
- *
- * The layout mirrors the Hugging Face repo id because that is what transformers.js resolves
- * against `env.localModelPath`: base, then model id, then file.
- */
-
 /** Where Nginx serves the volume. The trailing slash is what transformers.js expects. */
 export const MODEL_BASE_PATH = '/models/';
 
 /** The Cache Storage bucket. Versioned, so a later format change can leave the old one behind. */
 export const MODEL_CACHE_NAME = 'alq:journal-models:v1';
 
-/**
- * Whisper tiny, ONNX, int8-quantised — the Light tier's transcriber (§5.5).
- *
- * `dtype: 'q8'` is what makes transformers.js ask for the two `_quantized` files below;
- * they are the only two of the thirteen that are weights, and they are 40.8 MB of the
- * 45.2 MB total.
- */
 export const WHISPER_TINY = {
     id: 'onnx-community/whisper-tiny',
     revision: 'ff4177021cc41f7db950912b73ea4fdf7d01d8e7',
-    // What the settings screen and the download line say out loud. Measured, not guessed:
-    // C1 fetched these exact revisions on 2026-08-25 and the sum of `bytes` below is where
-    // this number comes from — `totalBytes()` recomputes it rather than trusting the label.
     label: 'Whisper tiny',
     licence: 'Apache 2.0',
     dtype: 'q8',
@@ -57,26 +27,6 @@ export const WHISPER_TINY = {
     ]
 };
 
-/**
- * Gemma 4 E2B IT, ONNX, q4f16 — the model that proposes, in a browser (§5.5).
- *
- * **Four sub-models, because that is what the architecture is.** transformers.js opens one
- * ONNX session per part of `Gemma4ForConditionalGeneration`: the token embedding table, the
- * merged decoder, the audio encoder and the vision encoder. Each is a small graph beside a
- * large `.onnx_data` of weights, and the pair must sit in one directory because the graph
- * names its data file from the inside.
- *
- * **3.4 GB, measured 2026-09-02** — §5.5 estimated *"2–3 GB (verify)"* and was low. The
- * measurement is the sum of `bytes` below, `totalBytes()` recomputes it rather than trusting
- * a label, and the settings screen says the recomputed number out loud before anything moves.
- * q4f16 is the floor rather than a preference: every other quantisation this export offers is
- * larger.
- *
- * The vision encoder is fetched and never used. Nothing in this app shows the model an image;
- * it is here because the model class declares the session and will not instantiate without it,
- * and because it is 99 MB of 3,401 — the wrong 3 % to fight for. `GEMMA_E2B_ONNX_TEXT` below
- * is the subset that does drop it, and that split is a real one.
- */
 export const GEMMA_E2B_ONNX = {
     id: 'onnx-community/gemma-4-E2B-it-ONNX',
     revision: '9f4bef82ea6e296bc69f8a2f5939f73af81b07a6',
@@ -117,38 +67,12 @@ const withoutEncoders = (files) => files.filter(
     file => !ENCODER_SESSIONS.some(session => file.path.includes(`/${session}_`))
 );
 
-/**
- * The same weights, text only — the Light tier's proposer (§5.5).
- *
- * **This is a real saving and not a rounding of one: 3.1 GB against 3.4.** transformers.js
- * decides which sessions to open from the model *class* it is asked for. Loading
- * `Gemma4ForCausalLM` against a repository whose config declares
- * `Gemma4ForConditionalGeneration` puts the library in its `textOnly` mode, where the session
- * map is `embed_tokens` and `decoder_model_merged` and nothing else — so the audio and vision
- * encoders are never opened and never need to be on the device. `web.js` asks for exactly
- * that class on the Light tier, and this record is the download that matches it.
- *
- * The rows are the same rows: a Light-tier device that later detects as Full re-uses every
- * byte it already verified and fetches only the two encoders.
- */
 export const GEMMA_E2B_ONNX_TEXT = {
     ...GEMMA_E2B_ONNX,
     dtype: { embed_tokens: 'q4f16', decoder_model_merged: 'q4f16' },
     files: withoutEncoders(GEMMA_E2B_ONNX.files)
 };
 
-/**
- * The same model as one LiteRT-LM bundle — what the Android plugin opens (§5.5 option A).
- *
- * One file rather than four, because LiteRT-LM's format carries the tokeniser, the prompt
- * template and every weight together; the runtime memory-maps the embeddings out of it and
- * loads the audio encoder only when a session is given audio, which is what makes the same
- * 2.6 GB serve both tiers on a phone.
- *
- * The generic CPU/GPU bundle and not one of the six vendor builds beside it in that
- * repository: those are NPU images for one SoC each, and a phone given the wrong one has
- * downloaded 2.6 GB it cannot open.
- */
 export const GEMMA_E2B_LITERTLM = {
     id: 'litert-community/gemma-4-E2B-it-litert-lm',
     revision: 'b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1',
@@ -211,17 +135,6 @@ export const EMBEDDING_GEMMA_ONNX = {
     ]
 };
 
-/**
- * The model behind the index — **EmbeddingGemma 300m**, the way `PROPOSAL_MODEL` is the
- * model behind the card.
- *
- * `id` is the upstream model rather than the export, so a vector written by a browser and a
- * vector written by a phone can be compared for staleness by the same string. It is the
- * value that goes in the `model` field of every stored vector (§5.8 rule 1), and a change to
- * it is what makes every vector on the device stale at once.
- *
- * The Vault page names this model and **its terms**, which are not Apache — see §5.6.
- */
 export const EMBEDDING_MODEL = {
     id: 'google/embeddinggemma-300m',
     label: 'EmbeddingGemma',
@@ -261,19 +174,6 @@ export const MODELS = {
     embeddingGemma: EMBEDDING_GEMMA_ONNX
 };
 
-/**
- * Every model a tier needs on this platform, in the order a screen should name them.
- *
- * The Full tier is one model doing one pass over audio (§5.1). The Light tier is two: a
- * transcriber writes the words down and the same Gemma proposes over them in text mode — so
- * a Light-tier device downloads both, and the settings screen says both names and one total.
- * The text-only tier needs nothing, which is why it is an empty list rather than a special
- * case every caller has to remember.
- *
- * **`EMBEDDING_GEMMA_ONNX` is deliberately absent from every branch** (G1). The index is not
- * something a tier can run or not run; it is a separate opt-in with a separate 219 MB, and
- * putting it in this list would download it for a user who only ever asked to speak a note.
- */
 export const tierModels = (tier, { native = false } = {}) => {
     if (tier === 'full') return [native ? GEMMA_E2B_LITERTLM : GEMMA_E2B_ONNX];
     if (tier === 'light') return [WHISPER_TINY, native ? GEMMA_E2B_LITERTLM : GEMMA_E2B_ONNX_TEXT];
@@ -283,31 +183,17 @@ export const tierModels = (tier, { native = false } = {}) => {
 /** The bytes of a whole set, which is what a download line promises. */
 export const setBytes = (models) => models.reduce((sum, model) => sum + totalBytes(model), 0);
 
-/**
- * *"Gemma 4 E2B and Whisper tiny"* — the set, named the way a sentence names things.
- *
- * Deduplicated on the label, because the two Gemma records carry the same one: a Light-tier
- * phone downloads one bundle for two jobs and would otherwise be told it was getting the
- * model twice.
- */
 export const setLabel = (models) => {
     const labels = [...new Set(models.map(model => model.label))];
     if (labels.length <= 1) return labels[0] ?? '';
     return `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}`;
 };
 
-
 /** The full URL a file is fetched from. Relative on purpose: the origin is never named. */
 export const modelFileUrl = (file) => `${MODEL_BASE_PATH}${file.path}`;
 
 export const totalBytes = (model) => model.files.reduce((sum, file) => sum + file.bytes, 0);
 
-/**
- * "45 MB", the way a download line should say it.
- *
- * Decimal megabytes, not mebibytes: the number beside a download is a promise about how long
- * a connection will be busy, and every operating system's transfer dialog counts in MB.
- */
 export const formatBytes = (bytes) => {
     if (!Number.isFinite(bytes) || bytes < 0) return '';
     if (bytes < 1_000_000) return `${Math.max(1, Math.round(bytes / 1_000))} kB`;

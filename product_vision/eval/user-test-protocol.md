@@ -1,8 +1,8 @@
 # Phase 6 — the user test, as a runnable protocol
 
 **Status: written 2026-08-25 (session U1). Not yet run.** The gate is open. Nothing after
-[session C2](../06-implementation-prompts.md#c2--capture-and-the-inference-boundary) should
-be built on the strength of it until a dated report sits beside this file.
+session C2 (capture and the inference boundary) should be built on the strength of it until a
+dated report sits beside this file.
 
 This document is the instrument for
 [§12.4 of the design](../06-emotional-journal.md#124-what-a-user-test-should-answer-before-building-the-expensive-parts).
@@ -684,6 +684,5 @@ The build under test, reachable from the handset. The backend runs from `backend
 
 **On the day the run closes**, copy [`user-test-report-TEMPLATE.md`](user-test-report-TEMPLATE.md)
 to `user-test-report-YYYY-MM-DD.md`, fill it, and attach the two sheets and the affect-grid
-photographs. Then, and only then, the four decisions in §10 are read off it, `06-progress.md`
-records the gate as closed, and the sessions §10 changed have their prompts updated in
-`06-implementation-prompts.md`.
+photographs. Then, and only then, the four decisions in §10 are read off it, and the Phase 7
+carry-over in [`../README.md`](../README.md) records the gate as closed.

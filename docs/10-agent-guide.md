@@ -31,7 +31,7 @@ React 19 SPA (src/)  ──HTTP /api──►  Go + Gin (backend/)  ──GORM�
   rotating refresh token** held server-side as a hashed `RefreshToken` row
   (`auth.RefreshTokenTTL`, 60 days), so the *request path* is stateless and the *session* is
   not. The middleware puts `userID` in the Gin context and every query filters on it.
-- No service layer, no global store, no migration files, no `.env` support.
+- No service layer, no state library, no migration files.
 
 Read [Concepts](01-concepts.md) before touching domain copy, and
 [Architecture](02-architecture.md) before touching data flow.
@@ -417,7 +417,7 @@ means "not present" ([Data Model §journal](03-data-model.md#journalentry)).
 ## 5. Before you finish
 
 ```bash
-npm test                        # vitest run — must stay 161/161
+npm test                        # vitest run — must stay all-pass (1493 tests)
 cd backend && gofmt -l .        # must print nothing
 cd backend && go vet ./...
 cd backend && go test ./...     # must stay all-pass
@@ -467,7 +467,7 @@ Then check, specifically:
 | Request validation helpers | `validateStats` / `validateTags` / `parseSubjectDate`, [`subjects.go`](../backend/internal/handlers/subjects.go) |
 | Auth rules (cost, TTL, claims) | [`auth.go`](../backend/internal/auth/auth.go) |
 | Token → `userID` in context | [`middleware.go`](../backend/internal/handlers/middleware.go) |
-| 401 auto-logout | the response interceptor in [`App.jsx`](../src/App.jsx) |
+| Session storage, renewal, both interceptors | [`auth/session.js`](../src/auth/session.js) |
 | Driver choice + migrations | [`database.go`](../backend/internal/database/database.go) |
 | Grouping snapshots into stacks | `groupPeople` / `buildStacks`, [`SubjectsContext.jsx`](../src/context/SubjectsContext.jsx) |
 | Whether a relationship is due for a check-in | `dueStacks`, [`constants/cadence.js`](../src/constants/cadence.js) |
@@ -494,8 +494,9 @@ above their handler; errors as `gin.H{"error": …}`; no service layer, handlers
 `database.DB` directly.
 
 **React** — function components with hooks; default export per file; `useMemo` for derived
-collections; sub-components declared in the same file when only used there; props for
-cross-component state, no Context or store; async handlers wrapped in `try/catch`.
+collections; sub-components declared in the same file when only used there; two contexts for the
+shared subject list and the journal, props for everything else; async handlers wrapped in
+`try/catch`.
 
 **Styling** — Tailwind utilities only, no custom CSS, unextended theme; `slate` neutrals,
 `rose` accent, `rounded-2xl` surfaces, `font-light` headings; lucide icons sized via `size`.

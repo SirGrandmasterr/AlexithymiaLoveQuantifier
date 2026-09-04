@@ -17,12 +17,6 @@ const TimelineProbe = () => {
     return <div>timeline for relationship {id}</div>;
 };
 
-/**
- * The dashboard reads shared state and navigates, so it needs the providers App.jsx wraps it
- * in. `JournalProvider` is among them since A8: the nudge slot is shared with the journal's
- * nightly prompt, and which of the two shows depends on whether tonight's ritual is already
- * on the day (§3.6).
- */
 const renderDashboard = () => render(
     <MemoryRouter initialEntries={['/']}>
         <DiscretionProvider>
@@ -38,10 +32,6 @@ const renderDashboard = () => render(
     </MemoryRouter>
 );
 
-/**
- * The provider loads both endpoints. Relationships are derived from the snapshots unless a
- * test cares about them specifically, which keeps the fixtures to the thing under test.
- */
 const mockFetch = (subjects = [], relationships) => {
     const derived = relationships ?? [...new Map(
         subjects.map(s => [s.relationship_id, { ID: s.relationship_id, name: s.name }])
@@ -70,14 +60,6 @@ const subjectWithContext = {
     stats: { ...emptyStats, eros: 85, mania: 60 }
 };
 
-/**
- * §2.2 — the field that stops a journal-only person becoming a near-duplicate.
- *
- * The gap A7 found on the running app: a person created by a check-in and then snapshotted
- * had to be typed out in full, because the field offered nothing at all. Resolution is
- * exact after trim (invariant 2b), so "Lucie" typed where "Lucie M" exists is two people
- * from then on.
- */
 describe('PersonForm — name suggestions', () => {
     const onSave = vi.fn();
     const onClose = vi.fn();
@@ -112,9 +94,6 @@ describe('PersonForm — name suggestions', () => {
         await userEvent.type(screen.getByPlaceholderText('Enter name...'), 'Lucie M');
         await userEvent.click(screen.getByRole('button', { name: /analyze & save/i }));
 
-        // Invariant 15: nothing is written that the user did not confirm. A datalist cannot
-        // fill the field on its own, and the server’s find-or-create is still the one thing
-        // that decides which relationship this string means.
         expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ name: 'Lucie M' }));
     });
 
@@ -356,9 +335,6 @@ describe('PersonForm — guided scoring, skipping and uncertainty', () => {
     };
 
     it('shows an anchor phrase from the band the slider is in', async () => {
-        // Which of the five appears depends on the seed the form drew when it opened, so
-        // the assertion is about the band the phrase belongs to. `anchorPhrase` is where
-        // the choice itself is pinned down.
         const shownFrom = (band) => band.phrases.find(phrase => screen.queryByText(phrase));
 
         render(<PersonForm onSave={onSave} onClose={onClose} />);
@@ -452,9 +428,6 @@ describe('PersonForm — guided scoring, skipping and uncertainty', () => {
         expect(payload.guide_answers).toEqual({ eros: { 0: 3 } });
     });
 
-    // A new version used to open on last time's numbers. That made an untouched row record
-    // a fresh, dated score nobody had actually made — silence saved as agreement. Every
-    // number in a snapshot should be one someone decided, so it starts at zero.
     it('starts a new version from zero, carrying neither scores nor uncertainty', async () => {
         const snapshot = {
             ID: 5,
@@ -529,10 +502,6 @@ describe('CardStack — which gesture belongs to whom', () => {
     /** Any element inside the stack: touch events bubble to the container's listeners. */
     const insideStack = async () => (await screen.findAllByRole('heading', { name: 'Alex' }))[0];
 
-    // Dispatched directly rather than through fireEvent: the stack listens with
-    // `{ passive: false }` on the container, and what these tests are really about is
-    // whether that listener claims the gesture. `act` is needed because the listener is a
-    // plain DOM one, outside React's own event system.
     const touch = (element, type, x, y) => {
         const event = new Event(type, { bubbles: true, cancelable: true });
         event.touches = [{ clientX: x, clientY: y }];
@@ -1162,12 +1131,6 @@ describe('Dashboard — stack-level actions', () => {
         });
     });
 
-    /**
-     * The journal half of the same dialog (Phase 6 §7.3). A delete leaves every journal
-     * entry exactly where it is, and a confirmation that lists only the snapshots describes
-     * half of what is about to happen. The count is `mention_count` off the relationship
-     * summary, read before the delete rather than reported after it.
-     */
     it('names the journal mentions a relationship delete will leave behind', async () => {
         mockFetch([alexV1, alexV2, alexM], [
             { ID: 1, name: 'Alex', snapshot_count: 2, mention_count: 4 },

@@ -34,9 +34,7 @@ import contexts from './golden/contexts.json';
 import transcripts from './golden/transcripts.json';
 import { ADVERSARIAL_CASES } from './golden/adversarial';
 
-/* ------------------------------------------------------------------------------------ */
-/* Shared                                                                                 */
-/* ------------------------------------------------------------------------------------ */
+/* Shared */
 
 const goldenContext = (key) => buildContext(contexts[key]);
 const en = () => goldenContext('en');
@@ -70,10 +68,6 @@ const phrasedSlots = (proposal) => [
     ...proposal.facts.map(fact => fact.text)
 ];
 
-/**
- * What any validated proposal must satisfy, whatever went in. Run over every adversarial
- * case and every golden reference before any case-specific expectation is read.
- */
 const assertContract = (proposal, provenance, context) => {
     const schema = buildSchema({ feelingIds: context.feelings.map(f => f.id), tags: context.tags });
     expect(checkSchema(proposal, schema)).toEqual([]);
@@ -92,9 +86,7 @@ const assertContract = (proposal, provenance, context) => {
     });
 };
 
-/* ------------------------------------------------------------------------------------ */
-/* 1. The schema                                                                          */
-/* ------------------------------------------------------------------------------------ */
+/* 1. The schema */
 
 describe('the schema', () => {
     it('is built from the constants and admits exactly the current active feeling ids', () => {
@@ -182,9 +174,7 @@ describe('the schema', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 2. The prompt                                                                          */
-/* ------------------------------------------------------------------------------------ */
+/* 2. The prompt */
 
 describe('the prompt', () => {
     it('is versioned with a positive integer', () => {
@@ -254,9 +244,7 @@ describe('the prompt', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 3. The filter's parts                                                                  */
-/* ------------------------------------------------------------------------------------ */
+/* 3. The filter's parts */
 
 describe('isForbidden', () => {
     it('matches the list as the copy walk does — case-insensitive substring', () => {
@@ -358,9 +346,7 @@ describe('emptyProposal', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 4. validateProposal — the named behaviours                                             */
-/* ------------------------------------------------------------------------------------ */
+/* 4. validateProposal — the named behaviours */
 
 describe('validateProposal', () => {
     it('passes the §4.7 proposal through unchanged, with nothing dropped', () => {
@@ -501,9 +487,7 @@ describe('validateProposal', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 5. The adversarial set                                                                 */
-/* ------------------------------------------------------------------------------------ */
+/* 5. The adversarial set */
 
 describe('the adversarial fixtures', () => {
     it('are a set worth walking', () => {
@@ -539,14 +523,8 @@ describe('the adversarial fixtures', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 6. The golden transcripts                                                              */
-/* ------------------------------------------------------------------------------------ */
+/* 6. The golden transcripts */
 
-/**
- * Does a proposal satisfy a case's loose expectation? The same reading D4's harness will
- * apply to a model's answer; here it is applied to the hand-written reference.
- */
 const satisfies = (proposal, expected, context) => {
     const ids = proposal.feelings.map(feeling => feeling.id);
     const names = proposal.people.map(person => person.name);

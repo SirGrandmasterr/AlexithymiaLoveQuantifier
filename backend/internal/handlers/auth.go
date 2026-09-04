@@ -62,9 +62,6 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	// A session, not a bare token: the refresh half is what lets the client renew silently
-	// for the next two months instead of meeting a sign-in screen every day. See
-	// session.go for the rotation rules.
 	payload, err := issueSession(database.DB, user.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
@@ -90,9 +87,6 @@ func GetUserProfile(c *gin.Context) {
 	c.JSON(http.StatusOK, user)
 }
 
-// UpdateProfileInput uses pointers so an absent field ("leave unchanged") is
-// distinguishable from an empty one ("clear this"). Sparse-update-by-zero-value
-// made it impossible to blank a name, reset an age, or remove an avatar.
 type UpdateProfileInput struct {
 	Name           *string `json:"name"`
 	Age            *int    `json:"age"`
@@ -134,8 +128,6 @@ func UpdateUserProfile(c *gin.Context) {
 		user.ProfilePicture = *input.ProfilePicture
 	}
 	if input.Email != nil {
-		// Email is the login identifier, so it is the one field that cannot be
-		// cleared. Still no format validation or verification email.
 		if strings.TrimSpace(*input.Email) == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "email cannot be empty"})
 			return

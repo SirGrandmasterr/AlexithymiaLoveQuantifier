@@ -1,13 +1,3 @@
-/**
- * A fake of the journal plugin, with the real one's surface, so `npm test` can drive the
- * whole native path — the permission order, capture, the clip handles, transcription, the
- * weight store and the tier report — with no device (§5.7's rail, applied to the bridge).
- *
- * It records every call in order, which is the one thing a device could not be made to
- * prove on demand: that nothing is asked at launch and that the first tap asks before it
- * opens. Like `inference/fake.js` it is imported by tests only.
- */
-
 const failure = (code, message = code, data = undefined) => Object.assign(new Error(message), { code, data });
 
 export const createFakeJournalPlugin = (options = {}) => {

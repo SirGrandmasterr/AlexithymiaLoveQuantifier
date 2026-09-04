@@ -22,9 +22,7 @@ const clip = (id, samples = [0.1, 0.2]) => ({
 
 const context = () => buildContext({ relationships: [{ ID: 1, name: 'Lucie' }], triggers: [] });
 
-/* ------------------------------------------------------------------------------------ */
-/* 1. The four settings the Vault page's truth rests on                                   */
-/* ------------------------------------------------------------------------------------ */
+/* 1. The four settings the Vault page's truth rests on */
 
 describe('configureEnvironment', () => {
     it('forbids the model hub outright', () => {
@@ -63,10 +61,6 @@ describe('configureEnvironment', () => {
     });
 
     it('keeps the ONNX loader a same-origin module rather than a blob the CSP refuses', () => {
-        // With `useWasmCache` on, transformers.js re-serves the loader to itself as a blob
-        // URL, which `script-src 'self' 'wasm-unsafe-eval'` refuses. C1 measured the same
-        // shape of problem for `worker-src` and left the choice here; not needing to widen
-        // the policy is the better half of it.
         const env = freshEnv();
         configureEnvironment(env, { cache: {} });
         expect(env.useWasmCache).toBe(false);
@@ -75,10 +69,6 @@ describe('configureEnvironment', () => {
     });
 
     it('asks for WASM whatever the browser reports, because WebGPU does not run this model', () => {
-        // Measured against the real stack on 2026-08-31: the WebGPU backend loads and then
-        // fails at inference with the quantised Whisper export (`OrtRun` → `GetReducedShape`
-        // in the WebGPU EP), while plain WASM does a 30 s clip in ~1.6 s. A backend that
-        // loads and then throws is worse than one that was never offered.
         expect(configureEnvironment(freshEnv(), { cache: {}, webgpu: true }).device).toBe('wasm');
         expect(configureEnvironment(freshEnv(), { cache: {}, webgpu: false }).device).toBe('wasm');
     });
@@ -91,9 +81,7 @@ describe('configureEnvironment', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 2. Audio in, a §5.2 object out                                                         */
-/* ------------------------------------------------------------------------------------ */
+/* 2. Audio in, a §5.2 object out */
 
 describe('concatClips', () => {
     it('joins a take add more produced into one continuous stretch', () => {
@@ -127,9 +115,7 @@ describe('asProposal', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 3. The runtime, behind the C2 boundary and with the library faked                      */
-/* ------------------------------------------------------------------------------------ */
+/* 3. The runtime, behind the C2 boundary and with the library faked */
 
 describe('the web runtime', () => {
     const withPipeline = (transcribe) => createWebTranscriber({

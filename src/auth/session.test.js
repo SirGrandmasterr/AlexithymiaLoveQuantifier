@@ -73,10 +73,6 @@ describe('refreshSession', () => {
         saveSession(session(1));
         axios.post.mockResolvedValue({ data: session(2) });
 
-        // The dashboard loads subjects and relationships in parallel, so two 401s arriving
-        // together is the normal case. Two refreshes would spend two tokens from a rotating
-        // family, and the server reads the second as a replay — it would revoke everything
-        // and sign the user out. This is the test for that.
         const [first, second, third] = await Promise.all([
             refreshSession(), refreshSession(), refreshSession()
         ]);
@@ -252,10 +248,6 @@ const fire401 = async (config = { url: '/api/subjects', headers: {} }) => {
 describe('losing the session', () => {
     beforeEach(() => resetSessionLost());
 
-    // The interceptors exist from import; App subscribes from an effect. A 401 answered
-    // during the first paint therefore has nobody to tell, which is why this is a latch and
-    // not an event — without it the app would sit there signed out and still rendering a
-    // dashboard, which is the exact bug this design replaced.
     it('tells a subscriber that arrives after the session already died', async () => {
         saveSession({ token: 'dead' });   // no refresh token: nothing to renew with
 

@@ -1,25 +1,3 @@
-/**
- * Scoring one model answer against one golden case, and the aggregates §5.7 asks for.
- *
- * The expectation is deliberately loose (§5.7): *must include* / *must not include* feeling
- * ids, the expected `ambiguity`, the people and trigger labels where the case is about them.
- * `satisfies` here is the same reading `validate.test.js` applies to the hand-written
- * references in `npm test`, so a reference that passes the suite offline and a model answer
- * that passes it here are being held to one standard rather than two.
- *
- * Two different numbers are computed over feelings and it is worth knowing which is which:
- *
- * - **Gate recall and violation rate** come from the *must* lists, over the cases that name
- *   them. This is what §5.7's first two criteria read.
- * - **Per-id precision and recall** come from the full reference proposal, over every case.
- *   No gate reads them; they are what tells a later session *which* feeling is being missed,
- *   which is the thing that changes a prompt or a vocabulary. A model can pass the gate with
- *   `shame` at recall 0.2 as long as it never misses a *must include*, and that would be worth
- *   knowing before shipping.
- *
- * Pure arithmetic, no I/O, no `src/` imports; `score.test.mjs` covers it in `npm test`.
- */
-
 const uniq = (values) => [...new Set(values)];
 
 /** The feeling ids in a proposal. */
@@ -33,14 +11,6 @@ export const triggerLabels = (proposal) => uniq((proposal?.feelings || []).flatM
 /** The people a proposal named. */
 export const peopleNames = (proposal) => uniq((proposal?.people || []).map(person => person.name));
 
-/**
- * Every way this answer failed its expectation, as short strings, or `[]` for a pass.
- *
- * Kept identical in behaviour to `satisfies` in `validate.test.js`. If the two ever have to
- * differ, the offline one is right and this one is wrong: it is the one that reads the
- * hand-written references, and a harness that grades a model more kindly than the suite
- * grades its own answers is not measuring the gate.
- */
 export const satisfies = (proposal, expected = {}, contextTriggers = []) => {
     const ids = feelingIds(proposal);
     const names = peopleNames(proposal);
@@ -70,13 +40,6 @@ export const satisfies = (proposal, expected = {}, contextTriggers = []) => {
     return failures;
 };
 
-/**
- * One clip's score. `run` is what the runner produced; `entry` is the golden case.
- *
- * `ok` is the whole expectation passing, which is a stricter thing than the gate and is
- * reported rather than gated on — a case can fail on a person's name while both gate
- * criteria hold, and the report should show that rather than average it away.
- */
 export const scoreCase = ({ entry, proposal, contextTriggers = [] }) => {
     const expected = entry.expect || {};
     const ids = feelingIds(proposal);
@@ -102,9 +65,6 @@ export const scoreCase = ({ entry, proposal, contextTriggers = [] }) => {
         mustNotIncludeTotal: mustNotInclude.length,
         mustNotIncludeViolations: mustNotInclude.filter(id => ids.includes(id)).length,
 
-        // The ambiguity criterion counts only the cases that are *about* ambiguity — every
-        // case states one, but a suite where nine in ten say "none" would let a model that
-        // always answers "none" score 0.9 and clear the gate saying nothing.
         ambiguityExpected: expected.ambiguity,
         ambiguityActual: proposal?.ambiguity,
         ambiguityCorrect: proposal?.ambiguity === expected.ambiguity,
@@ -124,14 +84,6 @@ export const scoreCase = ({ entry, proposal, contextTriggers = [] }) => {
 
 const ratio = (numerator, denominator) => (denominator === 0 ? null : numerator / denominator);
 
-/**
- * Precision, recall and F1 per feeling id, over every scored clip.
- *
- * `support` is how many clips the reference puts the id in. An id with support 0 is reported
- * with its false positives and a `null` recall rather than dropped: a model proposing `anger`
- * on eleven clips that never mention it is the single most useful line in this table, and
- * dropping ids with no support is exactly how that line disappears.
- */
 export const perIdMetrics = (scores) => {
     const ids = uniq(scores.flatMap(score => [...score.predictedIds, ...score.expectedIds])).sort();
     return ids.map((id) => {
@@ -162,10 +114,6 @@ export const ambiguityConfusion = (scores) => {
     return table;
 };
 
-/**
- * The suite-level numbers, over whatever subset of clips is passed in — which is how the
- * report slices by language, by noise condition and by tier without a second code path.
- */
 export const aggregate = (scores) => {
     const mustIncludeTotal = scores.reduce((sum, s) => sum + s.mustIncludeTotal, 0);
     const mustIncludeHit = scores.reduce((sum, s) => sum + s.mustIncludeHit, 0);

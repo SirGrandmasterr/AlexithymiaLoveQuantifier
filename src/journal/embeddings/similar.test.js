@@ -12,14 +12,6 @@ import {
 import { INDEX_DIMS, toIndexVector } from './embed';
 import { arbitraryVector, vectorPair } from './embed.fake';
 
-/**
- * The scan, rule 3's gate, and rule 2's absence of numbers.
- *
- * The interesting tests are the *refusals*: a close vector with nothing structural behind it
- * must produce nothing at all, and it must produce nothing for a reason that cannot be
- * out-voted by making the vectors closer.
- */
-
 /** Two labels the model thinks are the same thing, and one it does not. */
 const [WORK, MY_JOB] = vectorPair('work/my-job', 0.92);
 const ELSEWHERE = arbitraryVector('the dentist');
@@ -307,17 +299,6 @@ describe('the Triggers view pairs', () => {
 });
 
 describe('the budget', () => {
-    /**
-     * §5.8's whole architecture in one number: ten thousand entries at 256 dimensions is a
-     * brute-force scan in milliseconds, and an HNSW library would only start to matter past
-     * fifty thousand.
-     *
-     * **The budget is deliberately loose.** This asserts the shape of the cost, not the speed
-     * of this machine: a linear scan under a second is the claim, and a change that made it
-     * quadratic would take minutes rather than fail by a hair. **Measured on this machine on
-     * 2026-09-04: 2.4 ms median over seven runs**, which is §5.8's "milliseconds" and four
-     * hundred times inside the budget below.
-     */
     it('scans ten thousand synthetic vectors well inside a stated budget', () => {
         const rows = Array.from({ length: 10_000 }, (_, i) => ({
             entryClientId: `e${i}`,

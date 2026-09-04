@@ -16,10 +16,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// These run against the same in-memory SQLite database the other handler tests use. What is
-// asserted is the state left behind — which row is revoked, and which token still works
-// afterwards — because rotation is only correct in terms of what happens on the *next* call.
-
 // postJSON routes one request through a fresh router carrying just the handler under test.
 func postJSON(t *testing.T, path string, handler gin.HandlerFunc, body any) *httptest.ResponseRecorder {
 	t.Helper()
@@ -51,8 +47,6 @@ func decodeSession(t *testing.T, w *httptest.ResponseRecorder) sessionPayload {
 	return payload
 }
 
-// signedUpUser seeds an account with a real bcrypt hash, so Login exercises the same path it
-// does in production rather than a shortcut around the password check.
 func signedUpUser(t *testing.T, db *gorm.DB, email, password string) models.User {
 	t.Helper()
 
@@ -93,8 +87,6 @@ func TestLogin_IssuesARefreshTokenStoredOnlyAsAHash(t *testing.T) {
 	if session.Token == "" || session.RefreshToken == "" {
 		t.Fatalf("expected both halves of a session, got %+v", session)
 	}
-	// Without this a client cannot renew *before* a request fails, which is the whole
-	// difference between a session that never visibly expires and one that recovers loudly.
 	if session.ExpiresIn != int(auth.AccessTokenTTL.Seconds()) {
 		t.Errorf("expires_in = %d, want %d", session.ExpiresIn, int(auth.AccessTokenTTL.Seconds()))
 	}
@@ -133,8 +125,6 @@ func TestRefresh_RotatesAndRetiresTheTokenItConsumed(t *testing.T) {
 		t.Fatal("refresh returned no access token")
 	}
 
-	// The point of rotation: the consumed token is dead, and its row survives so that a
-	// replay of it stays detectable.
 	var consumed models.RefreshToken
 	if err := db.Where("token_hash = ?", auth.HashRefreshToken(first.RefreshToken)).First(&consumed).Error; err != nil {
 		t.Fatalf("consumed row should still exist: %v", err)
@@ -203,9 +193,6 @@ func TestRefresh_RejectsAnUnknownToken(t *testing.T) {
 	}
 }
 
-// A session outlives the account behind it when a volume is dropped or a user deleted.
-// Renewing it would hand out an access token naming nobody — the dead-session case
-// AuthMiddleware already refuses, refused one layer earlier.
 func TestRefresh_RejectsATokenWhoseUserIsGone(t *testing.T) {
 	db := setupSQLiteDB(t)
 	user := signedUpUser(t, db, "ghost@example.com", testPassword)

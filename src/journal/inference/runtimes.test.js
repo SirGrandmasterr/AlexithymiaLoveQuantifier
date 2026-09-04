@@ -10,9 +10,7 @@ import { RUNTIME_IDS, INPUT_MODES } from './contract';
 import { GEMMA_E2B_ONNX, GEMMA_E2B_ONNX_TEXT, WHISPER_TINY, tierModels } from './models';
 import { CONTEXT_TAGS } from '../../constants/contextTags';
 
-/* ------------------------------------------------------------------------------------ */
-/* 1. Which runtime a tier gets                                                           */
-/* ------------------------------------------------------------------------------------ */
+/* 1. Which runtime a tier gets */
 
 describe('the tier picks the runtime', () => {
     const web = (tier) => createWebRuntime({
@@ -42,9 +40,6 @@ describe('the tier picks the runtime', () => {
     });
 
     it('downloads what the tier runs, and no more', () => {
-        // The web's two tiers are genuinely different downloads — the Light tier never opens
-        // the audio or vision encoders, so it never fetches them. Android's one bundle serves
-        // both, because LiteRT-LM loads its encoders on demand out of the same file.
         expect(tierModels(TIERS.full)).toEqual([GEMMA_E2B_ONNX]);
         expect(tierModels(TIERS.light)).toEqual([WHISPER_TINY, GEMMA_E2B_ONNX_TEXT]);
         expect(tierModels(TIERS.textOnly)).toEqual([]);
@@ -95,9 +90,7 @@ describe('the override', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 2. The Light tier's composition                                                        */
-/* ------------------------------------------------------------------------------------ */
+/* 2. The Light tier's composition */
 
 describe('the Light tier composition', () => {
     const parts = ({ heard = 'Lucie called.', proposal = { feelings: [], ambiguity: 'none' }, fail = null } = {}) => {
@@ -136,9 +129,6 @@ describe('the Light tier composition', () => {
     });
 
     it('keeps the words when the proposer will not answer', async () => {
-        // The one asymmetry that matters: somebody spoke, the app heard them, and a model
-        // nobody asked for must not throw the sentence away. §4.6's `feeling` ambiguity is
-        // exactly this answer, and the card already draws it.
         const { runtime } = parts({ fail: 'the engine died' });
         const out = await runtime.propose({ kind: INPUT_MODES.audio, clips: [{ audio: new Float32Array(8) }], context: {} });
 
@@ -169,9 +159,7 @@ describe('the Light tier composition', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 3. Parsing what a model without a grammar emits                                        */
-/* ------------------------------------------------------------------------------------ */
+/* 3. Parsing what a model without a grammar emits */
 
 describe('parsing the answer', () => {
     it('takes a plain object as it comes, with no repairs', () => {
@@ -213,9 +201,7 @@ describe('parsing the answer', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 4. The grammar schema — one relaxation, and it is measured                             */
-/* ------------------------------------------------------------------------------------ */
+/* 4. The grammar schema — one relaxation, and it is measured */
 
 describe('the grammar schema', () => {
     it('keeps every closed vocabulary the model could otherwise invent', () => {
@@ -262,9 +248,6 @@ describe('the grammar schema', () => {
     });
 
     it('lets a tag through that the strict schema refuses — which the validator then drops', () => {
-        // The exact case the real run produced: the model answered `tag: "work"`, which is a
-        // trigger label and not a context tag. The grammar cannot stop it; `validateProposal`
-        // does, on both platforms, which is why the relaxation is safe.
         const answer = {
             transcript: 'x',
             language: 'en',
@@ -278,9 +261,7 @@ describe('the grammar schema', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 5. Two models, one download line                                                       */
-/* ------------------------------------------------------------------------------------ */
+/* 5. Two models, one download line */
 
 describe('the model set downloader', () => {
     const fakePart = (model, { ready = false } = {}) => {
@@ -326,9 +307,6 @@ describe('the model set downloader', () => {
     });
 
     it('stops the whole set at the first refusal, and says so', async () => {
-        // A Light tier with the transcriber installed and the proposer missing is not a
-        // working Light tier, and reporting it as a partial success would put a microphone on
-        // screen that produces words and no card.
         const [first, second] = tierModels(TIERS.light);
         const { downloader, made } = setOf([{ ...first, __fails: true }, second]);
 
@@ -362,9 +340,7 @@ describe('the model set downloader', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 6. The transcribers are still what C3 and C4 shipped                                   */
-/* ------------------------------------------------------------------------------------ */
+/* 6. The transcribers are still what C3 and C4 shipped */
 
 describe('the transcribers, unchanged by D3', () => {
     it('still take audio only and still carry Whisper', () => {

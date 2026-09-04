@@ -1,18 +1,10 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
 
-// The tag vocabulary and its limits moved to src/constants/contextTags.js when the journal
-// began sharing them: a pure constants module cannot import from a component. Re-exported
-// here so every existing importer of this file keeps working and there is still one name to
-// look for.
 import { CONTEXT_TAGS, MAX_TAGS, MAX_TAG_LENGTH } from '../constants/contextTags';
 
 export { CONTEXT_TAGS, MAX_TAGS, MAX_TAG_LENGTH };
 
-/**
- * The notes + tags editor. Used by PersonForm at snapshot time and by WhatChanged
- * afterwards, so both write the same shape with the same limits.
- */
 export default function ContextCapsuleFields({
     description,
     tags,

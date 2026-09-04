@@ -1,14 +1,5 @@
 import { clearOutbox, readOutbox, writeOutbox } from './offlineCache';
 
-/**
- * The journal outbox's store (§9.5).
- *
- * The subject-list half of this module has no test of its own and gets one here only where the
- * two share a rule — that `isNative()` gates both, and that neither may throw over a store the
- * browser has locked. What is tested properly is the queue, because it is the one thing in
- * this app whose only copy of a user's writing lives on a device.
- */
-
 const platformState = vi.hoisted(() => ({ native: true }));
 
 vi.mock('./platform', async (importOriginal) => ({
@@ -61,9 +52,6 @@ describe('the outbox store', () => {
     });
 
     it('never expires a queued entry, however old it is', () => {
-        // The subject cache above has a `MAX_AGE_MS` because the server still holds the
-        // original. This is the original: a queue that expired its rows would be an app
-        // silently discarding what the user wrote (invariant 13).
         writeOutbox([item('a', { queued_at: 0 })]);
 
         expect(readOutbox()).toHaveLength(1);

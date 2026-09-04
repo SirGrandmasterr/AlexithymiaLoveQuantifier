@@ -4,50 +4,12 @@ import { JOURNAL_COPY, fillCopy } from '../constants/journal';
 import { useDiscretion } from '../context/DiscretionContext';
 import { audioInput, proposeRitual } from '../journal/inference';
 
-/**
- * The ritual in one breath (§3.7) — *"Slept okay, didn't move, was outside, saw Lucie, ate
- * late."*
- *
- * It exists for nights when even swiping is too much, and it changes nothing about the
- * record: one clip through the same single pass as a check-in, with the night's question ids
- * in the prompt and the ritual payload as the output schema, and then **the same confirm
- * card** — one row per question, each answer pre-selected but **dashed** until confirmed.
- *
- * **Three rules, each of them invariant 15 wearing a different hat, and each one a line of
- * code here rather than an intention:**
- *
- * 1. **A question the note did not mention is absent, not `false`** (invariant 14). It gets a
- *    row like every other question, because the person may want to answer it; what it does
- *    not get is a value. `answers` is built from what is *chosen*, so a row nobody touched
- *    contributes no key at all.
- * 2. **Nothing here saves.** This component hands its answers up and the ritual screen writes
- *    them through the same `buildRitualRequest` the swipes use. There is one write path, and
- *    a proposal never gets its own.
- * 3. **Every exit leads to the cards.** Nothing heard, a runtime that would not answer, or a
- *    person who simply changes their mind: all three land on the deck, which is the thing
- *    that always works. The swipe cards remain the default and the only path on the Light and
- *    text-only tiers, and this component is not rendered there at all.
- *
- * The people the model heard are shown and **not resolved here**. A yes to *with someone*
- * still opens the *Who?* card, where relationship ids are chosen by tapping (§3.5) — the one
- * place in the app allowed to attach a person to a record, and not a place a model may reach.
- */
-
 /** A store snapshot, subscribed the way React 19 wants stores subscribed. */
 const useStore = (store) => useSyncExternalStore(
     useCallback(listener => store.subscribe(listener), [store]),
     useCallback(() => store.getSnapshot(), [store])
 );
 
-/**
- * One question, one row: *Yes* / *No*, and the choice the model proposed shown **dashed**
- * until it is confirmed.
- *
- * The dashed border is the same signal the check-in's proposal card uses for the same thing,
- * and the same one the ritual's own cards use for a day word — *not saved yet*. Confirming is
- * a tap on the choice, which is deliberately the same gesture as changing it: there is no
- * "accept all", because accepting all is exactly the tap nobody reads.
- */
 const Row = ({ question, choice, proposed, confirmed, onChoose }) => (
     <div className="flex items-center justify-between gap-3 py-3 border-b border-slate-100 last:border-0">
         <span className="text-sm text-slate-700 font-light flex-1">{question.text}</span>
@@ -83,13 +45,6 @@ const Row = ({ question, choice, proposed, confirmed, onChoose }) => (
     </div>
 );
 
-/**
- * The confirm card.
- *
- * `state` holds one entry per question **asked tonight** — not per question answered — so a
- * question the model skipped is on screen with nothing chosen and can still be answered by
- * hand. What leaves here is the subset that has a boolean.
- */
 export const RitualVoiceConfirm = ({ deck, proposed, people, onKeep, onCards }) => {
     const [choices, setChoices] = useState(() => Object.fromEntries(
         deck.map(question => [question.id, proposed[question.id] ?? null])
@@ -161,14 +116,6 @@ export const RitualVoiceConfirm = ({ deck, proposed, people, onKeep, onCards }) 
     );
 };
 
-/**
- * The offer, the recording, and the pass — everything before the confirm card.
- *
- * `kit` is the same trio the check-in composer holds (`createVoiceKit`), injected for the
- * same reason: a test needs no microphone and no weights. `deck` is tonight's questions, and
- * it is what goes into the prompt and the schema — so a question the user turned off is one
- * the model is never given the chance to answer.
- */
 export default function RitualVoice({ kit, deck, context, onAnswers, onCards }) {
     const { recorder, runtime } = kit;
     const capture = useStore(recorder);
@@ -264,9 +211,6 @@ export default function RitualVoice({ kit, deck, context, onAnswers, onCards }) 
         );
     }
 
-    // Discretion mode never offers this: speaking a note aloud is what the mode exists to
-    // avoid, and a disabled microphone still says *you could be recording* to anyone looking
-    // (§4.4, §9.6). The cards are already on screen underneath.
     if (discreet) return null;
 
     return (

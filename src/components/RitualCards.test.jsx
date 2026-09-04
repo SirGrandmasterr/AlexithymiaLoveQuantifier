@@ -31,22 +31,6 @@ vi.mock('../mobile/knobFeedback', () => ({
 
 import { detent } from '../mobile/knobFeedback';
 
-/**
- * The nightly ritual, driven the way somebody half asleep drives it: three directions, three
- * buttons, three keys, and a screen that never scrolls.
- *
- * Everything about the record is asserted **on the request body**. The §6.3 payload is a
- * contract with a Go validator, and the difference this session exists to protect — a skipped
- * question being *absent* from `answers` rather than `false` — is invisible to any assertion
- * made one level higher up.
- */
-
-/**
- * Pinned, because `at`, `day` and `tz_offset_min` are otherwise true of whatever zone the
- * runner sits in and a sign error in `tzOffsetMinutes` would pass at UTC (A7's warning).
- * 21:00 UTC is 23:00 in Berlin: past the default 22:30, and inside the civil day that began
- * at 04:00 on the 21st.
- */
 const NIGHT = new Date('2026-08-21T21:00:00Z');
 const EVENING_BEFORE_THE_HOUR = new Date('2026-08-21T15:00:00Z');
 const TODAY = '2026-08-21';
@@ -105,8 +89,6 @@ const renderRitual = () => render(
     </MemoryRouter>
 );
 
-/* The screen's own handles. Queried by attribute, because "Yes" is on screen twice — once
-   written under the question and once on the button that means it. */
 const card = () => document.querySelector('[data-ritual-card]');
 const stepId = () => document.querySelector('[data-ritual-step]')?.getAttribute('data-ritual-step');
 const posted = (kind) => axios.post.mock.calls.map(call => call[1]).filter(body => body.kind === kind);
@@ -151,9 +133,7 @@ afterEach(() => {
     vi.useRealTimers();
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* The deck                                                                               */
-/* ------------------------------------------------------------------------------------ */
+/* The deck */
 
 describe('the question set', () => {
     it('asks the five core questions in the fixed order', async () => {
@@ -213,9 +193,7 @@ describe('the question set', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* The three gestures                                                                     */
-/* ------------------------------------------------------------------------------------ */
+/* The three gestures */
 
 describe('the three gestures', () => {
     it('reads right as yes, left as no, and up as no answer at all', async () => {
@@ -238,9 +216,6 @@ describe('the three gestures', () => {
             with_people: true,
             ate_regularly: false
         });
-        // The whole point of the session, asserted rather than trusted: a skipped question is
-        // absent from `answers` and present in `asked`. Only the row can tell "not answered"
-        // from "not asked" (invariant 14).
         expect('daylight' in payload.answers).toBe(false);
         expect(payload.question_set.asked).toContain('daylight');
     });
@@ -280,9 +255,7 @@ describe('the three gestures', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* The other two ways in                                                                  */
-/* ------------------------------------------------------------------------------------ */
+/* The other two ways in */
 
 describe('the buttons and the arrow keys', () => {
     const expected = {
@@ -323,9 +296,7 @@ describe('the buttons and the arrow keys', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* The closing card                                                                       */
-/* ------------------------------------------------------------------------------------ */
+/* The closing card */
 
 describe('the closing card', () => {
     it('is last, and is the only one that is not a yes or a no', async () => {
@@ -407,9 +378,7 @@ describe('the closing card', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* Who                                                                                    */
-/* ------------------------------------------------------------------------------------ */
+/* Who */
 
 describe('a yes to "spent time with someone"', () => {
     const runToWithPeople = async () => {
@@ -473,9 +442,7 @@ describe('a yes to "spent time with someone"', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* Haptics, and the axis                                                                  */
-/* ------------------------------------------------------------------------------------ */
+/* Haptics, and the axis */
 
 describe('the selection tick', () => {
     it('fires once per commit', async () => {
@@ -541,9 +508,7 @@ describe('touch-axis ownership (invariant 2g)', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* A missed night                                                                         */
-/* ------------------------------------------------------------------------------------ */
+/* A missed night */
 
 describe('a night with no ritual', () => {
     it('leaves no row, no count, and nothing on the day after', async () => {
@@ -586,9 +551,7 @@ describe('a night with no ritual', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* The prompt line (§3.6, invariant 2c)                                                   */
-/* ------------------------------------------------------------------------------------ */
+/* The prompt line (§3.6, invariant 2c) */
 
 describe('the web prompt line', () => {
     const sixtyDaysAgo = new Date(NIGHT.getTime() - 60 * 86400000).toISOString();
@@ -707,9 +670,7 @@ describe('the web prompt line', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* The copy rail                                                                          */
-/* ------------------------------------------------------------------------------------ */
+/* The copy rail */
 
 /** Every string anywhere inside a value — A5's walk, reused here over what reached a screen. */
 const walkStrings = (value) => {
@@ -719,14 +680,6 @@ const walkStrings = (value) => {
     return [];
 };
 
-/**
- * Everything this feature is allowed to say: the copy object, the two closed vocabularies,
- * and the names the user themself typed.
- *
- * The arrows are glyphs rather than words, and they are the one thing on the card that is
- * neither. A bare *sentence* is what the walk exists to catch, and a run of two Latin letters
- * is a good enough definition of one.
- */
 const allowed = new Set([
     ...walkStrings(JOURNAL_COPY),
     ...RITUAL_QUESTIONS.flatMap(question => [question.text, question.note]),

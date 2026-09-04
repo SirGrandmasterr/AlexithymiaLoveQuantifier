@@ -1,40 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { startTurn, detent, endTurn } from '../mobile/knobFeedback';
 
-/**
- * The vault dial: a scoring control you can hold without covering what you are reading.
- *
- * ## The problem it solves
- *
- * A 0–100 range input is fine with a mouse and poor under a thumb. The thumb lands on the
- * track, so it covers the track — and on this form what sits beside the track is the anchor
- * phrase, the sentence that tells you what 60 actually *means* for this category. The user
- * was being asked to choose a number while their hand hid the only thing explaining it.
- * Worse, a control that responds to horizontal drag sits inside a page that responds to
- * vertical drag, so scrolling past a card would nudge a score by ten points without anyone
- * noticing.
- *
- * The dial separates the two. It lives above and to the left of the track, the finger rests
- * on it rather than on the value, and the gesture is vertical: press, then drag down to turn
- * the wheel clockwise and the score up, drag up to turn it back. Nothing that matters is
- * under the hand, and `touch-action: none` on the dial alone means the gesture belongs
- * unambiguously to whichever control the finger actually started on.
- *
- * ## Why it feels like a vault wheel and not a widget
- *
- * The detents. Every unit crossed produces a click — synthesised metal, plus an Android
- * selection haptic — from `src/mobile/knobFeedback.js`. That is what lets the number be
- * *heard* rather than watched, and it is the difference between an input that is merely
- * usable one-handed and one that is pleasant. Turning it is meant to be a small physical
- * pleasure, in a form that asks people to sit with uncomfortable questions.
- *
- * ## Accessibility
- *
- * It is a real `slider` in the accessibility tree with the full keyboard contract (arrows,
- * page keys, home/end), and it is *additional* to the range input rather than a replacement
- * for it. Neither the pointer path nor the keyboard path is anyone's only way in.
- */
-
 /** Pixels of vertical travel per unit. The full 0–100 sweep is one comfortable thumb drag. */
 const PX_PER_UNIT = 2.6;
 
@@ -52,13 +18,6 @@ const pointAt = (units, radius) => {
     };
 };
 
-/**
- * Every tick as a single path rather than one element per mark.
- *
- * Seven dials on a form, each with twenty-five ticks, is a hundred and seventy-five nodes
- * the WebView has to lay out on a phone. As one path it is seven. Computed once at module
- * scope because it never changes.
- */
 const TICKS = (() => {
     const segments = [];
     for (let units = 0; units < 100; units += 4) {
@@ -70,10 +29,6 @@ const TICKS = (() => {
     return segments.join('');
 })();
 
-/**
- * The knurled grip around the rim: short radial notches, the thing that makes a metal disc
- * read as something meant to be gripped and turned.
- */
 const KNURL = (() => {
     const segments = [];
     for (let units = 0; units < 100; units += 2.5) {
@@ -137,9 +92,6 @@ export default function VaultKnob({
         state.lastValue = next;
         move(next);
 
-        // Re-anchor at the stops. Without this, a drag that pushed thirty units past 100
-        // has to travel thirty units back before the dial responds at all, which reads as
-        // the control having jammed.
         if (next === 0 || next === 100) {
             state.startY = event.clientY;
             state.startValue = next;
@@ -175,8 +127,6 @@ export default function VaultKnob({
 
     return (
         <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
-            {/* The reading, while the dial is held. Above the knob rather than on it: the
-                finger is on the knob, so anything drawn there is a number nobody can see. */}
             {turning && (
                 <span
                     aria-hidden="true"
@@ -200,18 +150,12 @@ export default function VaultKnob({
                 onPointerUp={onPointerUp}
                 onPointerCancel={onPointerUp}
                 onKeyDown={onKeyDown}
-                // `touch-action: none` is the whole gesture contract in one line: the page
-                // never takes a drag that started here, and the dial never takes one that
-                // did not.
                 style={{ touchAction: 'none', width: size, height: size }}
                 className={`rounded-full outline-none transition-transform duration-100 focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-grab active:cursor-grabbing'
                     } ${turning ? 'scale-105' : ''}`}
             >
                 <svg viewBox="0 0 100 100" width={size} height={size} aria-hidden="true">
                     <defs>
-                        {/* Brushed slate rather than brass: a vault wheel drawn in the app's
-                            own palette, so it reads as part of this form and not as a
-                            skeuomorphic ornament dropped into it. */}
                         <linearGradient id="alq-dial-rim" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="0%" stopColor="#f1f5f9" />
                             <stop offset="45%" stopColor="#cbd5e1" />
@@ -257,8 +201,6 @@ export default function VaultKnob({
                         <circle cx="50" cy="50" r="9" fill="none" stroke="#475569" strokeWidth="0.8" />
                     </g>
 
-                    {/* Fixed furniture: the index the reading is taken against, and a light
-                        source that stays put while the metal turns under it. */}
                     <path d="M50 2 L45 12 L55 12 Z" fill="#f43f5e" />
                     <circle cx="50" cy="50" r="49" fill="none" stroke="#94a3b8" strokeWidth="1.5" />
                     <path

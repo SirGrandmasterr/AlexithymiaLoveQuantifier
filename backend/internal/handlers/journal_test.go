@@ -19,11 +19,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// Most of these run against a real in-memory SQLite database rather than sqlmock, for the
-// reason relationships_test.go gives: the endpoint's whole point is what the rows look like
-// afterwards — one relationship, one entry, one mention, and nothing at all when a step
-// fails. Two tests near the bottom use sqlmock, where the statement shape is the subject.
-
 // The ids these tests use. Real UUIDs, because the endpoint requires the shape.
 const (
 	entryOne     = "6f1c3a0e-1111-4111-8111-111111111111"
@@ -33,9 +28,6 @@ const (
 	triggerMove  = "0b7e0000-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 	triggerOther = "0b7e0000-cccc-4ccc-8ccc-cccccccccccc"
 
-	// The design document's own example instant, and the civil day it belongs to. A fixed
-	// pair in the past stays valid forever: the only rules are that `at` is not far in the
-	// future and that `day` is near it.
 	atExample  = "2026-08-21T18:42:10+02:00"
 	dayExample = "2026-08-21"
 )
@@ -48,8 +40,6 @@ func journalRoutes(r *gin.Engine) {
 	r.DELETE("/journal/people/:id", DeleteJournalPerson)
 }
 
-// postJournal sends one entry and returns the recorder, leaving the status assertion to
-// the caller — half these tests are about a status that is not 201.
 func postJournal(t *testing.T, userID uint, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	return call(t, http.MethodPost, "/journal/entries", userID, body, journalRoutes)
@@ -112,8 +102,6 @@ func seedTrigger(t *testing.T, db *gorm.DB, userID uint, clientID, label string)
 	return trigger
 }
 
-// checkinBody builds a check-in around whatever mentions, feelings and triggers a test
-// needs, so each test states only the part it is about.
 func checkinBody(clientID, feelings, mentions, triggers string) string {
 	return fmt.Sprintf(`{
 		"client_id": %q, "kind": "checkin",
@@ -156,9 +144,6 @@ func TestCreateJournalEntryWithMentionByRelationshipID(t *testing.T) {
 	}
 }
 
-// The compatibility contract from §7.2: a client that knows nothing about relationship ids
-// still lands its mention on the right person, and says the name twice without creating
-// two of them.
 func TestCreateJournalEntryResolvesMentionByName(t *testing.T) {
 	db := setupSQLiteDB(t)
 
@@ -191,8 +176,6 @@ func TestCreateJournalEntryResolvesMentionByName(t *testing.T) {
 	}
 }
 
-// A snapshot and a journal entry naming the same person must land on the same relationship
-// — the same function resolves both (invariant 2b).
 func TestCreateJournalEntryShareRelationshipWithSnapshots(t *testing.T) {
 	db := setupSQLiteDB(t)
 	alex := seedStack(t, db, 1, "Alex", "2026-01-10")
@@ -205,12 +188,6 @@ func TestCreateJournalEntryShareRelationshipWithSnapshots(t *testing.T) {
 	}
 }
 
-// The ritual's day word is a check-in with no intensity in it, and the server takes it.
-//
-// A2 required an intensity on every feeling; A8 found the one writer that cannot supply one.
-// The closing card is a single tap on a single word (§3.2) — there is no strength in it to
-// record, and a middle number invented here would be the application authoring a value the
-// user did not (invariant 15). Absent is not zero, and the reader has always read it as null.
 func TestCreateJournalEntryAcceptsAFeelingWithNoIntensity(t *testing.T) {
 	setupSQLiteDB(t)
 
@@ -233,8 +210,6 @@ func TestCreateJournalEntryAcceptsAFeelingWithNoIntensity(t *testing.T) {
 	}
 }
 
-// A skipped question is absent from `answers` — not false. Nothing here writes the key and
-// nothing rejects the payload for its absence (invariant 14).
 func TestCreateJournalEntryRitualKeepsASkippedQuestionAbsent(t *testing.T) {
 	db := setupSQLiteDB(t)
 
@@ -343,8 +318,6 @@ func TestCreateJournalEntryMintsATriggerInTheSameRequest(t *testing.T) {
 		t.Errorf("Expected the trigger and the check-in, found %d entries", n)
 	}
 
-	// Naming the same new trigger again resolves to the one that exists — find-or-create,
-	// applied to things that are not people.
 	createJournal(t, 1, checkinBody(entryTwo,
 		fmt.Sprintf(`{"id":"stress","intensity":1,"about":[{"kind":"trigger","trigger":%q}]}`, triggerWork),
 		``,
@@ -371,8 +344,6 @@ func TestCreateJournalEntryReferencesAnExistingTrigger(t *testing.T) {
 	}
 }
 
-// A trigger belonging to somebody else is 404 for the whole request, and the rollback is
-// what the entry count proves.
 func TestCreateJournalEntryRejectsAnotherUsersTrigger(t *testing.T) {
 	db := setupSQLiteDB(t)
 	seedTrigger(t, db, 2, triggerOther, "their work")
@@ -398,13 +369,6 @@ func TestCreateJournalEntryRejectsAnotherUsersTrigger(t *testing.T) {
 	}
 }
 
-// A superseded trigger is not live, so a new entry may not attach itself to one.
-//
-// **Both shapes, because they used to disagree.** `{"trigger": id}` went through
-// findOwnedTrigger and was refused; `{"label": …, "client_id": id}` went through
-// find-or-create, matched on (user_id, client_id) alone, and quietly attached the check-in
-// to a trigger that had been renamed or merged away. The id is the same id in both, so the
-// answer has to be too.
 func TestCreateJournalEntryRejectsASupersededTrigger(t *testing.T) {
 	db := setupSQLiteDB(t)
 	retired := seedTrigger(t, db, 1, triggerWork, "work")
@@ -432,8 +396,6 @@ func TestCreateJournalEntryRejectsASupersededTrigger(t *testing.T) {
 	}
 }
 
-// A relationship belonging to somebody else is 404 for the whole request, and the entry it
-// would have hung off never exists.
 func TestCreateJournalEntryRejectsAnotherUsersRelationship(t *testing.T) {
 	db := setupSQLiteDB(t)
 	theirs := seedStack(t, db, 2, "Lucie", "2026-01-10")
@@ -453,8 +415,6 @@ func TestCreateJournalEntryRejectsAnotherUsersRelationship(t *testing.T) {
 	}
 }
 
-// The retry the offline outbox depends on: the same client_id twice is 200 with the row
-// already stored, not 201 and not 409.
 func TestCreateJournalEntryIsIdempotent(t *testing.T) {
 	db := setupSQLiteDB(t)
 
@@ -491,8 +451,6 @@ func TestCreateJournalEntryIsIdempotent(t *testing.T) {
 	}
 }
 
-// Client ids are unique per user, not globally: two people's offline queues can mint the
-// same uuid and neither is told about the other.
 func TestCreateJournalEntryClientIDIsScopedToTheUser(t *testing.T) {
 	db := setupSQLiteDB(t)
 	body := checkinBody(entryOne, `{"id":"calm","intensity":1}`, ``, ``)
@@ -532,8 +490,6 @@ func TestCreateJournalEntrySupersedes(t *testing.T) {
 		t.Errorf("Expected the stamp to be the correction's own instant %s, got %s", created.At, *stamped.SupersededAt)
 	}
 
-	// A second correction of the same row is a conflict: two statements each claiming to
-	// replace the same one leave a reader no way to say which is current.
 	again := fmt.Sprintf(`{
 		"client_id": %q, "kind": "checkin", "at": %q, "day": %q,
 		"payload": { "v": 1, "feelings": [{"id":"anger","intensity":1}] },
@@ -617,8 +573,6 @@ func TestCreateJournalEntryTriggerMergeCorrection(t *testing.T) {
 	}
 }
 
-// A newer client may write a field this server has never heard of. Dropping it silently is
-// the description-wipe bug in a new form, so the whole payload is stored as sent.
 func TestCreateJournalEntryKeepsUnknownPayloadKeys(t *testing.T) {
 	db := setupSQLiteDB(t)
 
@@ -851,10 +805,6 @@ func TestCreateJournalEntryRequiresAuth(t *testing.T) {
 	}
 }
 
-// The one case the SQLite tests cannot reach: an entry whose client id is held by a
-// soft-deleted row. The lookup runs under GORM's default scope and does not see it, so the
-// insert conflicts — which is the intended answer, because a retry after a delete should
-// not resurrect the row.
 func TestCreateJournalEntryConflictsWithASoftDeletedClientID(t *testing.T) {
 	db := setupSQLiteDB(t)
 	created := createJournal(t, 1, checkinBody(entryOne, `{"id":"calm","intensity":1}`, ``, ``))
@@ -866,8 +816,6 @@ func TestCreateJournalEntryConflictsWithASoftDeletedClientID(t *testing.T) {
 	}
 }
 
-// The statement shape, where sqlmock is the right tool: the column list is the contract
-// between this handler and the migration A1 shipped.
 func TestCreateJournalEntryInsertShape(t *testing.T) {
 	mock, gormDB := setupMockDB(t)
 	database.DB = gormDB
@@ -931,9 +879,6 @@ func TestCreateJournalEntryRollsBackOnDatabaseError(t *testing.T) {
 // The validation helpers on their own, without a request around them — the cases a body
 // cannot easily express.
 func TestValidateDayAnchorsOnTheDaysMidpoint(t *testing.T) {
-	// A check-in made at 03:59 local on the following morning belongs to the previous day
-	// (the rollover hour) and, in Alaska, is 12:59 UTC on that following day. It is a
-	// legitimate entry, not a typo.
 	at, _ := time.Parse(time.RFC3339, "2026-08-22T03:59:00-09:00")
 	if err := validateDay("2026-08-21", at.UTC()); err != nil {
 		t.Errorf("Expected a rollover check-in at UTC-9 to be accepted, got %v", err)
@@ -984,8 +929,6 @@ func TestValidateJournalKind(t *testing.T) {
 	}
 }
 
-// seedClientIDs hands out distinct, well-shaped client ids so a seeded row never trips the
-// per-user unique index by accident.
 var seedClientIDs int
 
 func nextSeedClientID(t *testing.T) string {
@@ -994,9 +937,6 @@ func nextSeedClientID(t *testing.T) string {
 	return fmt.Sprintf("%08d-0000-4000-8000-000000000000", seedClientIDs)
 }
 
-// seedEntry writes one entry straight to the database, bypassing the handler, so a read
-// test can lay out exactly the rows it means to read back — including shapes the write path
-// would refuse, like a row that is already superseded.
 func seedEntry(t *testing.T, db *gorm.DB, userID uint, kind, day, at string, relationshipIDs ...uint) models.JournalEntry {
 	t.Helper()
 	instant, err := time.Parse(time.RFC3339, at)
@@ -1100,8 +1040,6 @@ func TestGetJournalEntriesExcludesSupersededRows(t *testing.T) {
 	}
 }
 
-// The order is day, then at, then id — and the id tiebreaker is the one that stops two
-// entries stamped the same instant from swapping places between refreshes.
 func TestGetJournalEntriesOrdersByDayThenAtThenID(t *testing.T) {
 	db := setupSQLiteDB(t)
 	late := seedEntry(t, db, 1, kindCheckin, "2026-08-21", "2026-08-21T18:00:00Z")
@@ -1168,8 +1106,6 @@ func TestGetJournalEntriesFiltersByRelationship(t *testing.T) {
 	if entries[0].ID != withLucie.ID || entries[1].ID != withBoth.ID {
 		t.Errorf("Expected entries %d and %d, got %d and %d", withLucie.ID, withBoth.ID, entries[0].ID, entries[1].ID)
 	}
-	// An entry naming one person twice is still one row — the filter is a subquery, not a
-	// join, so nothing is duplicated.
 	if len(entries[1].Mentions) != 2 {
 		t.Errorf("Expected the two-person entry to carry both mentions, got %d", len(entries[1].Mentions))
 	}
@@ -1284,8 +1220,6 @@ func TestDeleteJournalEntry(t *testing.T) {
 		t.Errorf("Expected the row to survive as a soft delete, found %d", remaining)
 	}
 
-	// Deleting it again reports 404 — RowsAffected is what the status is read from, so a
-	// second delete genuinely means "nothing matched".
 	if again := del(1, mine.ID); again.Code != http.StatusNotFound {
 		t.Errorf("Expected 404 on a second delete but got %d", again.Code)
 	}
@@ -1304,9 +1238,6 @@ func TestDeleteJournalEntry(t *testing.T) {
 	}
 }
 
-// §10.6, the one action that removes journal content about a third party. The facts go and
-// the check-ins stay: a check-in is the user's own record of a day, and taking somebody out
-// of the journal must not rewrite it.
 func TestDeleteJournalPersonRemovesFactsAndDetachesMentions(t *testing.T) {
 	db := setupSQLiteDB(t)
 	lucie := seedStack(t, db, 1, "Lucie", "2026-01-10")
@@ -1322,8 +1253,6 @@ func TestDeleteJournalPersonRemovesFactsAndDetachesMentions(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("Expected 200 but got %d (body: %s)", w.Code, w.Body.String())
 	}
-	// The two counts the dialog stated, and they are disjoint: two facts go, two entries
-	// stay and stop being linked. The facts' own mentions are in neither number.
 	if !strings.Contains(w.Body.String(), `"facts_deleted":2`) {
 		t.Errorf("Expected two facts deleted, got %s", w.Body.String())
 	}
@@ -1349,8 +1278,6 @@ func TestDeleteJournalPersonRemovesFactsAndDetachesMentions(t *testing.T) {
 		t.Errorf("Expected both facts to survive as soft deletes, found %d", softDeleted)
 	}
 
-	// Every mention of Lucie is detached, on the entries that stayed *and* on the facts
-	// that went — and each keeps its label, which is the name as it was said that day.
 	var stillLinked int64
 	db.Model(&models.JournalMention{}).Where("relationship_id = ?", lucie.ID).Count(&stillLinked)
 	if stillLinked != 0 {
@@ -1369,8 +1296,6 @@ func TestDeleteJournalPersonRemovesFactsAndDetachesMentions(t *testing.T) {
 		}
 	}
 
-	// Nobody else is touched: not another person's mention, and not the relationship or
-	// its snapshots — deleting those is the dashboard's action, with its own dialog.
 	var other models.JournalMention
 	if err := db.Where("entry_id = ?", elsewhere.ID).First(&other).Error; err != nil {
 		t.Fatalf("Expected Noor's mention to survive: %v", err)
@@ -1387,8 +1312,6 @@ func TestDeleteJournalPersonRemovesFactsAndDetachesMentions(t *testing.T) {
 		t.Errorf("Expected the snapshot to survive, found %d", snapshots)
 	}
 
-	// Run again and there is nothing left to take: the numbers are what happened, not what
-	// was asked for, so an already-emptied person reports zero rather than repeating itself.
 	again := call(t, http.MethodDelete, fmt.Sprintf("/journal/people/%d", lucie.ID), 1, "", journalRoutes)
 	if again.Code != http.StatusOK {
 		t.Fatalf("Expected 200 on a second run but got %d", again.Code)
@@ -1399,10 +1322,6 @@ func TestDeleteJournalPersonRemovesFactsAndDetachesMentions(t *testing.T) {
 	}
 }
 
-// The dialog states these two numbers *before* it acts, and it gets them by counting the
-// entries `GET /api/journal/entries` returned — which excludes superseded rows. So this
-// handler has to count the same set, or the promise and the outcome disagree for exactly
-// the users who have renamed or merged something.
 func TestDeleteJournalPersonCountsOnlyTheEntriesTheJournalShows(t *testing.T) {
 	db := setupSQLiteDB(t)
 	lucie := seedStack(t, db, 1, "Lucie", "2026-01-10")
@@ -1432,15 +1351,11 @@ func TestDeleteJournalPersonCountsOnlyTheEntriesTheJournalShows(t *testing.T) {
 		t.Errorf("Expected mentions_detached to count only the entry the journal shows, got %s", w.Body.String())
 	}
 
-	// The superseded rows are still detached from the person, though — "removed from the
-	// journal" would be narrower than it sounds if a row nobody can reach kept the link.
 	var stillLinked int64
 	db.Model(&models.JournalMention{}).Where("relationship_id = ?", lucie.ID).Count(&stillLinked)
 	if stillLinked != 0 {
 		t.Errorf("Expected every mention detached including the superseded ones, found %d", stillLinked)
 	}
-	// And a superseded fact is soft-deleted with the rest: it is still a statement about
-	// this person, and it is still in the export until it goes.
 	var liveFacts int64
 	db.Model(&models.JournalEntry{}).
 		Where("kind = ? AND id IN ?", kindPersonFact, []uint{fact.ID, supersededFact.ID}).
@@ -1500,8 +1415,6 @@ func TestGetJournalDays(t *testing.T) {
 	lucie := seedStack(t, db, 1, "Lucie", "2026-01-10")
 	noor := seedStack(t, db, 1, "Noor", "2026-01-11")
 
-	// The 20th: two check-ins, one of which names two people and one of which names Lucie
-	// again — so `people` must say 2, not 3, and `checkins` must say 2 despite the join.
 	seedEntry(t, db, 1, kindCheckin, "2026-08-20", "2026-08-20T09:00:00Z", lucie.ID, noor.ID)
 	seedEntry(t, db, 1, kindCheckin, "2026-08-20", "2026-08-20T18:00:00Z", lucie.ID)
 

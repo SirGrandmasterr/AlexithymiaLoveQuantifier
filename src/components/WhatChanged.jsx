@@ -10,11 +10,6 @@ export const STEADY_THRESHOLD = 5;
 
 const MS_PER_DAY = 86400000;
 
-/**
- * The snapshot this one should be compared against: the most recent other version of the
- * same stack dated at or before it. Returns null when there is nothing earlier to compare
- * with — a backdated snapshot older than everything else has no "before".
- */
 export const findPreviousVersion = (current, all) => {
     // Matched on the relationship, not the name: two stacks may legitimately share a
     // display name now, and comparing across them would be comparing two different people.
@@ -45,11 +40,6 @@ export const elapsedSentence = (previous, current, name) => {
     return `${humanGap(days)} since your last snapshot of ${name}.`;
 };
 
-/**
- * Plain subtraction, nothing more: new score minus old score, per category.
- * A category missing from either side is not comparable; a category either side flagged
- * unsure keeps that flag so the delta can be shown as approximate.
- */
 export const computeDeltas = (current, previous, categories = CATEGORIES) => {
     const compared = [];
     const notComparable = [];
@@ -127,8 +117,6 @@ export default function WhatChanged({ current, previous, categories = CATEGORIES
                         </button>
                     </div>
 
-                    {/* The shapes first: the polygon shows the whole reading at once,
-                        the list below says exactly how much each axis moved. */}
                     <div className="flex justify-center mb-2">
                         <LoveShape snapshot={current} compareTo={previous} size={230} />
                     </div>

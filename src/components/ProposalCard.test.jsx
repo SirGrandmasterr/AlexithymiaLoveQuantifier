@@ -25,15 +25,6 @@ import transcripts from '../journal/inference/golden/transcripts.json';
 
 vi.mock('axios');
 
-/**
- * The proposal card, driven the way a user drives it: a composer the microphone opened, a
- * take landing in the fake recorder, the fake runtime answering with a proposal, and the
- * card that draws it — down to the request that reaches `POST /api/journal/entries`.
- *
- * Everything asserted about the record is asserted on **the request body**, because the
- * shape in §7.2 is a contract with a Go handler. The first test is the invariant-15 one.
- */
-
 /** §4.7 stage 3, from the golden suite rather than retyped here. */
 const LUCIE = transcripts.find(entry => entry.id === 'lucie.en').reference;
 
@@ -150,9 +141,7 @@ afterEach(() => {
     vi.useRealTimers();
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 1. Invariant 15 — dashed is not saved, solid is                                        */
-/* ------------------------------------------------------------------------------------ */
+/* 1. Invariant 15 — dashed is not saved, solid is */
 
 describe('dashed chips are not saved; solid ones are', () => {
     it('writes exactly the feelings the user kept, and nothing the model only proposed', async () => {
@@ -215,9 +204,7 @@ describe('dashed chips are not saved; solid ones are', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 2. Provenance — what was proposed, kept, replaced                                     */
-/* ------------------------------------------------------------------------------------ */
+/* 2. Provenance — what was proposed, kept, replaced */
 
 describe('the provenance block', () => {
     it('records a replaced feeling under replaced, and an added one under accepted only', async () => {
@@ -269,9 +256,7 @@ describe('the provenance block', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 3. Facts — not offered, by S0's decision                                              */
-/* ------------------------------------------------------------------------------------ */
+/* 3. Facts — not offered, by S0's decision */
 
 describe('facts', () => {
     it('are neither shown nor written: no UI writes a person_fact until 6-E (S0, 2026-08-22)', async () => {
@@ -293,9 +278,7 @@ describe('facts', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 4. The four ambiguity values, and a proposal the filter could not use                  */
-/* ------------------------------------------------------------------------------------ */
+/* 4. The four ambiguity values, and a proposal the filter could not use */
 
 describe('ambiguity', () => {
     const exits = () => document.querySelector('[data-card-exits]');
@@ -399,9 +382,7 @@ describe('ambiguity', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 5. Triggers — new ones dashed, minted only on save                                    */
-/* ------------------------------------------------------------------------------------ */
+/* 5. Triggers — new ones dashed, minted only on save */
 
 describe('a new trigger', () => {
     const examProposal = proposal({
@@ -468,9 +449,7 @@ describe('a new trigger', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 6. The transcript — editing re-runs the proposal in text mode                         */
-/* ------------------------------------------------------------------------------------ */
+/* 6. The transcript — editing re-runs the proposal in text mode */
 
 describe('editing the transcript', () => {
     const heard = (name) => proposal({
@@ -547,9 +526,7 @@ describe('editing the transcript', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 7. Candidates — offered, never selected                                                */
-/* ------------------------------------------------------------------------------------ */
+/* 7. Candidates — offered, never selected */
 
 describe('personCandidates on the card', () => {
     const lucieProposal = proposal({
@@ -621,9 +598,7 @@ describe('personCandidates on the card', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 8. §4.7, byte for byte                                                                 */
-/* ------------------------------------------------------------------------------------ */
+/* 8. §4.7, byte for byte */
 
 describe('the §4.7 payload', () => {
     it('is stage 6, key for key, after the stage-5 taps on the stage-3 proposal', async () => {
@@ -638,11 +613,6 @@ describe('the §4.7 payload', () => {
         await userEvent.click(within(document.querySelector('[data-change-grid="stress"]')).getByRole('button', { name: 'irritation' }));
         await save();
 
-        // A literal, so an added key, a dropped key or a renamed one fails here rather than
-        // against the Go validator. Two departures from the design document's stage-6 block,
-        // both A7's and both recorded in §4.7 since D2: `uncertain` is written only when
-        // true (invariant 14), and `tags` is absent rather than empty; `tz_offset_min`,
-        // `transcript_kept` and `supersedes_id` are §7.2's and were never in the sketch.
         expect(sentBody()).toEqual({
             client_id: expect.stringMatching(UUID),
             kind: 'checkin',
@@ -680,9 +650,7 @@ describe('the §4.7 payload', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 9. This isn't it — the three exits, from every state                                  */
-/* ------------------------------------------------------------------------------------ */
+/* 9. This isn't it — the three exits, from every state */
 
 describe("This isn't it", () => {
     const states = {
@@ -747,9 +715,7 @@ describe("This isn't it", () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 10. Every word on the card is a template                                              */
-/* ------------------------------------------------------------------------------------ */
+/* 10. Every word on the card is a template */
 
 const walkStrings = (value) => {
     if (typeof value === 'string') return [value];
@@ -798,9 +764,7 @@ describe('no bare strings on the card (Appendix B item 3)', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 11. Discretion                                                                         */
-/* ------------------------------------------------------------------------------------ */
+/* 11. Discretion */
 
 describe('under discretion', () => {
     beforeEach(() => { window.localStorage.setItem('alq:discreet', 'true'); });
@@ -826,9 +790,7 @@ describe('under discretion', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 12. Two rules of the composer's that the card keeps                                    */
-/* ------------------------------------------------------------------------------------ */
+/* 12. Two rules of the composer's that the card keeps */
 
 describe('rules the card keeps', () => {
     it('makes can\'t tell exclusive: keeping either side puts the other down', async () => {
@@ -880,9 +842,7 @@ describe('rules the card keeps', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 13. The pure functions                                                                 */
-/* ------------------------------------------------------------------------------------ */
+/* 13. The pure functions */
 
 describe('resolvePerson', () => {
     it('matches exactly, offers candidates, or says new — and confirms only the match', () => {

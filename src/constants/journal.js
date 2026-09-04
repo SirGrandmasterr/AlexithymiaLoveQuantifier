@@ -1,52 +1,7 @@
-/**
- * The emotional journal: its closed vocabularies, every string it can show, and the
- * arithmetic that reads a stored entry back.
- *
- * The product rule this file exists to enforce is negative: **no mood score, no daily
- * average, no counting of missed nights, no evaluative vocabulary.** A night with no
- * ritual leaves no row and no trace — there is nothing here that could count one, and
- * anything added here that starts scoring a day is a bug. The forbidden list in
- * `journal.test.js` is what makes that mechanical rather than remembered: every string in
- * this file is walked, so a word cannot arrive by being written carefully once.
- *
- * Ids are permanent and they are a contract with the server. `FEELINGS`,
- * `RITUAL_QUESTIONS` and `ENTRY_KINDS` hold the same ids as `domain.FeelingIDs`,
- * `domain.RitualQuestionIDs` and `domain.JournalKinds` in
- * backend/internal/domain/journal.go, and a test reads that Go file and asserts both
- * directions. Labels, glosses, the two axes the day graph draws on, and colours are
- * frontend-owned; the server has no opinion about what a feeling is called. Removing an id
- * is forbidden — mark it `retired: true` here so the UI stops offering it while the server
- * keeps accepting it for the rows already written.
- *
- * Nothing in this file renders, imports React, or talks to the network. It is content and
- * pure functions, which is what lets the readers be tested without a DOM and lets the copy
- * be tested without a screen. That claim is load-bearing — `journalSettings.js` rests on it,
- * and `MobileBottomNav` imports this module for a single route constant — so the one thing
- * it shares with the snapshot form, the tag limit, comes from `constants/contextTags.js`
- * rather than from the component that used to hold it.
- */
-
 import { MAX_TAG_LENGTH } from './contextTags';
 
-/* ------------------------------------------------------------------------------------ */
-/* 1. Feelings                                                                            */
-/* ------------------------------------------------------------------------------------ */
+/* 1. Feelings */
 
-/**
- * The feeling vocabulary. Twenty-one entries, in the order the UI lays them out.
- *
- * `valence` (−1 … +1) and `energy` (0 … 1) are the two axes of the day graph (§8.1): y is
- * valence scaled by the intensity the user set, z is energy, fixed per feeling so the same
- * feeling always sits at the same depth. They are **content, not computation** — authored
- * constants, the way the slider anchor phrases are, not something derived from anything.
- *
- * `hex` is a complete literal colour. It is never assembled from parts and never used to
- * build a Tailwind class name: `bg-${x}-400` is purged at build time and renders colourless
- * (invariant 4). SVG takes the hex directly, which is what the graph and the chips want.
- *
- * Labels are nouns, descriptive, and never graded — there is no "very anxious" entry.
- * Strength is the separate 1–3 intensity the user sets per check-in.
- */
 export const FEELINGS = [
     { id: 'joy', label: 'joy', gloss: 'lit up, and wholly pleasant', valence: 0.8, energy: 0.7, hex: '#fbbf24' },
     { id: 'excitement', label: 'excitement', gloss: 'keyed up, something coming', valence: 0.6, energy: 0.9, hex: '#fb923c' },
@@ -59,11 +14,6 @@ export const FEELINGS = [
     { id: 'curiosity', label: 'curiosity', gloss: 'pulled toward finding out', valence: 0.4, energy: 0.6, hex: '#22d3ee' },
     { id: 'calm', label: 'calm', gloss: 'settled, nothing pressing', valence: 0.5, energy: 0.2, hex: '#2dd4bf' },
     { id: 'neutral', label: 'level', gloss: 'nothing in particular', valence: 0.0, energy: 0.3, hex: '#94a3b8' },
-    // The entry the whole thesis depends on. Alexithymia is not the absence of feeling, it
-    // is the absence of a name for one, so "can't tell" has to be a first-class answer a
-    // user can tap and the graph can draw — dashed, like every other uncertainty in this
-    // app — rather than a gap the record reads as nothing having happened. Every other
-    // entry in this list is optional. This one is the reason the list exists.
     { id: 'unclear', label: "can't tell", gloss: 'something is there, and it has no name yet', valence: 0.0, energy: 0.4, hex: '#a1a1aa' },
     { id: 'tiredness', label: 'tiredness', gloss: 'run down, low on fuel', valence: -0.2, energy: 0.1, hex: '#38bdf8' },
     { id: 'boredom', label: 'boredom', gloss: 'nothing here holds you', valence: -0.3, energy: 0.2, hex: '#60a5fa' },
@@ -87,22 +37,8 @@ export const activeFeelings = () => FEELINGS.filter(feeling => !feeling.retired)
 /** One feeling by id, or null. Never invents an entry for an id it does not know. */
 export const feelingById = (id) => FEELINGS.find(feeling => feeling.id === id) || null;
 
-/* ------------------------------------------------------------------------------------ */
-/* 2. The nightly ritual's questions                                                      */
-/* ------------------------------------------------------------------------------------ */
+/* 2. The nightly ritual's questions */
 
-/**
- * Every question the ritual can ask. The five core ones are always asked, in this order;
- * the eight optional ones are off by default and the user turns on at most three.
- *
- * `note` is the sentence the settings screen shows beside the question. It says why the
- * question is here, in the plain register the Vault uses, and it is walked by the
- * forbidden-word test like everything else. `water`'s note says out loud that its evidence
- * is weak, because a setting that oversells itself is a claim the app cannot support.
- *
- * The order is fixed and the set does not rotate: a condition asked on alternate nights is
- * half a dataset, and a ritual whose value is its sameness cannot change under the user.
- */
 export const RITUAL_QUESTIONS = [
     {
         id: 'slept_well',
@@ -193,18 +129,6 @@ export const optionalQuestions = () => RITUAL_QUESTIONS.filter(question => !ques
 /** One question by id, or null. */
 export const questionById = (id) => RITUAL_QUESTIONS.find(question => question.id === id) || null;
 
-/**
- * Tonight's deck: the five core questions in their fixed order, then the optional ones this
- * device has turned on.
- *
- * The optional tail is ordered by `RITUAL_QUESTIONS`, **not** by the order the user switched
- * them on, and it is capped here as well as in the settings screen. A deck that reordered
- * itself would defeat the whole reason the set is fixed (§3.3): the ritual's value is that it
- * can be done with the eyes closed, and an eyes-closed swipe is muscle memory of a sequence.
- *
- * Unknown ids are dropped rather than passed through — a stored list can outlive a build that
- * retired a question, and a card with no text is worse than a question not asked.
- */
 export const ritualDeck = (enabledOptionalIds = []) => {
     const wanted = new Set(Array.isArray(enabledOptionalIds) ? enabledOptionalIds : []);
     const tail = optionalQuestions()
@@ -214,18 +138,9 @@ export const ritualDeck = (enabledOptionalIds = []) => {
     return [...coreQuestions(), ...tail];
 };
 
-/**
- * The version of the *question set*, stored as `question_set.version` (§6.3).
- *
- * It is not the payload's `v`, and the two version different things: `v` says how to read the
- * shape, this says which core five were asked. It moves only if the core set itself ever
- * changes, which is what would make an old row's `asked` list mean something different.
- */
 export const RITUAL_QUESTION_SET_VERSION = 1;
 
-/* ------------------------------------------------------------------------------------ */
-/* 3. Limits and other constants                                                          */
-/* ------------------------------------------------------------------------------------ */
+/* 3. Limits and other constants */
 
 /** The entry kinds. Matches `domain.JournalKinds`; a new kind is how the journal extends. */
 export const ENTRY_KINDS = ['checkin', 'ritual', 'person_fact', 'trigger'];
@@ -236,35 +151,16 @@ export const PAYLOAD_VERSION = 1;
 /** How many feelings one check-in may carry. Beyond this a check-in stops being a sentence. */
 export const MAX_FEELINGS_PER_CHECKIN = 5;
 
-/**
- * The languages the transcription setting offers to pin (§4.3, §9.7).
- *
- * Not a closed vocabulary and not a claim about what Whisper can do — it handles far
- * more — but a pin the user never uses is a select with a hundred rows in it. German
- * first, because §12.1 says this app's actual user base speaks it and every German
- * number has to be believed before any English one is.
- */
 export const TRANSCRIPTION_LANGUAGES = ['de', 'en', 'fr', 'es', 'it', 'nl', 'pl', 'pt', 'tr', 'ru'];
 
 /** A transcript is a spoken minute or two, not a document. */
 export const MAX_TRANSCRIPT_LENGTH = 4000;
 
-/**
- * A trigger label is a few words. It borrows the context tag's limit rather than declaring
- * a second forty, because they are the same kind of thing written in two places and two
- * constants would drift the day one of them changed.
- */
 export const MAX_TRIGGER_LABEL = MAX_TAG_LENGTH;
 
 /** Intensity is 1–3. Its words live in JOURNAL_COPY so the forbidden-word walk sees them. */
 export const INTENSITY_LEVELS = [1, 2, 3];
 
-/**
- * The hour a civil day turns over, local. A check-in at 02:00 belongs to the day before,
- * because the day a person means at 02:00 is the one they have not gone to bed from yet.
- * It is stored on the ritual entry (`rollover_hour`) so it can change later without
- * reinterpreting the rows already written.
- */
 export const DAY_ROLLOVER_HOUR = 4;
 
 /** Where the journal's routes live. */
@@ -277,58 +173,18 @@ export const RITUAL_PATH = `${JOURNAL_ROOT}/ritual`;
 export const PEOPLE_PATH = `${JOURNAL_ROOT}/people`;
 export const TRIGGERS_PATH = `${JOURNAL_ROOT}/triggers`;
 
-/**
- * Recall (§5.8, G2). A static segment, for `RITUAL_PATH`'s reason — a day is never called
- * *search* — and a route rather than a box on the day view, because the answer to *"when
- * did I last feel like this about work?"* is a list of other days and the day view is
- * about one.
- */
 export const SEARCH_PATH = `${JOURNAL_ROOT}/search`;
 
-/**
- * The query the launcher's *Check in* shortcut arrives with, and the day view's reading of it.
- *
- * §9.2 gives the shortcut one job: one long-press from the home screen to a check-in, with no
- * widget and no background process. It **arms** the composer — the microphone where this
- * device offers one, the keyboard where it does not — and the recording starts on the
- * confirming tap inside it, never on the launch itself. A shortcut that opened the microphone
- * would be the app deciding to record, which is the one thing §4.2's "no listening" position
- * cannot allow, and it would do it from a gesture as easy to make by accident as a long-press
- * on a home screen.
- *
- * The path is a constant here rather than a string in the Android XML alone so that the two
- * halves cannot drift: `shortcuts.xml` names this value, `deepLink.js` accepts it, and this
- * module is what both of them agree with.
- */
 export const RECORD_PARAM = 'record';
 export const RECORD_PARAM_VALUE = '1';
 export const JOURNAL_RECORD_PATH = `${JOURNAL_ROOT}?${RECORD_PARAM}=${RECORD_PARAM_VALUE}`;
 
-/**
- * One person's screen, keyed by `relationship_id` and never by name — which is the whole
- * reason it survives a rename (§9.1, invariant 2a). An id that is not a number answers with
- * the list, on `journalDayPath`'s rule: a path builder never builds a broken path.
- */
 export const journalPersonPath = (relationshipId) => (
     Number.isFinite(Number(relationshipId)) && relationshipId !== null && relationshipId !== ''
         ? `${PEOPLE_PATH}/${relationshipId}`
         : PEOPLE_PATH
 );
 
-/**
- * The earliest day the client will ask the server for.
- *
- * The People and Triggers views count *entries*, and a count over the month the day view
- * happens to have loaded would be a number that changes when you walk to March — worse, the
- * *remove this person from the journal* dialog states its count as a fact before doing the
- * thing, so a month's worth would make that sentence untrue. Both screens therefore load the
- * whole history, and this is its floor.
- *
- * It costs one string comparison on the server (`day` is a varchar precisely so the range is
- * lexical — §6.2), and it is early enough that nothing this app can write falls before it:
- * `civilDay` derives from a local `Date`, and an import carries days some copy of this app
- * wrote. It is not "the beginning of time" and does not pretend to be.
- */
 export const JOURNAL_HISTORY_FROM = '1970-01-01';
 
 /** The per-device settings keys from §9.7. Values are per device and never sent anywhere. */
@@ -341,9 +197,6 @@ export const JOURNAL_STORAGE_KEYS = {
     embeddings: 'alq:journal-embeddings',
     keepTranscripts: 'alq:journal-keep-transcripts',
     language: 'alq:journal-language',
-    // C3's, and the one key §9.7's table does not list: the tier a user pinned when the
-    // detected one was wrong, or too expensive for their machine. The design document
-    // now carries the row beside the other eight.
     tier: 'alq:journal-tier'
 };
 
@@ -353,27 +206,8 @@ export const DEFAULT_RITUAL_TIME = '22:30';
 /** At most three optional questions on top of the five core ones (§3.3). */
 export const MAX_OPTIONAL_QUESTIONS = 3;
 
-/* ------------------------------------------------------------------------------------ */
-/* 4. Copy                                                                                */
-/* ------------------------------------------------------------------------------------ */
+/* 4. Copy */
 
-/**
- * Every string the journal can render.
- *
- * From here on nothing in a journal component is a bare string literal: components read
- * this object. That is not tidiness — it is the only way the forbidden-word walk can see
- * the whole surface of the feature, and a sentence a component owns privately is a
- * sentence no test has ever read.
- *
- * Where a number belongs in a sentence, the string carries a `{placeholder}` and the
- * component fills it with `fillCopy`. The template stays walkable, and a constant that is
- * tuned later (the graph's half-life, a merge's count) cannot make the sentence false.
- *
- * The settings block covers all eight settings in §9.7, including the four that belong to
- * later slices. **A description here is not permission to render the toggle** — the voice,
- * suggestion, embedding and language settings arrive with 6-C, 6-D and 6-G, and rendering
- * a toggle for something that does not exist would make a Vault claim false (invariant 2e).
- */
 export const JOURNAL_COPY = {
     ritual: {
         heading: 'The nightly questions',
@@ -391,13 +225,7 @@ export const JOURNAL_COPY = {
         whoHint: 'Optional. Tap the people this evening had in it.',
         whoDone: 'Done',
         dayWord: 'And today, in a word?',
-        // The closing card's chips carry the vocabulary's own labels — including "can't
-        // tell", which is a feeling id here and not a way of declining to answer. Declining
-        // is `skip`, and the two are different records (§3.2, invariant 14).
         done: 'Recorded.',
-        // Leaving before the last card writes nothing at all, which is the whole of what a
-        // missed night is (§3.6). The button says what it does and nothing about what was
-        // left behind.
         close: 'Close',
         // The dot row's spoken label. A position, not a score of how far along anyone is.
         progress: 'Card {index} of {total}',
@@ -441,10 +269,6 @@ export const JOURNAL_COPY = {
         type: 'Type it',
         chips: 'Tap a few words',
 
-        // The two ways in (§9.2): the header button above `md`, where the dashboard puts
-        // its own primary action, and the round one over the bottom bar on a handset. The
-        // microphone takes this place in 6-C on a device that can run it; until then the
-        // way in is the keyboard and the chips, which is the feature and not a fallback.
         open: 'Check in',
         openHint: 'Record how right now is',
         close: 'Close',
@@ -512,9 +336,6 @@ export const JOURNAL_COPY = {
         }
     },
 
-    // The day view — `/journal` and `/journal/:day`. The date itself is not copy: it is
-    // formatted by the browser in the reader's own locale, which is why no month name and
-    // no weekday appears in this object.
     day: {
         previous: 'Previous day',
         next: 'Next day',
@@ -523,23 +344,12 @@ export const JOURNAL_COPY = {
         // The ritual sits under the day's check-ins rather than among them: a check-in is
         // a moment inside the day and the ritual is about the whole of it.
         ritualHeading: 'The evening questions',
-        // A question that was shown and not answered. Never "skipped" in the day view —
-        // `asked` minus `answers` is a fact about the row, and the word for it here is the
-        // plainest one available (invariant 14).
         unanswered: 'Unanswered',
         // The screen's own error slot (agent guide, Recipe 5). The page keeps rendering
         // under it, and the banner can be put away without the day going with it.
         loadError: 'Could not load your journal. Check that the server is running, then reload.',
         dismiss: 'Dismiss',
-        // The outbox (§9.5, session F1). An entry saved with no connectivity is kept and
-        // this is the mark it wears until the post lands. Descriptive, like every other word
-        // on this screen: nothing has gone wrong and nothing is owed — the entry is simply
-        // still here rather than there.
         notSynced: 'Not yet synced',
-        // The other end of that: the server read the body and refused it, which is the one
-        // case a retry cannot fix. The app stops retrying and says so, because an entry that
-        // will never land while still showing 'not yet synced' would be a promise it cannot
-        // keep. `{reason}` is the server's own message, as `loadError`'s slot is.
         notSent: 'Not sent — {reason}'
     },
 
@@ -552,17 +362,11 @@ export const JOURNAL_COPY = {
         // routes that later slices fill in, so a link is never a dead end.
         nothingHere: 'Nothing here yet.',
         voiceUnavailable: "Voice isn't available here — this device can't run the transcriber on its own, and the app won't send audio anywhere. Typing works the same way.",
-        // Why, when the app can say why. A browser reached over plain http:// has no
-        // microphone and no way to hash a downloaded file, and “this device can't” is a
-        // worse answer than the true one when the true one is fixable.
         voiceNeedsSecureContext: "Voice isn't available over a plain http:// address — the browser only offers the microphone and the checks this needs over HTTPS or on localhost. Typing works the same way.",
         modelDownloading: 'Downloading the model — {size}. Tapping words works in the meantime.',
         modelDownloadCancel: 'Cancel'
     },
 
-    // The microphone path, from the tap to the words on the card (§4.2, §4.3). There is
-    // no proposal here and no chip the app chose: this slice writes down what was said
-    // and hands it to the same grid the chips path has always used.
     voice: {
         open: 'Say a check-in',
         openHint: 'Tap to record. Tap again to stop.',
@@ -595,10 +399,6 @@ export const JOURNAL_COPY = {
         keyboard: 'Type instead'
     },
 
-    // The proposal card (§4.4). Every sentence the model's output is dropped into lives
-    // here, and the model writes none of them: its words only ever fill a `{slot}`, which
-    // `validateProposal` has already read against the same list this object is walked with.
-    // The four `ambiguity` sentences are §4.6's, verbatim.
     proposal: {
         suggested: 'Suggested from what you said',
         // Moved here from the U1 fixture card when D2 built the real one, so the walk sees it.
@@ -678,13 +478,6 @@ export const JOURNAL_COPY = {
         },
         voice: {
             label: 'Voice check-ins',
-            // Verbatim from the Vault's "What about AI features?" paragraph (§10.2), so the
-            // toggle and the privacy page cannot drift apart. **§10.2's paragraph names
-            // Gemma 4 E2B and promises suggestions; this build has neither**, so what is
-            // shared here is the sentence that is true of the code as written — one model,
-            // this device, writes words down. D3 restores the rest when the model that
-            // does the suggesting exists. Softening a claim to make it true is the move
-            // that is never available; narrowing one to what shipped is the opposite.
             description: 'One model, and it runs on this device: Whisper tiny, open weights under the Apache 2.0 licence, downloaded once from this server. It writes down a voice note — the audio is never saved and never sent — and it is asked only what you said, never how you sounded. It reads the words back to you before anything is saved, and you tag them yourself. It switches off in your profile at any time.',
             // Said before the download, never after it: §5.6 wants the size in front of the
             // user while the choice is still theirs.
@@ -701,17 +494,10 @@ export const JOURNAL_COPY = {
         suggestions: {
             label: 'Show suggestions',
             description: 'With this off, voice still writes the words down and you tag them yourself with chips.',
-            // D3 gave this toggle a model, so the line under it names the model and its
             // licence instead of saying there is none. It stays descriptive: what runs, where
-            // it runs, and what it is allowed to do — never how well it does it.
             model: '{label} suggests them, on this device, under the {licence} licence. Every suggestion waits for you to keep it or put it down.'
         },
         embeddings: {
-            // **§9.7's row in full, restored in G2.** G1 shipped this label narrowed to
-            // *“Similar-entry suggestions”*, because it had built the suggestions and not
-            // the search, and a toggle that promises a screen the build does not have is
-            // invariant 2e in the other direction. `/journal/search` is that screen, it is
-            // behind this switch, and the label says so again.
             label: 'Similar-entry suggestions and search',
             // Verbatim from §10.2's Vault entry, so the toggle and the privacy page cannot
             // drift apart.
@@ -724,9 +510,6 @@ export const JOURNAL_COPY = {
             downloaded: 'On this device.',
             remove: 'Remove downloaded files',
             removed: 'Removed. Turning this on again downloads it once more.',
-            // The terms are not Apache and the difference is the user's to know: §5.6 puts
-            // Google's terms file beside the weights on the server, and this names them
-            // where the choice to download is made.
             licence: '{label} is open weights under the {licence}, which are served from this app beside the files.',
             // Named rather than hidden: a control that is not offered and says nothing about
             // why is a control that lies about being absent.
@@ -766,9 +549,6 @@ export const JOURNAL_COPY = {
         heading: 'Triggers',
         subheading: 'What a feeling was about, when it was not a person.',
         newTrigger: 'New trigger: {label}?',
-        // A pair rather than one plural-blind template, filled by `countCopy`. "1 entries"
-        // is the kind of small wrongness a reader notices and then trusts the screen less
-        // for, and both halves are in this object so the walk still sees them.
         entryCount: {
             one: '{count} entry names this.',
             many: '{count} entries name this.'
@@ -812,18 +592,6 @@ export const JOURNAL_COPY = {
         }
     },
 
-    /**
-     * G1, §5.8. **Every string in this group is held to one extra rule: no digits.**
-     *
-     * Rule 2 says similarity proposes and never shows a number — not a score, not a
-     * percentage, not *“three entries like this”*. The list is not a matter of care:
-     * `journal.test.js` walks this object for digits the way it walks the whole of
-     * `JOURNAL_COPY` for evaluative words, and `similar.js` returns offers with no
-     * similarity on them so there is nothing to interpolate even by accident.
-     *
-     * The register is the design's own: *“entries with similar words”*, *“you've called this
-     * 'work' before”*. Descriptive about the vocabulary, never a claim about the person.
-     */
     similar: {
         // Beside *new trigger*, never instead of it: the card offers a word the user already
         // has, and the user may want neither of them.
@@ -839,51 +607,19 @@ export const JOURNAL_COPY = {
         pair: "'{a}' looks similar to '{b}'",
         pairAction: 'Merge these…',
 
-        /**
-         * G2, §5.8's second use. *"Your past entries"* — the labels the user chose on
-         * entries like this one, offered on the card as dashed chips.
-         *
-         * The heading names **the user** and not the app, because that is what the offer
-         * actually is: their own past authorship, read back. Nothing here counts the
-         * entries it came from — the digit rule above applies to this group as much as to
-         * the trigger offer, and *"you chose this on four entries like this"* would be a
-         * similarity number wearing a different hat.
-         */
         past: {
             heading: 'Words you chose before',
             note: 'From entries of yours that name the same people or the same triggers. Dashed means not saved yet.',
             keep: "Keep '{label}'"
         },
 
-        /**
-         * §5.8's fifth use. Two relationships called Alex, and this sentence sounds more
-         * like one of them. It **orders** §4.5's candidates and says so; the picker is
-         * unchanged and nothing is selected.
-         */
         namesake: 'Put in order by which of them your words sound most like. Nothing is picked for you.',
 
-        /**
-         * §5.8's sixth use. A statement close to one already kept about the same person,
-         * shown beside it. Never a merge, never a replacement — two rows that say the same
-         * thing twice are the user's to keep or drop.
-         */
         known: {
             heading: 'Already known?',
             beside: 'Close to something already kept about this person.'
         },
 
-        /**
-         * §5.8's third use — recall, *"the one question a journal is for"*.
-         *
-         * Two headings rather than one list, and the split is the design rather than
-         * decoration: `words` is a fact — the words are in the entry and the reader can see
-         * them — and `alike` is this device's guess. Rule 2 lets similarity propose and not
-         * claim, so the guess is never presented as a find.
-         *
-         * There is no count anywhere and no summary anywhere. §5.8 says results are entries
-         * rather than answers, and the app never summarises them: what the screen draws is
-         * what the user wrote, and the rows are the whole of the reply.
-         */
         search: {
             heading: 'Search',
             subheading: 'Find a day by the words that are on it.',
@@ -899,9 +635,6 @@ export const JOURNAL_COPY = {
             open: 'Open {day}',
             openSnapshot: 'Open the timeline',
             snapshot: 'A snapshot note',
-            // Named rather than silent, on the same rule as the settings screen's: a search
-            // box that is not offered and says nothing about why is a screen that lies about
-            // being absent.
             off: 'Search is off on this device. Turn on similar-entry suggestions and search in your profile.',
             unavailable: 'This device has nowhere to keep the numbers, so search stays off here.'
         }
@@ -912,18 +645,11 @@ export const JOURNAL_COPY = {
         // The half-life is filled from the constant rather than written into the sentence,
         // so tuning the constant cannot leave the sentence saying something untrue.
         fade: 'Each feeling is drawn fading over about {halfLife} unless you mention it again.',
-        // The closing card is one tap on one word and records no strength (§6.5), so the
-        // graph has to choose one to draw it at. §8.2 rule 7 says that choice is a stated
-        // constant rather than a silent middle number, which is what this sentence states.
         unstated: 'A feeling recorded without a strength, like the closing word, is drawn at {strength} of three.',
         caveat: 'That is a drawing choice about what you recorded, not a claim about you.',
         extrapolated: 'The faint part is drawn past what you said, not measured.',
         legend: 'Feelings today',
 
-        // B2's own words: the drawing's name, its two rotation buttons, the camera
-        // toggle, and what a branch says when a screen reader reaches it. The graph shows
-        // no person, no trigger and no note, so there is nothing here that discretion mode
-        // would have to mask — the legend is feeling labels and nothing else (§9.6).
         label: 'The day as a curve',
         rotateLeft: 'Turn the drawing left',
         rotateRight: 'Turn the drawing right',
@@ -948,9 +674,6 @@ export const JOURNAL_COPY = {
         attached: '{feelings} most often',
         attachedFormula: 'The two feelings attached to this person most often, across every entry that names them. A tie goes to whichever word comes first in the list of feelings.',
 
-        // The link to the stack, present only when a snapshot exists. §2.2: the dashboard
-        // is snapshot-driven, so a person known only from the journal has no stack to link
-        // to, and the row says that rather than offering a link to nothing.
         timeline: 'Open the timeline',
         journalOnly: 'No snapshot yet',
         // Rename, merge and delete are the dashboard's (§9.3). This is the line that says
@@ -967,16 +690,6 @@ export const JOURNAL_COPY = {
         // first snapshot of someone the journal already knows lands on the existing row.
         suggestionsLabel: 'People the journal already knows',
 
-        // §10.6. The one action that removes journal content about a third party, worded
-        // with the exact count of what goes — and with what stays, because a check-in is
-        // the user's own record of a day and this does not rewrite it.
-        //
-        // Two clauses rather than one sentence with two numbers dropped into it, and each
-        // carries **its own verb**. A single template cannot agree with two counts at once:
-        // the first draft read *"0 facts … go, and 1 entry stop being linked"*, which the
-        // unit tests could not see and one run of the real screen showed immediately. A
-        // clause whose count is zero is not shown at all — "0 facts" is a sentence about
-        // nothing — and each names the person, so either can stand on its own.
         remove: {
             action: 'Remove this person from the journal',
             title: 'Remove this person from the journal',
@@ -995,41 +708,18 @@ export const JOURNAL_COPY = {
         }
     },
 
-    // The two navigations. The label is here rather than beside `Analysis` and `Vault` in
-    // the nav files because it is the journal's word, and every word the journal says is
-    // walked by the forbidden-word test.
     nav: {
         label: 'Journal',
         back: 'Back to the journal'
     }
 };
 
-/**
- * Fills `{placeholder}` slots in a copy string.
- *
- * A placeholder with no value is left standing rather than blanked, on the same rule as the
- * server's: never silently discard, and a visible `{count}` in a screenshot is a bug report
- * where an empty gap is a mystery (invariant 13).
- */
 export const fillCopy = (template, values = {}) => (
     String(template).replace(/\{(\w+)\}/g, (placeholder, key) => (
         Object.prototype.hasOwnProperty.call(values, key) ? String(values[key]) : placeholder
     ))
 );
 
-/**
- * A counted sentence, picking the singular or the plural template and filling `{count}`.
- *
- * The pair lives in `JOURNAL_COPY` rather than being assembled from a stem and an `s`, so
- * the forbidden-word walk reads both halves and a language whose plural is not a suffix is
- * a copy change rather than a code change. It carries the **whole clause, verb included**:
- * a template that ends before its verb cannot agree with its own number, which is how
- * *"1 entry stop being linked"* reached a running screen past a green suite.
- *
- * `values` fills whatever else the clause names — a person, usually. A missing template
- * returns an empty string rather than the word `undefined`, on `fillCopy`'s rule that a
- * visible bug beats a mysterious one — and an empty slot next to a name is the visible one.
- */
 export const countCopy = (count, templates, values = {}) => {
     const chosen = count === 1 ? templates?.one : templates?.many;
     return chosen ? fillCopy(chosen, { ...values, count }) : '';
@@ -1037,11 +727,6 @@ export const countCopy = (count, templates, values = {}) => {
 
 const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
 
-/**
- * A duration in words, for the sentences that describe a rendering constant. The sibling of
- * `humanGap` in cadence.js: the app has one vocabulary for elapsed time, and half-hours are
- * the granularity these sentences are ever tuned at.
- */
 export const humanMinutes = (minutes) => {
     const total = Math.max(0, Math.round(Number(minutes) || 0));
     if (total < 60) return `${total} minutes`;
@@ -1055,14 +740,8 @@ export const humanMinutes = (minutes) => {
     return half ? `${word} and a half hours` : `${word} hours`;
 };
 
-/* ------------------------------------------------------------------------------------ */
-/* 5. Readers                                                                             */
-/* ------------------------------------------------------------------------------------ */
+/* 5. Readers */
 
-/**
- * The version a payload declares. An absent `v` is version 1: the first writer wrote it,
- * and treating absence as unknown would make the oldest rows the unreadable ones.
- */
 const versionOf = (payload) => {
     const declared = payload?.v;
     return Number.isFinite(declared) ? declared : PAYLOAD_VERSION;
@@ -1073,11 +752,6 @@ const asBool = (value) => (typeof value === 'boolean' ? value : null);
 const asNumber = (value) => (Number.isFinite(value) ? value : null);
 const asArray = (value) => (Array.isArray(value) ? value : []);
 
-/**
- * One `about` target. Unknown kinds are kept whole rather than dropped — a newer client may
- * point a feeling at something this reader has never heard of, and losing it would lose the
- * only record that the user said it.
- */
 const readAboutTarget = (target) => {
     if (!target || typeof target !== 'object') return null;
     switch (target.kind) {
@@ -1092,15 +766,6 @@ const readAboutTarget = (target) => {
     }
 };
 
-/**
- * One feeling on a check-in.
- *
- * `uncertain` is `true`, `false`, or `null` when the writer said nothing — absence is not
- * `false` here any more than it is in a ritual's answers (invariant 14). Only `true` draws
- * dashed, so the three behave identically on screen and the record stays honest about which
- * of them it holds. `intensity` is `null` when absent, never 0: a feeling with no strength
- * recorded is not a feeling of no strength.
- */
 const readFeelingEntry = (feeling) => ({
     id: asString(feeling?.id),
     intensity: asNumber(feeling?.intensity),
@@ -1156,14 +821,6 @@ const readCheckinV1 = (payload) => {
     };
 };
 
-/**
- * Reads a `kind: "checkin"` payload into the shape screens and the day graph use.
- *
- * The switch is the extension seam §6.4 describes: a v2 gets its own branch. Until one
- * exists, a payload declaring a higher version is read with the v1 rules rather than
- * dropped — a row that reads as nothing disappears from the day it belongs to, and a
- * partly-read one at least still shows what the user said.
- */
 export const readCheckin = (payload) => {
     switch (versionOf(payload)) {
         case 1:
@@ -1181,10 +838,6 @@ const readRitualV1 = (payload) => {
 
     const asked = asArray(questionSet?.asked).filter(id => typeof id === 'string');
 
-    // Every key the writer put here is an answer, whatever it says. A key that is not here
-    // was skipped. This reader never invents a key and never turns an absent one into
-    // `false` — that is invariant 14 applied to questions, and it is the difference between
-    // "I did not sleep well" and "I did not answer".
     const stored = answers && typeof answers === 'object' ? answers : {};
     const readAnswers = {};
     Object.keys(stored).forEach(id => { readAnswers[id] = stored[id]; });
@@ -1235,45 +888,8 @@ export const readPersonFact = (payload) => {
     }
 };
 
-/* ------------------------------------------------------------------------------------ */
-/* 5b. Triggers, and the chain a reader has to resolve                                    */
-/* ------------------------------------------------------------------------------------ */
+/* 5b. Triggers, and the chain a reader has to resolve */
 
-/**
- * How a trigger keeps its identity across a correction, decided here because A2 and A3 both
- * left it open.
- *
- * A trigger's identity is its `client_id` and a check-in references it by that id. But a
- * rename or a merge is a **correction row**, and a correction row needs a new `client_id`
- * of its own — client ids are unique per user, so it cannot reuse the one it replaces. The
- * row-level link is `supersedes_id`, a database row id the client never sees, because
- * `GET /api/journal/entries` only ever returns rows with `superseded_at IS NULL`. So the
- * correction payload carries the client's own name for the same link: `corrects`, **every**
- * `client_id` this trigger has been referenced by before this row.
- *
- * It is a list rather than a single predecessor, and that is not tidiness. Rename twice and
- * the middle row is superseded too, so it is in no list the client holds — a reader walking
- * one hop at a time would find the second id and then hit a gap, and every check-in written
- * before the first rename would resolve to nothing. Each correction carries its
- * predecessor's list plus the predecessor's own id, which is one map lookup at read time and
- * a handful of ids on a row that changes about as often as a person gets renamed. A bare
- * string is read as a one-element list, because the first rename is the common case.
- *
- * That fixes the two halves in opposite directions, which is the point:
- *
- * - **The writer never resolves.** A new check-in must reference a *live* trigger id, and
- *   the server's check (`superseded_at IS NULL`) stays exactly as A2 wrote it. It cannot
- *   be tripped by accident, because `triggerCandidates` is only ever shown live triggers —
- *   there is no path through the UI to a dead id. Loosening that check would let a
- *   merged-away trigger keep collecting entries.
- * - **Readers resolve.** Every check-in already written still points at whatever id was
- *   live the day it was made, and `readTrigger` walks that id forward to the trigger that
- *   speaks for it now.
- *
- * `corrects` is absent on every row written before this decision, and absence reads as "this
- * row speaks only for itself" — which is what §6.4 means by a field readers can treat as
- * unknown, and why it needs no payload version bump.
- */
 const triggerIdentity = (entry) => asString(entry?.client_id ?? entry?.clientId);
 
 const triggerPayload = (entry) => (entry?.payload && typeof entry.payload === 'object' ? entry.payload : {});
@@ -1285,19 +901,6 @@ const correctedIds = (entry) => {
     return asArray(declared).filter(id => typeof id === 'string');
 };
 
-/**
- * Indexes trigger entries by every client id they speak for: their own, and every id they
- * declare they correct. **Never cached on the module** — a stale index would answer with a
- * label that no longer exists, quietly, which is worse than slowly.
- *
- * Exported so a caller with many ids to resolve can build it once and hand it to
- * `readTrigger` instead of the array. `JournalContext` does exactly that, memoised on
- * `triggerEntries`, which ties the index's lifetime to the rows it was built from and keeps
- * the "never stale" rule without paying for it per call.
- *
- * A row's own id always wins over another row's claim to correct it, so a live trigger can
- * never be shadowed by a stale pointer.
- */
 export const indexTriggers = (allTriggerEntries) => {
     const rows = asArray(allTriggerEntries).filter(entry => triggerIdentity(entry));
     const speaksFor = new Map();
@@ -1312,25 +915,7 @@ export const indexTriggers = (allTriggerEntries) => {
     return speaksFor;
 };
 
-/**
- * The live state of one trigger.
- *
- * Takes either a trigger entry or a bare `client_id` — a check-in's `about` carries the id,
- * and the triggers view carries the row, and both want the same answer.
- *
- * Returns the label that is current for that id and, when the trigger has been merged away,
- * the surviving trigger's `client_id`. A merge chain is followed to its end (`a → b → c`
- * answers `c`) and it is cycle-safe: a row that names itself, or a pair that name each
- * other, stops at the last id it could resolve rather than looping. That is not a
- * hypothetical — merging is one-way and a user with two triggers can reach the dialog from
- * either side.
- */
 export const readTrigger = (entry, allTriggerEntries = []) => {
-    // Either the rows or an index already built from them (`indexTriggers`). Callers that
-    // resolve many ids against one vocabulary — the triggers view resolves every reference in
-    // the history against every trigger — must pass the index, or this rebuilds it per call
-    // and the walk over N check-ins for T triggers costs N×T index builds. Passing the array
-    // stays supported because most callers resolve exactly one id.
     const speaksFor = allTriggerEntries instanceof Map
         ? allTriggerEntries
         : indexTriggers(allTriggerEntries);
@@ -1347,9 +932,6 @@ export const readTrigger = (entry, allTriggerEntries = []) => {
         seen.add(currentId);
 
         const row = resolve(currentId);
-        // A link the client cannot see — the survivor was deleted, or the range loaded does
-        // not reach it — keeps the last label this walk found rather than blanking it, and
-        // still reports the merge the payload recorded.
         if (row) current = row;
 
         const next = asString(triggerPayload(row).merged_into);
@@ -1369,10 +951,6 @@ export const readTrigger = (entry, allTriggerEntries = []) => {
         // The surviving trigger as the payload named it, when this id has been merged away;
         // null when it has not.
         mergedInto,
-        // The id a new check-in must reference: the client_id of the row that is live at the
-        // end of the walk. It is not always `mergedInto` — the survivor may itself have been
-        // renamed since, and a rename mints a new client_id. Equal to clientId when nothing
-        // has moved.
         live: triggerIdentity(current) || mergedInto || startId,
         merged: mergedInto !== null,
         corrects: correctedIds(current),
@@ -1389,26 +967,9 @@ export const activeTriggers = (allTriggerEntries = []) => (
     ))
 );
 
-/* ------------------------------------------------------------------------------------ */
-/* 5c. The two corrections the trigger vocabulary needs                                   */
-/* ------------------------------------------------------------------------------------ */
+/* 5c. The two corrections the trigger vocabulary needs */
 
-/**
- * Both corrections are the **same** write: a new `kind: "trigger"` row with `supersedes_id`
- * pointing at the row it replaces (§7.1). There is no rename endpoint and no merge endpoint
- * and there is not going to be one — a journal row is a statement made at a moment, so
- * changing it is a new statement, and giving the vocabulary its own verbs would be a second
- * way to write history that the export, the import and `readTrigger` would all have to learn.
- *
- * The two differ in one key: a rename carries a new `label`, and a merge carries
- * `merged_into`. Everything else — the new `client_id`, the `corrects` list that lets a
- * check-in written before the correction still resolve, the `created_from` the row was born
- * with — is shared, which is why it is built once here.
- */
 const correctionBase = (trigger, now) => {
-    // `raw` is the row that answered for the id, which is the row a correction supersedes.
-    // Taking the id from the row rather than from what was asked about matters after a
-    // rename: `clientId` is what the caller looked up, and `raw.client_id` is what is live.
     const row = trigger?.raw ?? null;
     const identity = asString(row?.client_id ?? row?.clientId) ?? asString(trigger?.clientId);
 
@@ -1435,10 +996,6 @@ const correctionBase = (trigger, now) => {
     };
 };
 
-/**
- * Rename: the same trigger, said differently. Everything already written keeps pointing at
- * the id it was written with, and `readTrigger` walks it forward to this row.
- */
 export const renameTriggerRequest = ({ trigger, label, now = new Date() }) => {
     const request = correctionBase(trigger, now);
     request.payload.label = String(label ?? '').trim();
@@ -1446,15 +1003,6 @@ export const renameTriggerRequest = ({ trigger, label, now = new Date() }) => {
     return request;
 };
 
-/**
- * Merge: this trigger stops being one, and every reader resolves its id to `into` from now
- * on. One-way, and the dialog says so — there is no row that could undo it, because undoing
- * would mean deciding which of the merged entries had belonged to which trigger, and nothing
- * stored knows that.
- *
- * The label is carried unchanged. The server requires one on every trigger row (§6.5), and
- * inventing a new one here would quietly rename a trigger the user only asked to merge.
- */
 export const mergeTriggerRequest = ({ trigger, into, now = new Date() }) => {
     const request = correctionBase(trigger, now);
     request.payload.label = asString(trigger?.label) ?? '';
@@ -1464,24 +1012,8 @@ export const mergeTriggerRequest = ({ trigger, into, now = new Date() }) => {
     return request;
 };
 
-/* ------------------------------------------------------------------------------------ */
-/* 5d. What the journal knows about one person, and about one trigger                     */
-/* ------------------------------------------------------------------------------------ */
+/* 5d. What the journal knows about one person, and about one trigger */
 
-/**
- * The two feelings most often attached to something, in `summarizeStack`'s pattern: sort by
- * the count, break the tie on the order the vocabulary is laid out in, and stop at two.
- *
- * The tie-break is the part that matters. Two feelings attached the same number of times is
- * the common case on a short history, and without a fixed order the row would name a
- * different pair on every render — which reads as the app changing its mind about the user.
- * `FEELINGS` order is the taxonomy order, the same rôle `CATEGORIES.indexOf` plays there.
- *
- * An id this build has never heard of keeps its id as its label rather than disappearing,
- * for the reason `FeelingChip` does: a retired or newer feeling is still one somebody
- * recorded. Its sort position is after every known one, and then alphabetical, so even that
- * case is deterministic.
- */
 export const topFeelings = (counts, limit = 2) => {
     const order = new Map(FEELINGS.map((feeling, index) => [feeling.id, index]));
     const pairs = counts instanceof Map ? [...counts.entries()] : Object.entries(counts || {});
@@ -1499,18 +1031,6 @@ export const topFeelings = (counts, limit = 2) => {
 
 const bump = (counts, id) => counts.set(id, (counts.get(id) ?? 0) + 1);
 
-/**
- * Everything the People views show about one person, from the entries already loaded.
- *
- * It reads `entries` rather than the day counts, on purpose. `/api/journal/days` is a
- * grouped count that a write since the last fetch has not reached, and these are the first
- * screens in the journal that render a *number* rather than a mark — a stale one here would
- * put a wrong figure inside the sentence the remove dialog states as a fact.
- *
- * `facts` and `mentions` are disjoint, and the remove dialog's two numbers are exactly these
- * two lengths: the facts are soft-deleted whole, and the mentions on everything else are
- * detached from the person while the entry itself stays. Nothing is counted twice.
- */
 export const summarizePerson = (entries, relationshipId) => {
     const id = Number(relationshipId);
     const naming = asArray(entries).filter(entry => (
@@ -1542,18 +1062,6 @@ export const summarizePerson = (entries, relationshipId) => {
     };
 };
 
-/**
- * The same for one trigger, resolved through the merge chain.
- *
- * `resolve` maps a referenced id to the id that is live now — the provider's
- * `resolveTrigger`, or anything with the same contract. It is a parameter rather than a
- * `readTrigger` call inside the loop because the vocabulary is one index and this walks
- * every check-in in the history: building that index per reference is the difference between
- * one pass and a quadratic one.
- *
- * A check-in that names the same trigger from two feelings is **one** entry and two counted
- * feelings, which is what the row's two numbers mean.
- */
 export const summarizeTrigger = (entries, liveId, resolve = (id) => id) => {
     const naming = [];
     const counts = new Map();
@@ -1581,9 +1089,7 @@ export const summarizeTrigger = (entries, liveId, resolve = (id) => id) => {
     };
 };
 
-/* ------------------------------------------------------------------------------------ */
-/* 6. Day arithmetic                                                                      */
-/* ------------------------------------------------------------------------------------ */
+/* 6. Day arithmetic */
 
 const pad2 = (value) => String(value).padStart(2, '0');
 
@@ -1597,16 +1103,6 @@ export const isDayString = (day) => {
         && parsed.getUTCDate() === date;
 };
 
-/**
- * Which civil day an instant belongs to, local, with the rollover applied.
- *
- * The shift is a calendar operation, not four hours of milliseconds, and that is the whole
- * trick: on the morning the clocks go forward, a check-in at 04:30 local is 02:30 UTC, and
- * subtracting four hours from the instant lands on the previous evening and answers with
- * yesterday. Moving the *date* field and leaving the clock alone is correct on a 23-hour
- * day, a 25-hour day and an ordinary one, and it is correct across a month and a year
- * boundary for free.
- */
 export const civilDay = (date = new Date(), rolloverHour = DAY_ROLLOVER_HOUR) => {
     const instant = date instanceof Date ? date : new Date(date);
     if (Number.isNaN(instant.getTime())) return null;
@@ -1622,14 +1118,6 @@ export const civilDay = (date = new Date(), rolloverHour = DAY_ROLLOVER_HOUR) =>
 /** The route for one day, or the journal root when the day is not a day. */
 export const journalDayPath = (day) => (isDayString(day) ? `${JOURNAL_ROOT}/${day}` : JOURNAL_ROOT);
 
-/**
- * The day `delta` days away from `day`, as a day string. What prev/next in the day header
- * walk with, so a month or a year boundary is one subtraction rather than a special case.
- *
- * UTC, for `dayRange`'s reason: a day string carries no offset, so there is nothing local
- * about the arithmetic and nothing for DST to shorten. `civilDay` is the other half of that
- * rule and is deliberately the opposite.
- */
 export const shiftDay = (day, delta = 0) => {
     if (!isDayString(day)) return null;
 
@@ -1639,13 +1127,6 @@ export const shiftDay = (day, delta = 0) => {
     return `${moved.getUTCFullYear()}-${pad2(moved.getUTCMonth() + 1)}-${pad2(moved.getUTCDate())}`;
 };
 
-/**
- * The first and last day of the month `day` falls in — the range the month strip draws and
- * the window the provider loads.
- *
- * `Date.UTC(year, month, 0)` is the last day of `month` counting from one, which is the one
- * place where the month being one-based reads as an advantage rather than a trap.
- */
 export const monthBounds = (day) => {
     if (!isDayString(day)) return null;
 
@@ -1658,15 +1139,6 @@ export const monthBounds = (day) => {
     };
 };
 
-/**
- * The clock time of an instant, local, `HH:MM`.
- *
- * Deliberately not `toLocaleTimeString`: the entry list puts this beside a date the browser
- * *does* localise, and a 12-hour clock with an am/pm marker is twice as wide for a line that
- * has to fit beside a row of chips on a 360 dp screen. `null` in, `null` out — and `null`
- * is checked before `new Date`, because `new Date(null)` is the epoch rather than an
- * invalid date and would print a plausible, wrong time.
- */
 export const timeOfDay = (at) => {
     if (at === null || at === undefined || at === '') return null;
 
@@ -1679,14 +1151,6 @@ export const timeOfDay = (at) => {
 /** `HH:MM`, 24-hour, as the ritual's time setting stores it and `<input type="time">` uses it. */
 export const isClockTime = (value) => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value ?? ''));
 
-/**
- * How far into the civil day a local wall-clock time sits, in minutes.
- *
- * The civil day starts at `DAY_ROLLOVER_HOUR`, so 22:30 is 1110 minutes into it and 01:00 —
- * which belongs to the *same* civil day — is 1260, not 60. Doing the arithmetic in this
- * frame is what makes "has the ritual's hour arrived?" a single comparison that stays right
- * across midnight, rather than two cases and an off-by-one at 04:00.
- */
 export const minutesIntoCivilDay = (value, rolloverHour = DAY_ROLLOVER_HOUR) => {
     const [hours, minutes] = value instanceof Date
         ? [value.getHours(), value.getMinutes()]
@@ -1698,13 +1162,6 @@ export const minutesIntoCivilDay = (value, rolloverHour = DAY_ROLLOVER_HOUR) => 
     return (((hours - rolloverHour) * 60 + minutes) % DAY_MINUTES + DAY_MINUTES) % DAY_MINUTES;
 };
 
-/**
- * Whether the ritual's chosen hour has arrived within the civil day `now` falls in.
- *
- * It stays true until the rollover rather than until midnight, because §3.6 says the ritual
- * can be started late and records the day it is *about*. At 01:00 the questions for the day
- * that has not been slept off yet are still tonight's.
- */
 export const ritualTimeReached = (time, now = new Date(), rolloverHour = DAY_ROLLOVER_HOUR) => {
     if (!isClockTime(time)) return false;
 
@@ -1713,29 +1170,12 @@ export const ritualTimeReached = (time, now = new Date(), rolloverHour = DAY_ROL
     return chosen !== null && current !== null && current >= chosen;
 };
 
-/**
- * The device's offset from UTC at an instant, in minutes east of Greenwich.
- *
- * `getTimezoneOffset` counts the other way — minutes to *add* to local time to reach UTC —
- * so Berlin in summer reports −120 and the value `tz_offset_min` wants is +120. The sign
- * flip is the whole function, and it lives here rather than in a component because getting
- * it backwards writes a record that reconstructs to the wrong local time and reads as
- * plausible for every user east of Greenwich.
- */
 export const tzOffsetMinutes = (date = new Date()) => {
     const instant = date instanceof Date ? date : new Date(date);
     if (Number.isNaN(instant.getTime())) return null;
     return -instant.getTimezoneOffset();
 };
 
-/**
- * An instant as RFC 3339 **with the local offset**, which is what `at` must carry (§7.2).
- *
- * Deliberately not `toISOString()`: that answers in UTC with a `Z`, and while the server
- * stores UTC either way, the offset is the only thing that says what o'clock it was where
- * the user was standing. `tz_offset_min` carries the same fact and the two are written
- * from the same call, so they cannot disagree.
- */
 export const rfc3339Local = (date = new Date()) => {
     const instant = date instanceof Date ? date : new Date(date);
     if (Number.isNaN(instant.getTime())) return null;
@@ -1753,14 +1193,6 @@ export const rfc3339Local = (date = new Date()) => {
 /** How many days a single range may span, so a bad `from` cannot build an endless array. */
 const MAX_RANGE_DAYS = 3660;
 
-/**
- * Every civil day from `from` to `to`, inclusive.
- *
- * Both ends are day strings with no time in them, so the arithmetic runs in UTC: a day
- * string has no offset to lose and UTC has no DST to trip over. This is the one place where
- * *not* using local time is the correct answer, and `civilDay` above is the other half of
- * the same rule.
- */
 export const dayRange = (from, to) => {
     if (!isDayString(from) || !isDayString(to)) return [];
 
@@ -1776,15 +1208,8 @@ export const dayRange = (from, to) => {
     return days;
 };
 
-/* ------------------------------------------------------------------------------------ */
-/* 7. Candidate matching                                                                  */
-/* ------------------------------------------------------------------------------------ */
+/* 7. Candidate matching */
 
-/**
- * Lower-cased and stripped of diacritics, so *José* and *Jose* are the same query. Both
- * sides are folded — a user who typed the accent and a user who did not are looking for the
- * same person.
- */
 const fold = (value) => (
     String(value ?? '')
         .trim()
@@ -1793,11 +1218,6 @@ const fold = (value) => (
         .toLowerCase()
 );
 
-/**
- * True when `text` starts with `prefix` and stops there or at a word boundary. *Lucie*
- * matches *Lucie M*; *Luc* does not match *Lucie*. A partial word is a typo far more often
- * than it is a person, and a wrong suggestion beside a name costs more than a missing one.
- */
 const isTokenPrefix = (text, prefix) => (
     prefix.length > 0
     && text.startsWith(prefix)
@@ -1807,23 +1227,6 @@ const isTokenPrefix = (text, prefix) => (
 /** No suggestion list is ever longer than this. Three fit under a field; a fourth is a menu. */
 export const MAX_CANDIDATES = 3;
 
-/**
- * Who the user might have meant, for a name the model heard or the user typed.
- *
- * **Suggestion only.** Nothing here selects anything: the return value goes to a picker and
- * a person becomes a `relationship_id` when the user taps one (invariant 15). The rules are
- * §4.5's, in order:
- *
- * 1. Exact after trim → resolved, and returned **alone**. That is the same comparison
- *    `database.FindOrCreateRelationship` makes, so what the card shows as a match is what
- *    the server would have done anyway; offering alternatives beside it would invite the
- *    user to pick something the server would not have picked.
- * 2. Otherwise case- and diacritic-insensitive equality, then prefix/first-token match,
- *    capped at three.
- * 3. Otherwise nothing, and the card offers a new person.
- *
- * An empty name returns nothing: there is no such thing as a candidate for silence.
- */
 export const personCandidates = (name, relationships = []) => {
     const trimmed = String(name ?? '').trim();
     if (!trimmed) return [];
@@ -1855,16 +1258,6 @@ export const personCandidates = (name, relationships = []) => {
     ].slice(0, MAX_CANDIDATES);
 };
 
-/**
- * The same idea for triggers, **without the prefix rule** (§4.5b).
- *
- * *Arbeit* and *arbeit* are one trigger. *work* and *Arbeit* are not — not until the
- * embedding index in §5.8 can say they are close and the user agrees. A prefix rule here
- * would quietly merge *work* into *workshop*, and a trigger is a grouping key: a wrong
- * merge is not a wrong suggestion, it is a wrong answer to every question asked afterwards.
- *
- * Accepts trigger entries or plain `{ client_id, label }` rows, and is suggestion only.
- */
 export const triggerCandidates = (label, triggers = []) => {
     const trimmed = String(label ?? '').trim();
     if (!trimmed) return [];
@@ -1889,26 +1282,8 @@ export const triggerCandidates = (label, triggers = []) => {
         .slice(0, MAX_CANDIDATES);
 };
 
-/* ------------------------------------------------------------------------------------ */
-/* 8. Client ids                                                                          */
-/* ------------------------------------------------------------------------------------ */
+/* 8. Client ids */
 
-/**
- * A UUID v4, minted here before the entry is ever sent.
- *
- * It is what makes a retried POST idempotent, which is what makes the outbox in §9.5 safe:
- * the same entry posted twice produces one row, so a queue can retry without inventing
- * duplicates.
- *
- * `crypto.randomUUID` is the implementation, and the fallback is not theoretical. It exists
- * only in a **secure context**, and this app is self-hosted: reached over plain `http://` on
- * a home network — which is how a self-hosted install is most often reached — the method is
- * simply undefined, and so is it in older Android WebViews behind the Capacitor shell. The
- * fallback uses `crypto.getRandomValues` where that exists and `Math.random` only where
- * neither does. A `Math.random` id is fine for this job: it identifies a row within one
- * user's account, it is never a secret, and it is never used for anything but matching a
- * retry to the row it already wrote.
- */
 export const clientId = () => {
     const source = globalThis.crypto;
 

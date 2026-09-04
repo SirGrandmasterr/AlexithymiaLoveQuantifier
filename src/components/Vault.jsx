@@ -10,15 +10,6 @@ import { canTranscribe, detectTier, TIERS } from '../journal/inference/tier';
 import { MAX_CLIP_MS, SILENCE_HOLD_MS } from '../journal/recorder';
 import { isNative } from '../mobile/platform';
 
-/**
- * The Vault: what is stored, how to take it with you, and how to put it back.
- *
- * The copy here is load-bearing. Every claim on this page has to be true of the code as
- * written — "nothing is sent anywhere" is checkable by opening the network tab, and the app
- * lock section says outright that it does not encrypt anything. A page that reassures
- * beyond what the code guarantees is worse than no page.
- */
-
 const LAST_EXPORT_KEY = 'alq:last-export-at';
 
 /**
@@ -43,22 +34,6 @@ const LAST_EXPORT_KEY = 'alq:last-export-at';
  * Exported so `Vault.test.jsx` can assert all three verbatim, which is what keeps them honest.
  */
 
-/**
- * The outbox (design §9.5), stated where the user can see it.
- *
- * *"Everything you have written is stored in your database"* is the first sentence of the
- * section below, and F1 made it momentarily untrue on a phone: a check-in saved in a tunnel is
- * on the device and nowhere else until it can be sent. Invariant 2e does not allow that gap to
- * go unstated, and softening the sentence above into something vaguer is the one move that is
- * never available — so the exception is named instead, with its scope, because a queue the user
- * does not know about is a copy of their writing they do not know about.
- *
- * Shown **only on the phone**, since that is the only place the outbox exists. In a browser a
- * failed save still fails and still says so, and a sentence about a queue that is not there
- * would be the same kind of untrue in the other direction.
- *
- * Exported so `Vault.test.jsx` can assert it verbatim.
- */
 export const OUTBOX_CLAIM = 'One exception, on this phone: a check-in you save with no '
     + 'connection is kept **on this device** until it can be sent, marked **not yet synced** on '
     + 'its day. It is sent once when the connection is back, however many times it is tried, '
@@ -144,10 +119,6 @@ export const SIMILAR_CLAIM = {
         + 'in your profile at any time.'
 };
 
-/**
- * Whether an index is being kept **on this device**, which is the only thing this page may
- * claim. It asks the same two questions the settings screen does, and both have to agree.
- */
 export const embeddingsAreOn = () => readEmbeddings(embeddingsAvailable());
 
 /** The `**bold**` runs §10.2 writes, rendered without a markdown dependency for two words. */
@@ -155,13 +126,6 @@ const emphasised = (text) => text.split(/\*\*(.+?)\*\*/g).map((part, index) => (
     index % 2 === 1 ? <strong key={index} className="font-medium text-slate-700">{part}</strong> : part
 ));
 
-/**
- * Whether a model is on **on this device**, which is the only thing this page may claim.
- *
- * It asks the tier as well as the key, and both have to agree, so a `true` written by a
- * better browser on the same profile cannot make this page describe a model that is not
- * running here.
- */
 export const voiceIsOn = () => readVoiceSetting(canTranscribe(detectTier()));
 
 const readLastExport = () => {
@@ -179,13 +143,6 @@ export const describeBackend = (backend) => {
     return backend ? `your ${backend} database` : 'your database';
 };
 
-/**
- * "2026-08-22" → "August 2026", read as a civil day rather than an instant.
- *
- * `new Date('2026-08-22')` is UTC midnight, which renders as *July 2026* anywhere west of
- * Greenwich on the first of a month. The journal's `day` is deliberately a text column for
- * this reason (Data Model §3), and the client has to honour that rather than undo it.
- */
 export const monthOf = (day) => {
     const match = /^(\d{4})-(\d{2})/.exec(day || '');
     if (!match) return null;
@@ -199,11 +156,6 @@ const escapeCSV = (value) => {
     return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 };
 
-/**
- * One row per snapshot, one column per category, so a spreadsheet can chart it without any
- * unpacking. A skipped category is an **empty cell**, never a zero — the distinction this
- * whole app is built on must survive the export too.
- */
 export const buildCSV = (stacks) => {
     const header = [
         'relationship', 'date', 'kind',
@@ -231,25 +183,9 @@ export const buildCSV = (stacks) => {
     return [header, ...rows].map(row => row.map(escapeCSV).join(',')).join('\n');
 };
 
-/**
- * The journal as a second sheet: one row per feeling per check-in, which is the grain a
- * pivot table wants and the one the snapshot sheet cannot express.
- *
- * The **transcript is deliberately not a column.** The JSON export carries what was said;
- * a spreadsheet is the form of this data most likely to be opened on a shared screen, and
- * a sentence about a named person does not belong in a cell for the sake of symmetry.
- *
- * Superseded rows are left out for the same reason `GET /api/journal/entries` leaves them
- * out — a correction replaced them, and a sheet carrying both would count the day twice.
- * The JSON keeps them. Returns an empty string when there is nothing to write, so the
- * caller can decide not to hand over an empty file.
- */
 export const buildJournalCSV = (journal) => {
     const entries = journal?.entries || [];
 
-    // A feeling names a trigger by the id it was written with, and the label lives on the
-    // trigger's own row. Superseded trigger rows are read here too, on purpose: a check-in
-    // that named a trigger before it was renamed still resolves to the word it meant.
     const triggerLabels = {};
     entries.forEach(entry => {
         if (entry.kind === 'trigger' && entry.payload?.label) {
@@ -285,9 +221,6 @@ export const buildJournalCSV = (journal) => {
                     // skipped category: an empty cell, never a zero and never a false.
                     feeling.intensity ?? '',
                     feeling.uncertain == null ? '' : String(feeling.uncertain),
-                    // A feeling can be about more than one thing. The two columns stay
-                    // singular and join with a space, the way `tags` and `uncertain`
-                    // already do above.
                     about.map(item => item.kind).join(' '),
                     about.map(item => nameAbout(item, mentions)).join(' '),
                     tags
@@ -347,9 +280,6 @@ export default function Vault() {
     // Which paragraph describes this device: one model on the Full tier, two on the Light
     // one. Read once, like every other fact on this page.
     const [voiceTier] = useState(() => detectTier());
-    // Read once on mount, like `voiceOn` above and for the same reason: this page describes
-    // the device as it was when it was opened, and a value that changed under it mid-read
-    // would be a claim nobody could check against what they saw.
     const [similarOn] = useState(embeddingsAreOn);
     const [passphrase, setPassphrase] = useState('');
 
@@ -386,16 +316,6 @@ export default function Vault() {
         }
     };
 
-    /**
-     * Two sheets, two downloads — the smallest thing that works. They have different
-     * columns, so one file cannot hold both, and a browser that asks before saving the
-     * second is asking about a file this app built locally.
-     *
-     * The snapshot sheet still comes from state already in the browser. The journal sheet
-     * comes from the same export endpoint the JSON button uses, because it needs rows the
-     * browser does not hold: trigger labels, and the entries a correction replaced. Same
-     * origin, same request — nothing new leaves the machine.
-     */
     const exportCSV = async () => {
         setBusy('csv');
         setNotice(null);
@@ -504,10 +424,6 @@ export default function Vault() {
         ? new Date(meta.oldest_snapshot_date).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
         : null;
 
-    // `oldest_journal_day` is a civil day — "2026-08-22", no zone — so it is built from its
-    // own parts rather than handed to `new Date`, which would read it as UTC midnight and
-    // render the month before it west of Greenwich. The snapshot span above can use the
-    // constructor because its value is a real timestamp.
     const journalSpan = monthOf(meta?.oldest_journal_day);
 
     return (
@@ -552,11 +468,6 @@ export default function Vault() {
                                 snapshot{meta.snapshot_count === 1 ? '' : 's'}
                                 {span && <>, going back to {span}</>}.
                             </p>
-                            {/* Left out entirely when there is nothing in the journal, rather
-                                than rendered as "0 journal entries": a category with nothing in
-                                it is not part of an inventory. The count is every stored row —
-                                superseded ones included — because that is what `journal_entry_count`
-                                counts and this paragraph answers "how much of my data is here". */}
                             {meta.journal_entry_count > 0 && (
                                 <p className="text-sm text-slate-600 font-light leading-relaxed mt-2">
                                     <span className="font-medium text-slate-800">{meta.journal_entry_count}</span>{' '}
@@ -569,8 +480,6 @@ export default function Vault() {
                         </>
                     )}
 
-                    {/* Outside the `meta` branch above on purpose: this is a fact about this
-                        phone, and it is true whether or not the server answered. */}
                     {isNative() && (
                         <p data-outbox-claim className="text-sm text-slate-600 font-light leading-relaxed mt-2">
                             {emphasised(OUTBOX_CLAIM)}
@@ -614,8 +523,6 @@ export default function Vault() {
                             </dd>
                         </div>
                         <div>
-                            {/* The numbers come from the recorder's own constants, so this
-                                sentence cannot describe a machine the code stopped being. */}
                             <dt className="font-medium text-slate-800">Does it listen?</dt>
                             <dd className="text-slate-600 mt-1">
                                 Only while the record button is lit. There is no wake word, no background

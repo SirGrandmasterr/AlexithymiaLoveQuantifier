@@ -1,58 +1,10 @@
 import axios from 'axios';
 import { isNative } from './platform';
 
-/**
- * Where the API lives.
- *
- * On the web this question has never existed: the SPA and the API are same-origin in both
- * environments (Vite proxies `/api` in dev, Nginx proxies it in the container), which is
- * exactly why the Go service ships no CORS middleware at all — see
- * [docs/02-architecture.md §6](../../docs/02-architecture.md).
- *
- * A packaged Android build has no such luxury. The WebView is served from `https://localhost`
- * by Capacitor, and the backend is on some other host entirely — an emulator loopback alias,
- * a LAN address, or the user's own domain, since this is self-hosted software and there is no
- * "our" server to hardcode. So the base URL becomes runtime configuration.
- *
- * ## Why this is read synchronously, at module scope
- *
- * `App.jsx` reads the token out of `localStorage` synchronously, before the first render,
- * and its comment explains why: child effects commit before their parent's, so the first
- * `GET /api/subjects` would go out before any effect could set the header. The base URL has
- * the *same* ordering requirement — a request that goes out before `axios.defaults.baseURL`
- * is set would hit `https://localhost/api/...` inside the WebView and 404.
- *
- * `@capacitor/preferences` is async and therefore cannot be used here without breaking that
- * invariant. `localStorage` can, and buys nothing less in the bargain: WebView storage lives
- * in the app's private data directory, sandboxed by the OS from every other app, which is the
- * same protection `SharedPreferences` gives (neither is encrypted at rest).
- */
-
 const STORAGE_KEY = 'alq:server-url';
 
-/**
- * `10.0.2.2` is the emulator's alias for the *host's* loopback — inside the emulator,
- * `localhost` is the emulated device itself, so it is never what you want.
- *
- * Port 8080 is the bare `go run ./cmd/server` from the docs' fastest path. **Under Docker
- * Compose the address to use is Nginx on 8082**, not the backend's own port: 8081 is now
- * bound to 127.0.0.1 on the server and is unreachable from a device, and Nginx proxies
- * `/uploads` as well as `/api`, so avatars resolve — that gap was the original reason to
- * point a native client at the backend directly. Going through Nginx also picks up the
- * request-size cap and the login rate limit, which the backend has no equivalent of.
- */
-/**
- * In production, default native clients to the official API subdomain:
- * https://api.alexithymialovequantifier.voglerprojekte.com
- *
- * For local development/testing, VITE_ANDROID_API_URL can override this (e.g. http://10.0.2.2:8080).
- */
 const DEFAULT_NATIVE_URL = import.meta.env.VITE_ANDROID_API_URL || import.meta.env.VITE_API_URL || 'https://api.alexithymialovequantifier.voglerprojekte.com';
 
-/**
- * Trailing slashes are stripped so `baseURL + '/api/subjects'` never doubles up, and a bare
- * host is assumed to be HTTPS for production domain or HTTP for LAN/IP addresses.
- */
 export const normalizeServerUrl = (raw) => {
     const trimmed = (raw || '').trim();
     if (!trimmed) return '';
@@ -88,11 +40,6 @@ const readStored = () => {
     }
 };
 
-/**
- * On the web, empty string means "same origin" (/api/...), preserving standard proxying
- * when hosted under the main domain. If VITE_API_URL is explicitly set, it will be used.
- * Native builds default to DEFAULT_NATIVE_URL.
- */
 export const getServerUrl = () => {
     const stored = readStored();
     if (stored) return normalizeServerUrl(stored);
@@ -124,18 +71,6 @@ export const applyServerUrl = (url) => {
     axios.defaults.baseURL = url || undefined;
 };
 
-/**
- * Absolute URL for a server-relative asset path.
- *
- * `users.profile_picture` is stored as `/uploads/profile_<nanos>.jpg`. In a browser that
- * resolves against the page origin and is correct. In the WebView it would resolve against
- * `https://localhost` and 404, so it has to be rebased onto the configured server.
- *
- * Note the consequence: avatars are fetched by the WebView itself, not through
- * `CapacitorHttp`, so a cleartext server needs `allowMixedContent` — which
- * `capacitor.config.json` sets — and the `/uploads` route is public by design
- * ([docs/02-architecture.md §3.3](../../docs/02-architecture.md)).
- */
 export const resolveAssetUrl = (path) => {
     if (!path) return path;
     if (/^(https?:|data:|blob:)/i.test(path)) return path;

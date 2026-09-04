@@ -12,21 +12,6 @@ import {
 } from './retrievalGolden';
 import { toIndexVector } from './embed';
 
-/**
- * §5.8's retrieval golden set — *given these entries, query x returns y in the top three* —
- * in German and in English.
- *
- * **What this file proves and what it does not.** Every `lexical` case runs here against the
- * search the app ships, with no model anywhere: the umlaut fold, the `ß` fold, the German
- * compound, the trigger label standing in for a word the entry never says, the snapshot
- * note. Those are real numbers about a real feature.
- *
- * Every `semantic` case is **skipped here, by name**, because its query shares no content
- * word with its answer and only the embedding model can bridge that. The test below asserts
- * they are skipped rather than passed — a suite that quietly graded them against a fake
- * would put a number about the fake into a report beside numbers about a model.
- * `make journal-eval` is where they are scored on a machine with the weights.
- */
 describe('the retrieval golden set', () => {
     it('reads as a suite: entries in two languages, cases in both, and a top-three rule', () => {
         expect(TOP_N).toBe(3);
@@ -60,9 +45,7 @@ describe('the retrieval golden set', () => {
         expect(move.triggers).toContain('t-umzug');
     });
 
-    /* -------------------------------------------------------------------------------- */
-    /* The suite itself                                                                   */
-    /* -------------------------------------------------------------------------------- */
+    /* The suite itself */
 
     it('passes every lexical case, in German and in English, with no model at all', async () => {
         const run = await runRetrievalSuite();
@@ -100,9 +83,7 @@ describe('the retrieval golden set', () => {
         });
     });
 
-    /* -------------------------------------------------------------------------------- */
-    /* The scorer, scored                                                                 */
-    /* -------------------------------------------------------------------------------- */
+    /* The scorer, scored */
 
     it('fails a case whose answer is not in the top three', () => {
         const docs = suiteDocuments();
@@ -125,12 +106,6 @@ describe('the retrieval golden set', () => {
         expect(result.forbidden).toEqual(['de-9']);
     });
 
-    /**
-     * The semantic half is scoreable the moment an embedder exists, and this proves the
-     * wiring with a hand-placed vector rather than with a model: two entries, one of them
-     * pointed at directly. It says nothing about EmbeddingGemma and is not meant to — the
-     * suite's own semantic cases stay skipped above.
-     */
     it('scores a semantic case when an embedder supplies the vectors', () => {
         const docs = suiteDocuments();
         const near = toIndexVector([1, 0, 0, 0]);

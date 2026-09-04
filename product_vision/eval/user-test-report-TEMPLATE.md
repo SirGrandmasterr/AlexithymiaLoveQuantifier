@@ -242,9 +242,8 @@ before the run. What changes: …
 
 ## What this changes downstream
 
-Every session whose scope moved, with what moved. A session named here has its prompt updated
-in [`06-implementation-prompts.md`](../06-implementation-prompts.md) in the same commit as this
-report, and the ledger's session table records the new state.
+Every scope that moved, with what moved, recorded against the Phase 7 carry-over in
+[`../README.md`](../README.md) in the same commit as this report.
 
 | Session | Was | Now | Because |
 | :------ | :-- | :-- | :------ |

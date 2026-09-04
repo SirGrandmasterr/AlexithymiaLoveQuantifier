@@ -1,32 +1,5 @@
-/**
- * The download manager: size and cancel before anything moves, SHA-256 before anything is
- * kept, and an error rather than a fallback when the sum is wrong (§5.6).
- *
- * A weight file is code that runs on the user's device. "The download looked plausible" is
- * not a check, which is why the operator's `make models-fetch` verifies on the way in and
- * this module verifies again on the way out — the two ends of the same wire, neither
- * trusting the other. What a wrong sum means here is deliberately narrow: **nothing is
- * cached and the error is shown.** There is no repair, no retry-with-a-different-source and
- * no "use it anyway", because every one of those turns a tampering signal into a warning
- * nobody reads.
- *
- * Cancel is a real cancel. It aborts the request in flight, and because a file is only put
- * in the cache *after* its whole body has hashed clean, a cancelled download leaves the
- * cache exactly as it found it — there are no partial entries to clean up.
- *
- * Everything the browser provides arrives through `deps`, the way `recorder.js` takes its
- * `MediaRecorder`: the tests need no network, no Cache Storage and no WebCrypto.
- */
-
 import { MODEL_CACHE_NAME, modelFileUrl, totalBytes } from './models';
 
-/**
- * Where a download is — the vocabulary, written down. The comment that stood here named a
- * `verifying` state and the array does not have one: verification happens inside
- * `downloading`, per file, between the fetch and the cache write, and the screen shows it as
- * progress rather than as a state of its own. Nothing reads this list today; it is the
- * register the store's `status` values are drawn from.
- */
 export const DOWNLOAD_STATES = ['idle', 'downloading', 'ready', 'cancelled', 'error'];
 
 /** Why a download stopped. `checksum` is the one that must never be recoverable. */
@@ -41,15 +14,6 @@ export const DOWNLOAD_ERRORS = {
 /** Hex, lower case, from an ArrayBuffer — the form every sum in the Makefile is written in. */
 export const toHex = (buffer) => Array.from(new Uint8Array(buffer), byte => byte.toString(16).padStart(2, '0')).join('');
 
-/**
- * SHA-256 of the bytes as fetched.
- *
- * `crypto.subtle` exists **only in a secure context**, which for this self-hosted app is not
- * a technicality: reached over plain `http://` on a home network it is simply undefined, and
- * so is `getUserMedia`. Both go missing together, so a device that cannot verify a model is
- * also a device that cannot record — which is why `voiceAvailability` refuses on the same
- * condition rather than letting an unverified download happen.
- */
 export const sha256Hex = async (bytes, subtle = globalThis.crypto?.subtle) => {
     if (!subtle || typeof subtle.digest !== 'function') {
         throw Object.assign(new Error('no WebCrypto in this context'), { kind: DOWNLOAD_ERRORS.unsupported });
@@ -68,12 +32,6 @@ export const emptyProgress = (model) => ({
     error: null
 });
 
-/**
- * Build a downloader for one model.
- *
- * It is a store like the recorder's — `getSnapshot`/`subscribe` — because the two things on
- * screen while it runs (a progress line and a cancel button) are the same shape of problem.
- */
 export const createModelDownloader = (model, deps = {}) => {
     const {
         fetch: fetchImpl = globalThis.fetch?.bind(globalThis),
@@ -128,13 +86,6 @@ export const createModelDownloader = (model, deps = {}) => {
         return false;
     };
 
-    /**
-     * Fetch, verify, keep — in that order, one file at a time.
-     *
-     * Sequential rather than parallel on purpose: a progress line that means anything has to
-     * count one thing at a time, and thirteen parallel requests for 45 MB on the LAN this
-     * product runs on is not faster in any way the user can see.
-     */
     const start = async () => {
         if (snapshot.state === 'downloading') return false;
         if (!fetchImpl) return fail(DOWNLOAD_ERRORS.unsupported, 'no fetch in this environment');
@@ -179,10 +130,6 @@ export const createModelDownloader = (model, deps = {}) => {
                 return fail(DOWNLOAD_ERRORS.network, cause?.message || 'the download stopped', file.path);
             }
 
-            // Length first: it is free, and a `/models/` path that fell through to the SPA
-            // answers 200 with a page of HTML, which is a corrupt model rather than a
-            // missing one (C1's warning). The length catches that before the hash does, and
-            // says something more useful when it fires.
             if (bytes.byteLength !== file.bytes) {
                 return fail(
                     DOWNLOAD_ERRORS.length,
@@ -240,25 +187,7 @@ export const createModelDownloader = (model, deps = {}) => {
     };
 };
 
-/**
- * Several models as one download — the Light tier's two, behind one line and one button.
- *
- * §5.5's Light tier is a transcriber *and* a proposer (§5.1), so a Light-tier device has two
- * models to fetch and a screen with two progress bars and two cancel buttons would be two
- * decisions where the user has one: *do I want this feature*. This composes any number of
- * downloaders into one that reports the same snapshot shape, so nothing above it changes.
- *
- * **The parts are the same downloaders**, not a re-implementation: each still verifies each
- * file against its own pin, each still refuses on a mismatch without caching anything, and
- * `remove` still goes through each. What this adds is arithmetic — summed bytes, summed file
- * counts — and one rule about failure: **the first refusal ends the whole set.** A Light tier
- * with Whisper installed and Gemma missing is not a working Light tier, and reporting it as a
- * partial success would put a microphone on screen that produces words and no card.
- */
 export const createModelSetDownloader = (models, deps = {}) => {
-    // `createDownloader` is how Android reuses this: the plugin's downloader has the same
-    // store contract and a different back end, so the composition does not need to know
-    // which one it is holding — the same rail the runtimes are built on.
     const { createDownloader = createModelDownloader, ...rest } = deps;
     const parts = models.map(model => createDownloader(model, rest));
     const listeners = new Set();
@@ -266,13 +195,6 @@ export const createModelSetDownloader = (models, deps = {}) => {
     const filesTotal = models.reduce((sum, model) => sum + model.files.length, 0);
     const total = models.reduce((sum, model) => sum + totalBytes(model), 0);
 
-    /**
-     * The set's state, from the parts'.
-     *
-     * The order is what makes it honest: an error anywhere is the set's state, then a cancel,
-     * then "still going", and `ready` only when every part is. A set that reported `ready`
-     * because the last part finished would be a set that lies about the one that failed.
-     */
     const combine = () => {
         const snapshots = parts.map(part => part.getSnapshot());
         const failed = snapshots.find(one => one.state === 'error');
@@ -335,17 +257,6 @@ export const createModelSetDownloader = (models, deps = {}) => {
     };
 };
 
-/**
- * The cache transformers.js reads through, so it can only ever see verified bytes.
- *
- * `env.customCache` is a documented extension point taking `match(key)` and `put(key, res)`.
- * The keys transformers.js uses are the local paths it resolves against `env.localModelPath`
- * — `/models/onnx-community/whisper-tiny/config.json` — which is exactly what the downloader
- * above wrote, so the library finds every file and never reaches for the network at all.
- *
- * `put` is a **no-op on purpose.** The only writer is the downloader, which hashes first; a
- * library that could write into this cache could cache something nothing verified.
- */
 export const createVerifiedCache = (deps = {}) => {
     const { caches: cacheStorage = globalThis.caches, cacheName = MODEL_CACHE_NAME } = deps;
 

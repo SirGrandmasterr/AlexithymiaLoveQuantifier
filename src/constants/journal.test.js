@@ -53,20 +53,8 @@ import {
 import { MAX_TAG_LENGTH } from './contextTags';
 import { FORBIDDEN_WORDS } from './forbiddenWords';
 
-/* ------------------------------------------------------------------------------------ */
-/* Rail 1 — the forbidden-word walk                                                       */
-/* ------------------------------------------------------------------------------------ */
+/* Rail 1 — the forbidden-word walk */
 
-/**
- * The words this feature may not say, extended from cadence.test.js's six. The point of
- * walking the object rather than listing the strings is that a sentence added next session
- * is covered without anyone remembering to add it here.
- *
- * Since D1 the list itself lives in `constants/forbiddenWords.js`, because the proposal
- * filter (`journal/inference/validate.js`) reads the same words over what a model writes.
- * The pin below is what stops a shared list from being a shrinkable one: every word this
- * walk has ever refused is still in it, by name.
- */
 const FORBIDDEN = FORBIDDEN_WORDS;
 
 describe('the forbidden list itself', () => {
@@ -117,9 +105,6 @@ describe('the forbidden-word walk', () => {
         // vocabulary is in this object too, so the walk reads it with everything else.
         expect(found.map(entry => entry.path)).toContain('dayGraph.rotateRight');
         expect(found.map(entry => entry.path)).toContain('dayGraph.branch');
-        // D2's proposal card: the four §4.6 sentences, the resolution states and the exits.
-        // Every word the card can show is a template in this group, so the walk reads the
-        // whole card and the model's output only ever fills a slot.
         ['proposal.ambiguity.feeling', 'proposal.ambiguity.target', 'proposal.ambiguity.conflict',
             'proposal.people.matches', 'proposal.people.newPerson', 'proposal.people.candidate',
             'proposal.notIt', 'proposal.exits.rerecord', 'proposal.dashed', 'proposal.saveError',
@@ -132,18 +117,6 @@ describe('the forbidden-word walk', () => {
             .forEach(path => expect(found.map(entry => entry.path)).toContain(path));
     });
 
-    /**
-     * §5.8 rule 2, as the other half of this walk: **similarity proposes, and never shows a
-     * number.**
-     *
-     * Not a score, not a percentage, not *"three entries like this"*. The check is a digit
-     * scan over `JOURNAL_COPY.similar`, which is where every string either screen can say
-     * about a similar word lives — and it catches a template slot as surely as a literal,
-     * because a `{count}` that a screen fills is a number on the screen.
-     *
-     * `similar.js` is the other end of the same promise: what it returns has no similarity on
-     * it at all, so there is nothing for a component to interpolate even by accident.
-     */
     it('shows no number in anything the similarity copy can say (rule 2)', () => {
         const strings = walkStrings(JOURNAL_COPY.similar);
         expect(strings.length).toBeGreaterThan(5);
@@ -202,13 +175,8 @@ describe('the forbidden-word walk', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* Rail 2 — id parity with the backend                                                    */
-/* ------------------------------------------------------------------------------------ */
+/* Rail 2 — id parity with the backend */
 
-// Read from the project root rather than from import.meta.url: Vite rewrites that to a
-// module URL that is not a file: URL, and the point of this test is to read the real file
-// off disk. The "reads the Go file" case below fails loudly if the path ever stops working.
 const goSource = readFileSync(resolve(process.cwd(), 'backend/internal/domain/journal.go'), 'utf8');
 
 /** The ids inside `var <name> = []string{ … }`, in declaration order. */
@@ -256,9 +224,7 @@ describe('id parity with backend/internal/domain/journal.go', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* The vocabulary's own shape                                                             */
-/* ------------------------------------------------------------------------------------ */
+/* The vocabulary's own shape */
 
 describe('FEELINGS', () => {
     it('places every entry on both axes, in range', () => {
@@ -400,9 +366,7 @@ describe('minutesIntoCivilDay and ritualTimeReached', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* Readers                                                                                */
-/* ------------------------------------------------------------------------------------ */
+/* Readers */
 
 describe('readCheckin', () => {
     const v1 = {
@@ -597,16 +561,7 @@ describe('readTrigger', () => {
         expect(read.createdFrom).toBe('id-checkin');
     });
 
-    /**
-     * The triggers view resolves every reference in the whole history once per trigger, so
-     * it hands in an index the provider memoised rather than the rows. Both forms have to
-     * answer identically, including through a merge chain — otherwise the screen that needs
-     * the fast path is the one path no test covers.
-     */
     it('takes a prebuilt index as well as the rows, and answers the same either way', () => {
-        // The rows a client actually holds: the merge correction and the survivor. The
-        // superseded `id-work` row is not among them — the server filters it out — which is
-        // exactly why the walk has to go through `corrects`.
         const merged = trigger('id-2', { label: 'work', corrects: 'id-work', merged_into: 'id-commute' });
         const commute = trigger('id-commute', { label: 'the commute' });
         const rows = [merged, commute];
@@ -624,9 +579,6 @@ describe('readTrigger', () => {
     });
 
     it('gives a renamed trigger its new label, and the id a new entry must reference', () => {
-        // A rename is a correction row with a new client_id; `corrects` names the row it
-        // replaced, because the row-level supersedes_id is a database id the client never
-        // sees (GET /api/journal/entries returns only superseded_at IS NULL).
         const renamed = trigger('id-2', { label: 'paid work', corrects: 'id-work' });
         const read = readTrigger('id-work', [renamed]);
 
@@ -639,10 +591,6 @@ describe('readTrigger', () => {
     });
 
     it('still answers for the original id after a second rename', () => {
-        // The case `corrects` is a list for. Rename twice and the middle row is superseded
-        // too, so it is in no list the client holds: a reader that could only walk one hop
-        // would find id-2 and then hit a gap, and every entry written before the first
-        // rename would resolve to nothing.
         const renamedTwice = trigger('id-3', { label: 'the job', corrects: ['id-work', 'id-2'] });
 
         expect(readTrigger('id-work', [renamedTwice]).label).toBe('the job');
@@ -721,9 +669,7 @@ describe('readTrigger', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* Day arithmetic                                                                         */
-/* ------------------------------------------------------------------------------------ */
+/* Day arithmetic */
 
 describe('civilDay', () => {
     const ORIGINAL_TZ = process.env.TZ;
@@ -772,9 +718,6 @@ describe('civilDay', () => {
     });
 
     it('is right on the morning the clocks go forward', () => {
-        // Berlin, 2026-03-29: 02:00 becomes 03:00, so the night is 23 hours long. 04:30
-        // local is 02:30 UTC — subtracting four hours from the *instant* lands on the
-        // previous evening and would answer 2026-03-28. Shifting the date field does not.
         expect(civilDay(local(2026, 3, 29, 4, 30))).toBe('2026-03-29');
         expect(civilDay(local(2026, 3, 29, 3, 30))).toBe('2026-03-28');
         expect(civilDay(local(2026, 3, 29, 23, 0))).toBe('2026-03-29');
@@ -927,14 +870,6 @@ describe('timeOfDay', () => {
     });
 });
 
-/**
- * The two halves of "when was this", written from one call so they cannot disagree.
- *
- * The zone is pinned rather than assumed: without it a sign error in `tzOffsetMinutes`
- * passes on a machine sitting on UTC and fails nowhere the suite is ever run. The guard case
- * asserts the pin took, because `process.env.TZ` silently doing nothing would make every
- * assertion below true of whatever zone the runner happens to be in.
- */
 describe('tzOffsetMinutes and rfc3339Local', () => {
     let originalTZ;
 
@@ -978,9 +913,7 @@ describe('tzOffsetMinutes and rfc3339Local', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* Candidate matching                                                                     */
-/* ------------------------------------------------------------------------------------ */
+/* Candidate matching */
 
 describe('personCandidates', () => {
     const person = (id, name) => ({ ID: id, name });
@@ -1091,9 +1024,7 @@ describe('triggerCandidates', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* Client ids and the copy helpers                                                        */
-/* ------------------------------------------------------------------------------------ */
+/* Client ids and the copy helpers */
 
 describe('clientId', () => {
     it('mints a UUID v4', () => {
@@ -1167,9 +1098,7 @@ describe('humanMinutes', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* A9 — the two vocabulary views                                                          */
-/* ------------------------------------------------------------------------------------ */
+/* A9 — the two vocabulary views */
 
 describe('the journal’s routes', () => {
     it('keeps every static segment out of the day route’s way', () => {
@@ -1241,9 +1170,6 @@ describe('topFeelings', () => {
     });
 
     it('breaks a tie on taxonomy order, so the same data always names the same two', () => {
-        // Three feelings tied at one. FEELINGS order decides, and it decides the same way
-        // whichever order they arrive in — a row that named a different pair on every
-        // render would read as the app changing its mind about the user.
         const order = FEELINGS.map(feeling => feeling.id);
         expect(order.indexOf('joy')).toBeLessThan(order.indexOf('calm'));
         expect(order.indexOf('calm')).toBeLessThan(order.indexOf('anger'));
@@ -1325,9 +1251,6 @@ describe('summarizePerson', () => {
     it('counts only the feelings attached to them, through the ref and never the name', () => {
         const summary = summarizePerson(entries, 7);
 
-        // Lucie is ref 0 on entry 1 and ref 1 on entry 2 — the position is per entry, which
-        // is exactly why a summary that trusted the ref alone would be wrong. `calm` is
-        // hers twice; the `joy` on entry 2 points at ref 0, who is Noor there.
         expect(summary.feelings).toEqual([{ id: 'calm', count: 2, label: 'calm' }]);
         expect(summarizePerson(entries, 9).feelings.map(feeling => feeling.id)).toEqual(['joy']);
         // `anger` was attached to nobody.

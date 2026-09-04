@@ -1,13 +1,3 @@
-/**
- * The arithmetic under the transcription half of §5.7's gate.
- *
- * This file runs in `npm test`, and `make journal-eval` does not. That split is deliberate
- * and it is not a contradiction of the D4 prompt's *"do not put the eval in `npm test`"*:
- * the **eval** is the part that loads 2.6 GB of weights and takes minutes, and that stays
- * out. The normaliser and the edit distance are pure functions with no model behind them,
- * and a wrong WER would mis-state a gate result in a checked-in report — which is precisely
- * the kind of thing a fast suite should catch on the day it is written.
- */
 import { describe, expect, it } from 'vitest';
 import { aggregateWer, alignTokens, normaliseForWer, numberWord, wordErrorRate } from './wer.mjs';
 
@@ -108,9 +98,6 @@ describe('aggregateWer', () => {
     const clip = (reference, hypothesis) => wordErrorRate(reference, hypothesis);
 
     it('pools errors over pooled reference words rather than averaging rates', () => {
-        // Two words, one wrong (rate 0.5); ten words, one wrong (rate 0.1). The corpus figure
-        // is 2/12; the mean of the rates is 0.3, and reading that as "the model gets 30% of
-        // words wrong" is the mistake this function exists to avoid.
         const short = clip('just tired', 'just tried');
         const long = clip('one two three four five six seven eight nine ten',
             'one two three four five six seven eight nine eleven');

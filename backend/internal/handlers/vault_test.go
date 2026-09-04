@@ -14,18 +14,12 @@ import (
 	"gorm.io/gorm"
 )
 
-// Like relationships_test.go, these run against real SQLite: export and import are about
-// what ends up in (and comes out of) the database, and a round-trip assertion is only
-// meaningful against a real engine.
-
 func vaultRoutes(r *gin.Engine) {
 	r.GET("/export", ExportVault)
 	r.POST("/import", ImportVault)
 	r.GET("/meta", GetMeta)
 }
 
-// seedRichStack creates a relationship whose snapshots exercise every optional field, so a
-// round-trip that drops one is visible.
 func seedRichStack(t *testing.T, db *gorm.DB, userID uint) *models.Relationship {
 	t.Helper()
 
@@ -88,8 +82,6 @@ func TestExportShape(t *testing.T) {
 		t.Fatalf("Expected 200 but got %d (body: %s)", w.Code, w.Body.String())
 	}
 
-	// Asserted on the raw bytes, not the parsed struct: a password could only leak by
-	// appearing in the payload, and a struct-level check would miss a field added later.
 	raw := w.Body.String()
 	for _, forbidden := range []string{"password", "Password", "$2a$"} {
 		if strings.Contains(raw, forbidden) {
@@ -133,8 +125,6 @@ func TestExportShape(t *testing.T) {
 	}
 }
 
-// TestExportImportRoundTrip is the promise the Vault page makes: take everything out of one
-// account, put it into an empty one, and nothing is lost.
 func TestExportImportRoundTrip(t *testing.T) {
 	db := setupSQLiteDB(t)
 	db.Create(&models.User{Email: "source@example.com", Password: "x"})
@@ -323,8 +313,6 @@ func TestImportRejectsBadDataWholesale(t *testing.T) {
 				t.Errorf("Expected an error containing %q, got %s", tc.expectedError, w.Body.String())
 			}
 
-			// Validation runs before any write, so one bad value rejects the file whole
-			// rather than leaving half of it applied.
 			var written int64
 			db.Model(&models.AnalysisSubject{}).Count(&written)
 			if written != 0 {
@@ -338,8 +326,6 @@ func TestImportRejectsBadDataWholesale(t *testing.T) {
 	}
 }
 
-// TestImportMergesIntoExistingStacks proves an import is not a shadow copy: it lands in the
-// relationships the user already has.
 func TestImportMergesIntoExistingStacks(t *testing.T) {
 	db := setupSQLiteDB(t)
 	existing := seedStack(t, db, 1, "Alex", "2026-01-10")
@@ -471,8 +457,6 @@ func TestGetMetaCountsJournal(t *testing.T) {
 		t.Fatalf("Failed to parse: %v", err)
 	}
 
-	// Three: two current, one superseded. The superseded row is still stored and still
-	// exported, so it still counts; the soft-deleted one does not.
 	if meta.JournalEntryCount != 3 {
 		t.Errorf("Expected 3 journal entries for this user, got %d", meta.JournalEntryCount)
 	}
@@ -483,9 +467,6 @@ func TestGetMetaCountsJournal(t *testing.T) {
 		t.Errorf("Expected the oldest day to be 2026-07-02, got %q", *meta.OldestJournalDay)
 	}
 
-	// The point of the *string: MIN() over a varchar(10) is a string on both engines, so
-	// there is nothing for an aggregate to mistype and no aggregateTime needed (trap 10a).
-	// If this ever comes back as a timestamp, `day` stopped being text.
 	if !strings.Contains(w.Body.String(), `"oldest_journal_day":"2026-07-02"`) {
 		t.Errorf("Expected the day to serialize as a bare YYYY-MM-DD string, got %s", w.Body.String())
 	}
@@ -515,8 +496,6 @@ func TestGetMetaWithAnEmptyJournal(t *testing.T) {
 	}
 }
 
-// The client ids the journal seed writes, named so an assertion can say which row it means.
-// Real ones are UUIDs a client minted; these are the same shape, chosen to be readable.
 const (
 	seedTriggerWork     = "aaaaaaaa-0000-4000-8000-000000000001"
 	seedTriggerDeadline = "aaaaaaaa-0000-4000-8000-000000000002"
@@ -528,11 +507,6 @@ const (
 	seedFactAboutLucie  = "dddddddd-0000-4000-8000-000000000001"
 )
 
-// seedJournal writes the eight rows a full journal has to survive: two triggers and the
-// correction that merged one into the other, a check-in naming a person, a tag and a
-// trigger, the correction that replaced it, a plain check-in, a nightly ritual, and a fact
-// about a person. Written straight to the database, the way seedEntry does, so the seed can
-// lay out shapes the write path builds over several requests.
 func seedJournal(t *testing.T, db *gorm.DB, userID uint) *models.Relationship {
 	t.Helper()
 
@@ -557,8 +531,6 @@ func seedJournal(t *testing.T, db *gorm.DB, userID uint) *models.Relationship {
 		return entry
 	}
 	supersede := func(older models.JournalEntry, newer models.JournalEntry) {
-		// Stamped with the replacing statement's own instant, the way CreateJournalEntry
-		// does it, so the pair reads as one event in the file.
 		err := db.Model(&models.JournalEntry{}).Where("id = ?", older.ID).
 			Update("superseded_at", newer.At).Error
 		if err != nil {
@@ -613,8 +585,6 @@ func seedJournal(t *testing.T, db *gorm.DB, userID uint) *models.Relationship {
 		},
 		Mentions: []models.JournalMention{{RelationshipID: &lucie.ID, Ref: 0, Label: "Lucie"}},
 	})
-	// The correction names the *superseded* trigger, which is what makes it worth having
-	// here: the file carries that row too, so the reference still resolves on the way back.
 	fixed := write(models.JournalEntry{
 		ClientID: seedCheckinFixed, Kind: kindCheckin,
 		Day: "2026-08-21", At: at("2026-08-21T17:05:00Z"), SupersedesID: &first.ID,
@@ -668,8 +638,6 @@ func seedJournal(t *testing.T, db *gorm.DB, userID uint) *models.Relationship {
 	return &lucie
 }
 
-// journalOf fails rather than nil-panics when a version 2 export has no journal block at
-// all, which is the failure every test below would otherwise report as a crash.
 func journalOf(t *testing.T, document ExportDocument) *ExportJournal {
 	t.Helper()
 	if document.Journal == nil {
@@ -687,9 +655,6 @@ func journalByClientID(t *testing.T, journal *ExportJournal) map[string]ExportJo
 	return indexed
 }
 
-// stamp compares instants as text. time.Time carries a location and a monotonic reading
-// that reflect.DeepEqual notices and nobody means, so the round trip is asserted on what the
-// file actually says.
 func stamp(at *time.Time) string {
 	if at == nil {
 		return "—"
@@ -775,9 +740,6 @@ func journalJSON(t *testing.T, journal *ExportJournal) string {
 	return string(encoded)
 }
 
-// TestExportImportJournalRoundTrip is the promise for the journal half: take it all out of
-// one account, put it into an empty one, and every entry, mention, payload key and
-// correction link is the same on the other side.
 func TestExportImportJournalRoundTrip(t *testing.T) {
 	db := setupSQLiteDB(t)
 	db.Create(&models.User{Email: "source@example.com", Password: "x"})
@@ -840,8 +802,6 @@ func TestExportImportJournalRoundTrip(t *testing.T) {
 		}
 	}
 
-	// The link is a real column on the other side, not just a string in a file: the reads
-	// have to see the same current journal they saw before.
 	var current int64
 	db.Model(&models.JournalEntry{}).
 		Where("user_id = ? AND superseded_at IS NULL", 2).Count(&current)
@@ -858,8 +818,6 @@ func TestExportImportJournalRoundTrip(t *testing.T) {
 	}
 }
 
-// TestReimportSkipsJournalEntriesByClientID: the journal has an identity the snapshot lacks,
-// so its duplicate check is exact rather than a comparison of content.
 func TestReimportSkipsJournalEntriesByClientID(t *testing.T) {
 	db := setupSQLiteDB(t)
 	db.Create(&models.User{Email: "source@example.com", Password: "x"})
@@ -893,9 +851,6 @@ func TestReimportSkipsJournalEntriesByClientID(t *testing.T) {
 	}
 }
 
-// A version 1 file is what every export before Phase 6 produced. It has no journal block,
-// and refusing it because the server now writes version 2 would throw away a file for no
-// gain — so the version check reads a range, not one number.
 func TestImportStillReadsAVersionOneFile(t *testing.T) {
 	db := setupSQLiteDB(t)
 
@@ -925,9 +880,6 @@ func TestImportStillReadsAVersionOneFile(t *testing.T) {
 	}
 }
 
-// The other half of the version rule: a file that calls itself version 1 and carries a
-// journal is describing itself wrongly, and neither reading it nor dropping it silently is
-// honest.
 func TestImportRejectsAJournalInAVersionOneFile(t *testing.T) {
 	setupSQLiteDB(t)
 
@@ -943,8 +895,6 @@ func TestImportRejectsAJournalInAVersionOneFile(t *testing.T) {
 	}
 }
 
-// Invariant 2b, in the journal's half of the file: a name resolves through the same
-// find-or-create everything else uses, so two entries naming one person land on one row.
 func TestImportJournalMentionCreatesTheRelationshipOnce(t *testing.T) {
 	db := setupSQLiteDB(t)
 
@@ -1003,8 +953,6 @@ func TestImportJournalMentionCreatesTheRelationshipOnce(t *testing.T) {
 	}
 }
 
-// A trigger is referenced by client id inside an opaque payload, so nothing but this check
-// stands between a stored feeling and a word nobody can look up.
 func TestImportRejectsATriggerTheFileDoesNotContain(t *testing.T) {
 	db := setupSQLiteDB(t)
 
@@ -1026,8 +974,6 @@ func TestImportRejectsATriggerTheFileDoesNotContain(t *testing.T) {
 		t.Errorf("Expected the error to name the trigger, got %s", w.Body.String())
 	}
 
-	// Validation runs before the transaction opens, so the relationship the file also
-	// carries is not written either — the file is rejected whole.
 	for _, model := range []interface{}{&models.JournalEntry{}, &models.JournalMention{}, &models.Relationship{}} {
 		var written int64
 		db.Model(model).Count(&written)

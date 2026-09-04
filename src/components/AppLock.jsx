@@ -1,15 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Lock } from 'lucide-react';
 
-/**
- * An optional local screen lock.
- *
- * Read the copy on the Vault page before extending this: it locks the screen on **this
- * device** and encrypts nothing. The passphrase hash lives in localStorage, the database is
- * exactly as readable as it was, and anyone with the server files can read everything. It
- * is a curtain, not a safe — and saying so plainly is part of the feature.
- */
-
 const HASH_KEY = 'alq:lock-hash';
 export const IDLE_LIMIT_MS = 15 * 60 * 1000;
 

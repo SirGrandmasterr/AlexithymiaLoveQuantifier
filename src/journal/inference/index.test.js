@@ -35,9 +35,7 @@ const clip = (id = 'clip-1') => ({
     durationMs: 1_200
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 1. The fake runtime answers, and the answer is the fixture                             */
-/* ------------------------------------------------------------------------------------ */
+/* 1. The fake runtime answers, and the answer is the fixture */
 
 describe('propose, with the fake runtime', () => {
     it('returns the fixture for a typed note', async () => {
@@ -144,9 +142,7 @@ describe('propose, with the fake runtime', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 2. Failure is a value, never an escaping exception                                     */
-/* ------------------------------------------------------------------------------------ */
+/* 2. Failure is a value, never an escaping exception */
 
 describe('when the runtime fails', () => {
     it('surfaces a typed failure instead of letting the exception escape', async () => {
@@ -219,9 +215,7 @@ describe('when the runtime fails', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 3. The runtimes                                                                        */
-/* ------------------------------------------------------------------------------------ */
+/* 3. The runtimes */
 
 describe('the runtimes', () => {
     it('builds the native one without touching the plugin', () => {
@@ -243,9 +237,6 @@ describe('the runtimes', () => {
     });
 
     it('takes audio and text on the Full tier, which is what the card needs after an edit', () => {
-        // D2 left this as the requirement: a transcript edit re-runs the proposal in text
-        // mode through the same runtime. A Full-tier runtime that took audio only would send
-        // the card back to keeping the chips, which is what both Whisper runtimes did.
         const web = createWebRuntime({ loadModel: async () => ({}) });
         const native = createNativeRuntime({ plugin: {} });
 
@@ -281,9 +272,6 @@ describe('the runtimes', () => {
     });
 
     it('refuses audio on a text-mode proposer with a kind, so a caller can tell it apart', async () => {
-        // The Light tier's proposer never downloaded an audio encoder. Asked for audio
-        // directly — around the composition rather than through it — it says so by name
-        // rather than failing somewhere inside transformers.js.
         const proposer = createNativeProposer({ plugin: {}, tier: 'light' });
         try {
             await proposer.propose({ kind: INPUT_MODES.audio, clips: [] });
@@ -295,9 +283,7 @@ describe('the runtimes', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 4. The context: closed vocabularies in, ids out                                        */
-/* ------------------------------------------------------------------------------------ */
+/* 4. The context: closed vocabularies in, ids out */
 
 describe('buildContext', () => {
     it('carries both closed vocabularies', () => {
@@ -381,9 +367,7 @@ describe('normalizeFixtures', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 5. The claim the Vault page rests on: nothing here reaches the network                 */
-/* ------------------------------------------------------------------------------------ */
+/* 5. The claim the Vault page rests on: nothing here reaches the network */
 
 describe('propose never touches the network', () => {
     let fetchSpy;

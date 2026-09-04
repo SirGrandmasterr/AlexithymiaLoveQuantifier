@@ -1,57 +1,11 @@
-/**
- * `validateProposal(raw, context)` — the filter that stands between the model and the user.
- *
- * Pure, exported, and the whole defence (§5.4). Whatever a runtime hands back — a parsed
- * object, a string of JSON, a string of prose, nothing — comes out of here as an object that
- * satisfies §5.2's schema, carries no forbidden word in any slot a model authored, and can
- * be handed to the card without the card checking anything. The user never sees a parse
- * error: a proposal that cannot be used becomes `ambiguity: "feeling"` (§4.6), which the
- * card already knows how to draw — the transcript stays, the grid opens, nothing is
- * pre-selected.
- *
- * Two levels of failure, and the difference matters:
- *
- * - **Structural** — not an object, not JSON, an `ambiguity` value the app does not know.
- *   The whole proposal is replaced by the empty one. Nothing is salvaged from prose.
- * - **Item-level** — a feeling with an id the app does not know, a label with a forbidden
- *   word in it, a fact about nobody, a seventh person. The item is dropped and **counted**;
- *   the rest of the proposal survives. Every drop is on the provenance block as
- *   `dropped_by_filter`, with a path and a reason, so the eval (D4) can see how often the
- *   model says something the app refuses and the entry's provenance (§6.3) can carry the
- *   number. A container that is missing is an empty container; a required scalar that is
- *   missing or of the wrong type drops its item. Nothing is ever *invented* to fill a gap —
- *   no default intensity, no default person — because that would be the filter authoring a
- *   value, and invariant 15 is about who authors.
- *
- * **The one carve-out: the transcript is exempt from word filtering.** It is trimmed and cut
- * at the cap, and otherwise passes through as it came — forbidden words, angle brackets, a
- * URL somebody said out loud. It is the user's own speech, and a journal that censors the
- * word *bad* out of someone's own sentence is not keeping a record. The three model-authored
- * slots — `name`, `label`, `text` — are the whole attack surface for register (§5.2), and
- * they are the only strings this file reads against the list.
- *
- * One more rule this file adds and the card can rely on: **`ambiguity === "feeling"` if and
- * only if `feelings` is empty.** A proposal that loses every feeling becomes `feeling`, as
- * §5.4 says; and a proposal that declares `feeling` while listing feelings has its list
- * cleared (counted as `inconsistent`), because §4.6 says that card pre-selects nothing and
- * a contract the card has to second-guess is not a contract.
- */
-
 import { activeFeelings, INTENSITY_LEVELS } from '../../constants/journal';
 import { CONTEXT_TAGS } from '../../constants/contextTags';
 import { FORBIDDEN_WORDS } from '../../constants/forbiddenWords';
 import { buildSchema, checkSchema, codePoints, LIMITS, AMBIGUITY } from './schema';
 import { parseModelJson } from './parse';
 
-/* ------------------------------------------------------------------------------------ */
-/* 1. The vocabulary of drops                                                             */
-/* ------------------------------------------------------------------------------------ */
+/* 1. The vocabulary of drops */
 
-/**
- * Why an item was dropped. Each is a thing the eval report can count; none carries the
- * text that was dropped, because a forbidden word has no business on a provenance block
- * either.
- */
 export const DROP_REASONS = Object.freeze({
     /** Not an object, or a required scalar missing or of the wrong type. */
     shape: 'shape',
@@ -77,34 +31,17 @@ export const DROP_REASONS = Object.freeze({
     inconsistent: 'inconsistent'
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 2. Text                                                                                */
-/* ------------------------------------------------------------------------------------ */
+/* 2. Text */
 
-// Characters that render as nothing and would let a word hide from the list — a zero-width
-// space between *un* and *healthy* — plus the C0/C1 controls that have no place on a chip.
-// Built from code points rather than written as escapes, so the class is reviewable in
-// any editor: U+200B-200F and U+202A-202E (zero-width and bidi controls), U+2060-2064
-// (word joiner and invisible operators), U+FEFF (the byte-order mark).
 const span = (from, to) => `${String.fromCodePoint(from)}-${String.fromCodePoint(to)}`;
 const INVISIBLE = new RegExp(`[${span(0x200B, 0x200F)}${span(0x202A, 0x202E)}${span(0x2060, 0x2064)}${String.fromCodePoint(0xFEFF)}]`, 'g');
 // C0 and C1 controls, minus tab, newline and carriage return, which `\s` collapses.
 const CONTROL = new RegExp(`[${span(0x0000, 0x0008)}${span(0x000B, 0x000C)}${span(0x000E, 0x001F)}${span(0x007F, 0x009F)}]`, 'g');
 
-/**
- * A model-authored slot, made fit for a chip: invisible and control characters removed,
- * whitespace collapsed to single spaces, trimmed. Normalisation, not censorship — nothing
- * a reader could see is changed.
- */
 export const cleanSlot = (value) => (
     String(value ?? '').replace(INVISIBLE, '').replace(CONTROL, '').replace(/\s+/g, ' ').trim()
 );
 
-/**
- * The form a slot is read in when it is held against the list: compatibility-normalised so
- * a full-width letter is its ASCII self, stripped of combining marks so an accent cannot
- * disguise a word, lower-cased. Only ever used for the predicate; what is kept is `cleanSlot`.
- */
 const foldForWords = (value) => (
     cleanSlot(value).normalize('NFKC').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
 );
@@ -151,11 +88,6 @@ const INSTRUCTION_PATTERNS = [
 
 const matchesAny = (patterns, value) => patterns.some(pattern => pattern.test(value));
 
-/**
- * `'url'`, `'markup'` or `'instruction'` when the text resembles one; `null` when it is
- * plain words. Read on the cleaned slot, and on its folded form as well so that a
- * full-width `＜b＞` is a tag too.
- */
 export const looksUnsafe = (value) => {
     const cleaned = cleanSlot(value);
     const folded = foldForWords(value);
@@ -165,12 +97,6 @@ export const looksUnsafe = (value) => {
     return null;
 };
 
-/**
- * The transcript, as the record keeps it: trimmed, cut at the cap in code points (the
- * measure the server uses), and otherwise untouched. No list is read over it. Not
- * `cleanSlot` either — a newline somebody's transcriber put between two sentences is not
- * this file's to remove.
- */
 export const truncateTranscript = (value) => {
     if (typeof value !== 'string') return '';
     const trimmed = value.trim();
@@ -191,19 +117,8 @@ const cleanLanguage = (value) => {
 // fact about *lucie* is about *Lucie*, and both are kept under the listed spelling.
 const foldName = (value) => cleanSlot(value).normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 
-/* ------------------------------------------------------------------------------------ */
-/* 3. Parsing                                                                             */
-/* ------------------------------------------------------------------------------------ */
+/* 3. Parsing */
 
-/**
- * Whatever the runtime returned, as an object or `null`.
- *
- * A string goes through `parseModelJson` (`parse.js`), which is where the framing repairs
- * live — a code fence, or prose either side of the object. **Prose instead of an object is
- * never salvaged**: that is the model failing to answer, not failing to format. The repair
- * counts are dropped here because this function's callers do not carry provenance; the two
- * runtimes call `parseModelJson` directly and record them.
- */
 export const parseRaw = (raw) => {
     let value = raw;
     if (typeof value === 'string') {
@@ -223,9 +138,7 @@ export const emptyProposal = (transcript = '', language = '') => ({
     ambiguity: 'feeling'
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 4. The validator                                                                       */
-/* ------------------------------------------------------------------------------------ */
+/* 4. The validator */
 
 const feelingIdsOf = (context) => {
     const fromContext = Array.isArray(context?.feelings)
@@ -238,25 +151,7 @@ const tagsOf = (context) => (
     Array.isArray(context?.tags) && context.tags.length ? context.tags : [...CONTEXT_TAGS]
 );
 
-/**
- * Validate one raw model output against the contract, in the context it was proposed in.
- *
- * Returns `{ proposal, provenance }`:
- *
- * - `proposal` satisfies `buildSchema` for this context — the last thing this function
- *   does is check that, and if it somehow does not, the empty proposal goes out instead;
- * - `provenance.schema_valid` says whether the *raw* output obeyed the schema before any
- *   filtering — the honest measure of whether a runtime's grammar is doing its job;
- * - `provenance.dropped_by_filter` counts every item removed, and `provenance.drops` says
- *   where and why, without carrying the text.
- *
- * `context` is what `buildContext` produces. Its feeling ids and tags are the enums the
- * model was constrained to; when it carries none, the constants are used.
- */
 export const validateProposal = (raw, context = {}) => {
-    // Read once each. The schema and the two membership sets are the *same* two vocabularies
-    // — that is the point of building the schema from the context — and reading them twice
-    // invites the day the schema is built from one list and the checks run against another.
     const feelingIds = feelingIdsOf(context);
     const tags = tagsOf(context);
 

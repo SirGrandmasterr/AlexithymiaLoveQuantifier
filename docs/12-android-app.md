@@ -79,7 +79,7 @@ screen.
 
 **Use 8081 under Compose, not 8080.** Port 8080 there is Nginx, which exists to serve the SPA
 — which this app already has bundled — and which per
-[docs/09-deployment.md](09-deployment.md#uploads-is-not-proxied-in-the-container-setup) does
+[docs/09-deployment.md](09-deployment.md#nginx-configuration) does
 **not** proxy `/uploads`. Going through it buys nothing and silently breaks avatars. Port 8081
 is the backend directly and serves both `/api` and `/uploads`.
 
@@ -764,5 +764,5 @@ Honest list, so none of it reads as an oversight:
   a device has: the journal outbox, the nightly reminder actually arriving at 22:30, and the
   launcher offering the shortcut on a long-press. All three are covered by tests behind a
   mocked platform, and none has been seen. The device checklists are in the C4, F1 and F2
-  entries of [`product_vision/06-progress.md`](../product_vision/06-progress.md).
+  entries of the Phase 6 ledger (`git show 49e2266:product_vision/06-progress.md`).
 - **No platform speech recogniser.** §6.7 says why; it is a decision, not a gap.

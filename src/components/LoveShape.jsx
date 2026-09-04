@@ -17,11 +17,6 @@ const SHAPE_FILL = '#94a3b8';     // slate-400
 const GHOST_STROKE = '#fb7185';   // rose-400
 const GHOST_FILL = '#fb7185';
 
-/**
- * The rows a Love Shape is drawn from. Exported for tests: it is where every honesty
- * rule lives — an unscored category sits at the centre but is flagged `scored: false`
- * so it can be drawn open rather than as a confident zero.
- */
 export const buildShapeData = (snapshot, compareTo) => CATEGORIES.map(category => {
     const scored = isScored(snapshot?.stats, category.id);
     const compareScored = isScored(compareTo?.stats, category.id);
@@ -79,11 +74,6 @@ const ShapeTooltip = ({ active, payload }) => {
     );
 };
 
-/**
- * A snapshot as a seven-axis polygon — the "Love Shape". Optionally overlaid with a ghost
- * of another snapshot for comparison. Renders no numbers of its own beyond the stored
- * scores: the shape is a view of the data, never a derivation from it.
- */
 export default function LoveShape({ snapshot, compareTo = null, size = 240, className = '' }) {
     const data = useMemo(() => buildShapeData(snapshot, compareTo), [snapshot, compareTo]);
     if (!snapshot) return null;

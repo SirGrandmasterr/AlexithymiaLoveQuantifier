@@ -12,14 +12,6 @@ import {
     tierModels
 } from './models';
 
-/**
- * The rail that keeps the browser's copy of the manifest honest.
- *
- * `Makefile` fills the volume and this table verifies what was served, and the two only mean
- * anything together — so a test reads the Makefile and asserts they agree, exactly as
- * `journal.test.js` reads `domain/journal.go` for the feeling ids. Without it the second
- * check degrades into a second opinion about the first.
- */
 const makefile = readFileSync('Makefile', 'utf8');
 
 /** Every `<set>|path|url|sha256` row of `MODEL_MANIFEST`, with `$(VAR)` expanded. */
@@ -37,8 +29,6 @@ const manifestRows = (set = 'whisper-tiny') => {
     };
 
     // The sum is matched as a variable-or-literal and then expanded: the licence row pins
-    // `$(APACHE_20_SHA)` rather than writing the hex inline, and a first draft that only
-    // accepted 64 hex characters silently dropped it — twelve of thirteen files checked, and
     // the one left out is the licence Apache 2.0 §4(a) requires to travel with the copy.
     const pattern = new RegExp(`^\\t${set}\\|(\\S+?)\\|(\\S+?)\\|(\\S+?)\\s*\\\\?\\r?$`, 'gm');
     return [...makefile.matchAll(pattern)]
@@ -65,9 +55,6 @@ describe('the pinned manifest', () => {
 
     it('pins the revision the Makefile pins, not a branch', () => {
         expect(makefile).toContain(`WHISPER_TINY_REV := ${WHISPER_TINY.revision}`);
-        // A `resolve/main/...` URL is not a pin: the bytes behind it can change while the
-        // URL does not, and the sum would then fail on the next operator's first run with no
-        // way to tell a re-tag from tampering.
         manifestRows().forEach(row => {
             if (row.url.includes('huggingface.co')) expect(row.url).toContain(WHISPER_TINY.revision);
         });
@@ -129,18 +116,13 @@ describe('where the files come from', () => {
     });
 
     it('names no model hub anywhere in the table the browser reads', () => {
-        // The Makefile names Hugging Face, because that is where the operator fetches from.
-        // This module must not: `connect-src 'self'` would refuse it, and the Vault page
-        // says every request goes to this app's own origin.
         const serialized = JSON.stringify(WHISPER_TINY);
         expect(serialized).not.toContain('huggingface');
         expect(serialized).not.toContain('http');
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* G1 — EmbeddingGemma, and the licence that is not Apache                                */
-/* ------------------------------------------------------------------------------------ */
+/* G1 — EmbeddingGemma, and the licence that is not Apache */
 
 /**
  * The same rail, for the index's model — and one row it deliberately cannot cover.

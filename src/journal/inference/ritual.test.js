@@ -103,9 +103,6 @@ describe('the ritual validator', () => {
     });
 
     it('leaves a question the note did not mention **absent**, not false', () => {
-        // §3.7's own sentence, and invariant 14's. This is the assertion the whole feature
-        // rests on: three questions were asked about and two were answered, and the third is
-        // missing from the object rather than present and false.
         const { proposal } = validate({
             transcript: 'x', language: 'en', answers: { slept_well: false }, people: []
         });

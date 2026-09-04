@@ -4,9 +4,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// CORSMiddleware enables cross-origin requests from trusted origins such as the web app
-// domain (alexithymialovequantifier.voglerprojekte.com), native Capacitor clients (https://localhost),
-// and local development environments, handling preflight OPTIONS requests cleanly.
 func CORSMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		origin := c.Request.Header.Get("Origin")

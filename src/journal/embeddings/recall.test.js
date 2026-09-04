@@ -18,9 +18,7 @@ import {
 import { toIndexVector } from './embed';
 import { PAYLOAD_VERSION } from '../../constants/journal';
 
-/* ------------------------------------------------------------------------------------ */
-/* Fixtures                                                                               */
-/* ------------------------------------------------------------------------------------ */
+/* Fixtures */
 
 const checkin = ({ id, day = '2026-05-01', at = null, transcript = '', note = '', feelings = [], mentions = [], tags = [] }) => ({
     ID: Number(id.replace(/\D/g, '')) || 1,
@@ -45,9 +43,7 @@ const vectorsFor = (rows) => new Map(
     Object.entries(rows).map(([id, values]) => [id, { vector: toIndexVector(values) }])
 );
 
-/* ------------------------------------------------------------------------------------ */
-/* 1. Folding and tokens                                                                  */
-/* ------------------------------------------------------------------------------------ */
+/* 1. Folding and tokens */
 
 describe('folding', () => {
     it('folds case, diacritics and ß, which is the one German rule NFD does not cover', () => {
@@ -64,9 +60,7 @@ describe('folding', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 2. Documents                                                                           */
-/* ------------------------------------------------------------------------------------ */
+/* 2. Documents */
 
 describe('what a search reads', () => {
     it('reads a check-in\'s transcript, note, tags and resolved trigger labels', () => {
@@ -123,9 +117,7 @@ describe('what a search reads', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 3. Ranking                                                                             */
-/* ------------------------------------------------------------------------------------ */
+/* 3. Ranking */
 
 describe('the lexical half', () => {
     const docs = buildDocuments({
@@ -175,9 +167,7 @@ describe('the lexical half', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 4. Search                                                                              */
-/* ------------------------------------------------------------------------------------ */
+/* 4. Search */
 
 describe('recall', () => {
     const docs = buildDocuments({
@@ -227,9 +217,7 @@ describe('recall', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 5. "Your past entries"                                                                 */
-/* ------------------------------------------------------------------------------------ */
+/* 5. "Your past entries" */
 
 describe('past entry offers', () => {
     const docs = buildDocuments({
@@ -319,9 +307,7 @@ describe('past entry offers', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 6. Namesakes                                                                           */
-/* ------------------------------------------------------------------------------------ */
+/* 6. Namesakes */
 
 describe('namesake ordering', () => {
     const docs = buildDocuments({
@@ -366,9 +352,7 @@ describe('namesake ordering', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 7. Already known                                                                       */
-/* ------------------------------------------------------------------------------------ */
+/* 7. Already known */
 
 describe('already known', () => {
     const kept = [
@@ -394,9 +378,7 @@ describe('already known', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 8. Context for the proposal model                                                      */
-/* ------------------------------------------------------------------------------------ */
+/* 8. Context for the proposal model */
 
 describe('retrieval vocabulary for the prompt', () => {
     const docs = buildDocuments({

@@ -29,8 +29,6 @@ func createMultipartPayload(t *testing.T, fieldName, fileName, contentType strin
 			buf.Reset()
 			writer = multipart.NewWriter(buf)
 
-			// Manually construct the header part with an explicit Content-Type to trick gin context bindings correctly
-			// since CreateFormFile hardcodes it unless replaced manually through textproto bindings
 			header := make(map[string][]string)
 			header["Content-Disposition"] = []string{`form-data; name="` + fieldName + `"; filename="` + fileName + `"`}
 			header["Content-Type"] = []string{contentType}

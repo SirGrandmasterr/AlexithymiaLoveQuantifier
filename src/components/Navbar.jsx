@@ -3,13 +3,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Heart, User, LogOut, LogIn, Archive, NotebookPen, Eye, EyeOff, Server } from 'lucide-react';
 import { JOURNAL_COPY, JOURNAL_ROOT } from '../constants/journal';
 
-/**
- * The desktop header, and — below `md` — a title bar that has given its navigation away.
- *
- * Vault, Profile and discretion move to `MobileBottomNav`; only Logout and the server setting
- * stay, because neither is a destination. The bar itself remains so the app has a title and a
- * home affordance, and because `pt-safe` is what keeps it out from under the status bar.
- */
 export default function Navbar({
     isAuthenticated,
     onLogout,
@@ -31,8 +24,6 @@ export default function Navbar({
                     <div className="p-1.5 bg-rose-50 rounded-full group-hover:bg-rose-100 transition-colors flex-shrink-0">
                         <Heart className="text-rose-500" size={20} />
                     </div>
-                    {/* The full wordmark is 27 characters and overruns a 360dp screen next to
-                        the action buttons, so the handset gets the short form. */}
                     <span className="text-lg sm:text-xl font-light text-slate-800 truncate">
                         <span className="sm:hidden font-semibold">Quantifier</span>
                         <span className="hidden sm:inline">
@@ -54,9 +45,6 @@ export default function Navbar({
                                     <Server size={18} />
                                 </button>
                             )}
-                            {/* Ctrl+. does the same thing without reaching for the mouse.
-                                Duplicated into the bottom bar on handsets, where the top-right
-                                corner is the least reachable point on the screen. */}
                             <button
                                 onClick={onToggleDiscretion}
                                 aria-pressed={discreet}
@@ -69,8 +57,6 @@ export default function Navbar({
                             >
                                 {discreet ? <EyeOff size={18} /> : <Eye size={18} />}
                             </button>
-                            {/* Below `md` this is the bottom bar's second slot, not a link
-                                that has been hidden — see MobileBottomNav. */}
                             <Link
                                 to={JOURNAL_ROOT}
                                 className="hidden md:flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900 px-3 py-2 rounded-lg hover:bg-slate-50 transition-all"

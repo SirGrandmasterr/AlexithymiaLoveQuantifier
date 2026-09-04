@@ -1017,7 +1017,7 @@ brute-force, trivial to enumerate with directory access.
 
 Note this path is *not* under `/api`, which is why it needs its own Vite proxy rule and
 why the container Nginx config misses it
-([Known Issues](11-known-issues.md#uploads-is-not-proxied-in-the-container-setup)).
+([Known Issues](11-known-issues.md#uploaded-files-are-publicly-readable)).
 
 ---
 

@@ -6,47 +6,13 @@ import { setNativeTierReport } from '../journal/inference/tier';
 import { emptyProgress } from '../journal/inference/download';
 import { totalBytes } from '../journal/inference/models';
 
-/**
- * The JavaScript side of the journal's native plugin, and the adapters that make C2's
- * recorder and C3's download manager drive it without either of them knowing.
- *
- * The plugin is deliberately narrow (§5.5, §12.2): record, transcribe, propose (a stub
- * until D3), embed (a stub until G1), and report memory and tier — plus the weight store
- * `transcribe` cannot work without. Everything above it is the one React app, which is
- * why this file contains adapters and not a second recorder: `createRecorder(deps)` takes
- * every browser API it uses as an injected default, and on Android those defaults are the
- * plugin. The state machine, the silence stop, the thirty-second limit, *add more* and the
- * discard rules run unchanged.
- *
- * **Audio never crosses the bridge** (§4.2). What the recorder holds as `clip.audio` on
- * Android is a handle — an object that quacks like a `Float32Array` for exactly the two
- * things the recorder does with one, `length` and `fill(0)` — and the samples stay in the
- * plugin's memory until `fill(0)` releases them. The native runtime hands the handles to
- * `transcribe`; no base64 string, no blob, no file.
- *
- * **The permission is asked on the first tap and never at launch.** `requestStream` is
- * the only place that asks, it runs inside the recorder's `start()`, and it asks in the
- * order Capacitor expects: `checkPermissions`, then `requestPermissions` only if needed,
- * then `startCapture` — which the native side refuses without the grant regardless. A
- * denial rejects with `NotAllowedError`, which the recorder already reads as its
- * `permission` error and the screen already answers with the typed path (§4.2).
- */
-
 /** Registered by name; Capacitor finds the Android class through `capacitor.plugins.json`. */
 export const AlqJournal = registerPlugin('AlqJournal');
 
 export const MICROPHONE_ALIAS = 'microphone';
 
-/* ------------------------------------------------------------------------------------ */
-/* 1. The tier report                                                                     */
-/* ------------------------------------------------------------------------------------ */
+/* 1. The tier report */
 
-/**
- * Ask the device how much memory it has and hand the answer to `tier.js`, which decides.
- *
- * Called once from the app shell on a native platform. It reads a number; it asks for no
- * permission and opens no device, so "nothing at launch" still holds for the microphone.
- */
 export const primeNativeTier = async (plugin = AlqJournal, { native = isNative } = {}) => {
     if (!native()) return null;
     try {
@@ -60,9 +26,7 @@ export const primeNativeTier = async (plugin = AlqJournal, { native = isNative }
     }
 };
 
-/* ------------------------------------------------------------------------------------ */
-/* 2. Capture, as the recorder's `deps`                                                   */
-/* ------------------------------------------------------------------------------------ */
+/* 2. Capture, as the recorder's `deps` */
 
 /** A clip's audio, as the recorder holds it on Android: a handle, not the samples. */
 export const nativeAudio = (clip, plugin) => ({
@@ -71,10 +35,6 @@ export const nativeAudio = (clip, plugin) => ({
     length: Number(clip.samples) || 0,
     sampleRate: Number(clip.sampleRate) || 16_000,
     durationMs: Number(clip.durationMs) || 0,
-    /**
-     * The recorder's discard calls `audio.fill(0)`; here that releases the native buffer,
-     * which the plugin zero-fills before it forgets. Idempotent on both sides.
-     */
     fill() {
         plugin.releaseClip({ handle: clip.handle }).catch(() => { /* already gone */ });
         return this;
@@ -85,22 +45,9 @@ export const isNativeAudio = (audio) => Boolean(audio && audio.native === true &
 
 const removeListener = (handle) => Promise.resolve(handle).then(listener => listener?.remove?.()).catch(() => { });
 
-/**
- * The recorder's `deps` for Android. Pass the result to `createRecorder`.
- *
- * `plugin` is injectable so `npm test` can drive the whole permission flow with a fake and
- * assert the order of calls — the one thing a device could not be made to prove on demand.
- */
 export const nativeCaptureDeps = (plugin = AlqJournal) => {
     let latestLevel = 0;
 
-    /**
-     * What `createRecorder` sees as `MediaRecorder`. `start()` is a no-op because the
-     * capture began inside `requestStream`; `stop()` asks the plugin for the clip and
-     * fires the two events the recorder waits for. If the native limit ended the capture
-     * first, the plugin's `captureEnded` event delivers the same clip, and whichever
-     * arrives first wins.
-     */
     class NativeRecorder {
         static isTypeSupported() { return false; }
 
@@ -136,10 +83,6 @@ export const nativeCaptureDeps = (plugin = AlqJournal) => {
     }
 
     return {
-        /**
-         * The first tap, and only the first tap, gets here with the permission unasked.
-         * The order is the contract: check, then request only if needed, then open.
-         */
         requestStream: async () => {
             const { microphone } = await plugin.checkPermissions();
             let state = microphone;
@@ -152,9 +95,6 @@ export const nativeCaptureDeps = (plugin = AlqJournal) => {
             await plugin.startCapture({ maxMs: MAX_CLIP_MS });
             return {
                 native: true,
-                // The recorder stops every track at every release. On a capture that has
-                // already been handed over this is a no-op; on one abandoned mid-request
-                // (a tap or a background while the prompt was up) it drops the audio.
                 getTracks: () => [{ kind: 'audio', stop: () => { plugin.abortCapture().catch(() => { }); } }]
             };
         },
@@ -184,22 +124,10 @@ export const nativeCaptureDeps = (plugin = AlqJournal) => {
     };
 };
 
-/* ------------------------------------------------------------------------------------ */
-/* 3. The download manager, over the plugin's weight store                                */
-/* ------------------------------------------------------------------------------------ */
+/* 3. The download manager, over the plugin's weight store */
 
 const KNOWN_KINDS = ['checksum', 'length', 'network', 'storage', 'unsupported'];
 
-/**
- * The same store surface as `createModelDownloader` — `getSnapshot`, `subscribe`, `start`,
- * `cancel`, `isDownloaded`, `remove` — so `VoiceCheckin` and the settings screen cannot
- * tell which one they hold.
- *
- * The files come from the configured server's `/models/` (§5.6), fetched natively into
- * the app's private files directory, and the pins go *in*: `models.js` stays the one
- * manifest, and the plugin hashes what it is told to hash. A wrong sum is reported as
- * `checksum` and nothing is kept, exactly as on the web.
- */
 export const createNativeDownloader = (model, options = {}) => {
     const { plugin = AlqJournal, baseUrl = getServerUrl } = options;
 

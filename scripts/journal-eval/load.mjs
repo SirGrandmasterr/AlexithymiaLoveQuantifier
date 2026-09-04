@@ -1,19 +1,3 @@
-/**
- * The bridge from `node` to `src/`.
- *
- * The app's modules import each other without file extensions (`./contextTags`, not
- * `./contextTags.js`), which Vite resolves and Node does not. The harness has to run under
- * plain `node` — it drives subprocesses and waits minutes on gigabytes of weights, and
- * neither belongs in a test runner — so it bundles what it needs with esbuild first, exactly
- * as `product_vision/eval/build-proposal-card.mjs` does for the same reason.
- *
- * **The point is that the harness scores a model against the validator the app actually
- * ships.** A harness-local copy of `validateProposal` would be a filter that agrees with the
- * real one until the day it does not, and the day it does not is the day a report says a
- * model is safe when the app would drop half its answers.
- *
- * One temp directory per process, removed as soon as the bundle is imported.
- */
 import { build } from 'esbuild';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -30,10 +14,6 @@ const SURFACE = [
     ['buildContext', 'src/journal/inference/index.js'],
     ['FEELINGS, activeFeelings', 'src/constants/journal.js'],
     ['CONTEXT_TAGS', 'src/constants/contextTags.js'],
-    // G2. The retrieval golden set is scored by the **app's own** `recall` for the same
-    // reason the proposals are validated by the app's own validator: a harness-local copy of
-    // the search would agree with the shipped one until the day it did not, and that is the
-    // day a report says retrieval works when the screen does something else.
     [
         'RETRIEVAL_SUITE, RETRIEVAL_MODES, RETRIEVAL_STATUS, TOP_N, runRetrievalSuite, suiteDocuments',
         'src/journal/embeddings/retrievalGolden.js'
@@ -43,20 +23,6 @@ const SURFACE = [
     ['LEXICAL_FLOOR, RELATIVE_FLOOR', 'src/journal/embeddings/recall.js']
 ];
 
-/**
- * The six packages those modules drag in, and an inert stand-in for each.
- *
- * Written out by name and by export rather than resolved through a catch-all proxy, for two
- * reasons. Esbuild copies a CommonJS module's *own* property names into the ESM namespace, so
- * a proxy that answers every property is copied as no properties at all — the trick simply
- * does not work. And a named list is reviewable: these are the seams between the pure half of
- * `src/journal/inference/` and the platform, and a seventh appearing is something a reader of
- * this file should have to notice.
- *
- * A bare import that is **not** in this table is a build error rather than a silent stub, for
- * the same reason `checkSchema` throws on a keyword it does not enforce: a dependency quietly
- * replaced with nothing is worse than one that is not there.
- */
 const STUBS = {
     // `platform.js` and `journalPlugin.js`. `isNativePlatform()` must answer false, or every
     // module below it takes the Android branch on a desktop.
@@ -82,11 +48,6 @@ const STUBS = {
     '@huggingface/transformers': 'export default {};'
 };
 
-/**
- * What was stubbed on the last build, recorded so a session debugging a surprising import can
- * read it. **`--verbose` does not print it** — the comment here said it did, and neither
- * verbose path in `run.mjs` or `retrieval.mjs` touches this list.
- */
 export let stubbedPackages = [];
 
 const stubBareImports = (resolveDir) => ({
@@ -116,10 +77,6 @@ const stubBareImports = (resolveDir) => ({
 
 let loaded = null;
 
-/**
- * `{ validateProposal, buildPrompt, PROMPT_VERSION, PROPOSAL_SCHEMA, PROPOSAL_GRAMMAR_SCHEMA,
- * buildContext, FEELINGS, … }` — the app's own inference boundary, bundled once per process.
- */
 export const loadInference = async () => {
     if (loaded) return loaded;
 
@@ -135,10 +92,6 @@ export const loadInference = async () => {
     await build({
         entryPoints: [entry],
         bundle: true, format: 'esm', platform: 'node', outfile, logLevel: 'warning',
-        // `src/mobile/serverUrl.js` reads `import.meta.env`, which is Vite's and does not
-        // exist under node. An empty object rather than the real environment: the harness
-        // must not pick up a `VITE_*` value from whoever happens to be running it, and every
-        // module that reads one has a literal fallback beside it.
         define: { 'import.meta.env': '{}' },
         plugins: [stubBareImports(scratch)]
     });

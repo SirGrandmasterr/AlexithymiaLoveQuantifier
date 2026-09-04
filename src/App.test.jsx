@@ -5,9 +5,6 @@ import axios from 'axios';
 import App from './App';
 import { resetSessionLost } from './auth/session';
 
-// A hand-built axios mock: the automock returns undefined from `axios.create()`, which
-// Profile.jsx calls at module scope. This one also records both interceptors so a test can
-// drive the renewal paths the way axios would.
 const mocks = vi.hoisted(() => {
     const responseHandlers = [];
     const requestHandlers = [];
@@ -47,13 +44,6 @@ const signIn = async () => {
     await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
 };
 
-/**
- * Fire the registered interceptor's error handler the way axios would on a real 401.
- *
- * `[0]`, not `.at(-1)`: the interceptors are installed once, at module import, rather than
- * from an effect on every render. That is the fix for the bug the cold-start test below
- * covers, and it is why the handler arrays must survive `beforeEach`.
- */
 const fire401 = async (config = { url: '/api/subjects', headers: {} }) => {
     const onError = mocks.responseHandlers[0];
     await act(async () => {
@@ -109,9 +99,6 @@ describe('App — the login handoff', () => {
         expect(screen.queryByRole('link', { name: /start analyzing/i })).not.toBeInTheDocument();
     });
 
-    // A 401 used to be the end of the session. It is now the ordinary case: the token has
-    // aged out, the refresh token buys a new one, and the request that failed is replayed.
-    // The user is told nothing, because there is nothing for them to do.
     it('renews the session and replays the request when a 401 arrives', async () => {
         axios.get.mockResolvedValue({ data: [] });
 
@@ -142,10 +129,6 @@ describe('App — the login handoff', () => {
         expect(localStorage.getItem('token')).toBe('renewed-token');
     });
 
-    // When renewal is impossible the session is over, and the app says so by becoming the
-    // app a stranger sees. The previous behaviour — hold the token, put a passphrase prompt
-    // on top — left a signed-out user looking at a signed-in dashboard whose every request
-    // answered 401 behind the dialog.
     it('treats a session it cannot renew as never having been signed in', async () => {
         axios.get.mockResolvedValue({ data: [] });
 
@@ -175,12 +158,6 @@ describe('App — the login handoff', () => {
         await waitFor(() => expect(screen.getByPlaceholderText('name@example.com')).toBeInTheDocument());
     });
 
-    // The regression this whole change exists for.
-    //
-    // The interceptors used to be installed from an effect in App. Child effects commit
-    // before their parent's, so SubjectsProvider's fetch went out first — with a token that
-    // had already expired, and with nothing installed to renew or replay it. The dashboard
-    // then showed an error while the app still considered itself signed in.
     it('renews before an outgoing request when the stored token has aged out', async () => {
         localStorage.setItem('token', 'stale-token');
         localStorage.setItem('alq:refresh-token', 'refresh-one');

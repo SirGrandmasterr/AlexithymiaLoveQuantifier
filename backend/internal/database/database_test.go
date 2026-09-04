@@ -12,13 +12,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// setupMemoryDB creates an isolated, in-memory SQLite database specifically customized
-// for safely executing complex structural integrations and GORM mappings.
 func setupMemoryDB(t *testing.T) *gorm.DB {
 	// file::memory:?cache=shared creates a purely in-memory database that wipes instantly upon closing
-	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{
-		// Disable foreign key constraints if needed by sqlite specifically, though sqlite supports them we enable later if we want strict
-	})
+	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("Failed to open SQLite memory database: %v", err)
 	}
@@ -69,23 +65,11 @@ func TestDatabaseIntegration_UserConstraints(t *testing.T) {
 		Email: "no-password@example.com",
 		// Password omitted (not null in model)
 	}
-	// In SQLite, if a field isn't explicitly inserted, GORM skips it. But if we try to force an empty string
-	// GORM will just insert "". The `not null` check is often database driver specific.
-	// We'll log the behavior rather than failing because sqlite handles NOT NULL differently than Postgres.
 	_ = db.Create(&badUser).Error
 }
 
-// additiveColumns are the columns added after the original schema. Every one must be
-// nullable and AutoMigrate-compatible: no phase before Phase 4 may need a real migration.
-//
-// Phase 4's relationship_id is deliberately absent: SQLite cannot drop a column a foreign
-// key references, so this test's drop-and-re-add trick does not work on it. The real
-// upgrade is covered by TestUpgradeFromPreRelationshipSchema instead.
 var additiveColumns = []string{"tags", "uncertain", "guide_answers", "kind"}
 
-// TestAutoMigrateAddsNewColumns simulates a legacy database: the columns added by later
-// phases are dropped from an existing table with existing rows, and AutoMigrate must add
-// them back additively — the SQLite half of the "no structural migration yet" guarantee.
 func TestAutoMigrateAddsNewColumns(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "legacy.db")
 	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
@@ -139,20 +123,11 @@ func TestAutoMigrateAddsNewColumns(t *testing.T) {
 	if len(legacy.GuideAnswers) != 0 {
 		t.Errorf("Expected no guide answers on a legacy row, got %v", legacy.GuideAnswers)
 	}
-	// Kind carries a column default rather than being nullable, so every pre-Phase-5 row
-	// reads back as a full snapshot. Without the default these rows would be NULL, and
-	// scanning NULL into a Go string fails outright — every read would break, not just
-	// look odd.
 	if legacy.Kind != "full" {
 		t.Errorf("Expected a legacy row to default to kind %q, got %q", "full", legacy.Kind)
 	}
 }
 
-// legacyAnalysisSubject is the model exactly as it stood before Phase 4: no
-// RelationshipID, and no relationships table beside it. Migrating this struct is how the
-// tests build a genuinely pre-Phase-4 database — hand-writing the DDL would only test the
-// migrator against a schema GORM never produced, and dropping the column afterwards is not
-// possible on SQLite once a foreign key references it.
 type legacyAnalysisSubject struct {
 	gorm.Model
 	UserID       uint                      `json:"user_id"`
@@ -167,10 +142,6 @@ type legacyAnalysisSubject struct {
 
 func (legacyAnalysisSubject) TableName() string { return "analysis_subjects" }
 
-// TestUpgradeFromPreRelationshipSchema walks the actual Phase 4 upgrade on a file
-// database: a schema with no relationships table and no relationship_id, carrying rows.
-// AutoMigrate has to build the table and column, and the backfill has to reproduce the
-// stacks the user saw before the upgrade.
 func TestUpgradeFromPreRelationshipSchema(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "pre-phase-4.db")
 	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
@@ -203,8 +174,6 @@ func TestUpgradeFromPreRelationshipSchema(t *testing.T) {
 		t.Fatalf("Backfill failed: %v", err)
 	}
 
-	// Two stacks before the upgrade — "Alex" and "Alex " were one stack, since Phase 1
-	// trims on write and the frontend grouped on the trimmed string.
 	if result.Relationships != 2 || result.Snapshots != 3 {
 		t.Errorf("Expected 2 relationships and 3 snapshots linked, got %d and %d", result.Relationships, result.Snapshots)
 	}
@@ -294,10 +263,6 @@ func TestDatabaseIntegration_SubjectRelationships(t *testing.T) {
 	}
 }
 
-// openJournalDB builds a file-backed SQLite database carrying the whole model set. A file
-// rather than setupMemoryDB's shared in-memory handle: these tests assert on unique-index
-// violations, and a database shared with every other test in the package would make a
-// collision mean two different things.
 func openJournalDB(t *testing.T, name string) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), name)), &gorm.Config{})
@@ -316,9 +281,6 @@ func openJournalDB(t *testing.T, name string) *gorm.DB {
 	return db
 }
 
-// journalEntryColumns is every column journal_entries must have after a migration. Listed
-// out rather than derived from the struct so that deleting a field fails this test instead
-// of quietly agreeing with itself.
 var journalEntryColumns = []string{
 	"id", "created_at", "updated_at", "deleted_at",
 	"user_id", "client_id", "kind", "day", "at", "schema_version", "payload",
@@ -327,13 +289,6 @@ var journalEntryColumns = []string{
 
 var journalMentionColumns = []string{"id", "entry_id", "relationship_id", "label", "ref"}
 
-// TestAutoMigrateAddsJournalTables is the Phase-6 sibling of TestAutoMigrateAddsNewColumns:
-// a database that predates the journal has neither table, and AutoMigrate has to build both
-// without touching the rows that were already there.
-//
-// It drops whole tables rather than columns because SQLite refuses to drop a column a
-// foreign key references, and journal_mentions.entry_id is one — the same reason
-// relationship_id is not in additiveColumns.
 func TestAutoMigrateAddsJournalTables(t *testing.T) {
 	db := openJournalDB(t, "pre-journal.db")
 
@@ -373,8 +328,6 @@ func TestAutoMigrateAddsJournalTables(t *testing.T) {
 		}
 	}
 
-	// The composite unique index is the one constraint the write path relies on, so its
-	// absence would not surface until two retried posts had written two rows.
 	if !db.Migrator().HasIndex(&models.JournalEntry{}, "idx_journal_user_client") {
 		t.Error("Expected the composite unique index idx_journal_user_client")
 	}
@@ -394,9 +347,6 @@ func TestAutoMigrateAddsJournalTables(t *testing.T) {
 	}
 }
 
-// assertIndexColumns checks an index's columns and their order, which HasIndex does not:
-// a unique index on client_id alone would satisfy HasIndex and would reserve every client
-// id across every user.
 func assertIndexColumns(t *testing.T, db *gorm.DB, table, index string, want []string, unique bool) {
 	t.Helper()
 	indexes, err := db.Migrator().GetIndexes(table)
@@ -425,15 +375,6 @@ func assertIndexColumns(t *testing.T, db *gorm.DB, table, index string, want []s
 	t.Errorf("Expected an index named %s on %s", index, table)
 }
 
-// TestJournalEntryPayloadRoundTrip walks a check-in payload through the serializer:json
-// column and back. It matters more here than for stats: a snapshot's stats are a flat map
-// of ints, while a payload nests an array of objects inside an object, and that is the
-// shape a hand-rolled encoder gets wrong.
-//
-// Every number is written as a float64 on purpose. JSON has one number type, so an int
-// written here comes back as a float64 and a DeepEqual over the two would fail on the type
-// rather than on the value — which is a fact about the column, and worth a reader knowing
-// before they store an int and compare it later.
 func TestJournalEntryPayloadRoundTrip(t *testing.T) {
 	db := openJournalDB(t, "payload.db")
 
@@ -479,8 +420,6 @@ func TestJournalEntryPayloadRoundTrip(t *testing.T) {
 		t.Errorf("Expected the payload to round-trip identically.\n got: %#v\nwant: %#v", retrieved.Payload, payload)
 	}
 
-	// Spelled out as well as compared, because a DeepEqual failure on a nested map says
-	// very little about which level went wrong.
 	feelings, ok := retrieved.Payload["feelings"].([]interface{})
 	if !ok || len(feelings) != 2 {
 		t.Fatalf("Expected two feelings in the round-tripped payload, got %#v", retrieved.Payload["feelings"])
@@ -520,10 +459,6 @@ func TestJournalEntryPayloadRoundTrip(t *testing.T) {
 	}
 }
 
-// TestJournalEntryClientIDIsUniquePerUser is the constraint a retried POST depends on: the
-// same entry sent twice must collide rather than land twice. Per user, not globally — two
-// clients mint ids independently, and a global unique index would let one user's id make
-// another user's write fail.
 func TestJournalEntryClientIDIsUniquePerUser(t *testing.T) {
 	db := openJournalDB(t, "client-id.db")
 
@@ -553,8 +488,6 @@ func TestJournalEntryClientIDIsUniquePerUser(t *testing.T) {
 		t.Errorf("Expected two rows carrying that client id, one per user, got %d", count)
 	}
 
-	// A soft-deleted entry keeps its client id reserved on purpose: a retry after a delete
-	// should collide rather than resurrect the row.
 	if err := db.Delete(&first).Error; err != nil {
 		t.Fatalf("Failed to soft-delete the first entry: %v", err)
 	}
@@ -564,9 +497,6 @@ func TestJournalEntryClientIDIsUniquePerUser(t *testing.T) {
 	}
 }
 
-// TestJournalMentionBelongsToItsEntry covers the association and the two columns that carry
-// a name the user said: a mention may name a relationship or only a label, because a person
-// can be mentioned before they are anyone in the database.
 func TestJournalMentionBelongsToItsEntry(t *testing.T) {
 	db := openJournalDB(t, "mentions.db")
 

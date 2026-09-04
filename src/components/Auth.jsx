@@ -5,14 +5,8 @@ import { rememberEmail, lastEmail, isStayingSignedIn, setStaySignedIn } from '..
 
 export default function Auth({ onLogin }) {
     const [isLogin, setIsLogin] = useState(true);
-    // Prefilled from the last successful sign-in on this device. The address only — the
-    // passphrase is never stored, which is what the refresh token in `src/auth/session.js`
-    // exists to avoid needing.
     const [email, setEmail] = useState(lastEmail);
     const [password, setPassword] = useState('');
-    // Defaults to whatever was chosen last, and to on for someone who has never chosen. This
-    // is a self-hosted app on a personal device; being asked for a password every day is the
-    // complaint this exists to answer, not the safety it provides.
     const [staySignedIn, setStay] = useState(isStayingSignedIn);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
@@ -37,9 +31,6 @@ export default function Auth({ onLogin }) {
                 // screen from reappearing tomorrow.
                 onLogin(response.data);
             } else {
-                // Auto login after signup or ask to login
-                // For simplicity, let's switch to login view or auto-login if backend returned token (it usually doesn't for signup unless implemented)
-                // My backend signup implementation returns { message: "User created" }
                 setIsLogin(true);
                 setError('Account created! Please log in.');
             }
@@ -89,8 +80,6 @@ export default function Auth({ onLogin }) {
                         />
                     </div>
 
-                    {/* Sign-in only. On the signup branch there is no session to keep yet,
-                        and a control that does nothing is worse than an absent one. */}
                     {isLogin && (
                         <label
                             htmlFor="stay-signed-in"

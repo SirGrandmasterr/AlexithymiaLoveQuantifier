@@ -1,13 +1,3 @@
-/**
- * The scoring under the feeling half of §5.7's gate — pure, so it runs in `npm test` while
- * the eval it feeds does not (see the note at the top of `wer.test.mjs`).
- *
- * The last block is the one that matters most: it runs the real golden suite's hand-written
- * references through this file's `satisfies`, and every one of the 120 has to pass. That is
- * what holds this reading and `validate.test.js`'s together — if the two ever drift, a model
- * would be graded by one standard and the references by another, and the gate would be
- * measuring the drift.
- */
 import { describe, expect, it } from 'vitest';
 import { aggregate, ambiguityConfusion, perIdMetrics, satisfies, scoreCase } from './score.mjs';
 // Vite resolves these; the harness itself reads the same two files with `readFile`, because it
@@ -188,19 +178,10 @@ describe('the golden suite, read by this file rather than by the offline one', (
 
     it('carries enough non-"none" ambiguity cases for that criterion to mean something', () => {
         const scores = transcripts.map(entry => scoreCase({ entry, proposal: entry.reference }));
-        // Twenty of the hundred and twenty. §5.7 wants 0.9 of them correct, so the criterion
-        // fails on the third wrong answer — tight enough to bite, and not so tight that one
-        // case decides a tier default.
         expect(scores.filter(score => score.ambiguityIsCase).length).toBe(20);
     });
 
     it('splits evenly between the two languages, bar the one case that is about a third', () => {
-        // Sixty and sixty by pair; sixty and fifty-nine by spoken language, because D1's
-        // `other-language` pair swaps them on purpose — the `.en` half is French and the
-        // `.de` half is English, to see whether the model declares the language it heard
-        // rather than the one it was asked about. The harness groups WER by what was *said*
-        // (`entry.language`), so that pair contributes one French clip to a group of its own
-        // and one more English clip, and the German-versus-English margin is unaffected.
         expect(transcripts.filter(entry => entry.id.endsWith('.en')).length).toBe(60);
         expect(transcripts.filter(entry => entry.id.endsWith('.de')).length).toBe(60);
         expect(transcripts.filter(entry => entry.language === 'en').length).toBe(60);
@@ -231,9 +212,6 @@ describe('the recording plan', () => {
             const ceilings = recordings.difficulty[name];
             expect(typeof ceilings.clean, name).toBe('number');
             expect(typeof ceilings.noisy, name).toBe('number');
-            // A noisy clip may not be held to a *tighter* ceiling than its clean twin. `short`
-            // is the case where they are equal, because two words quantise WER to steps of 0.5
-            // and the number there means "at most one word wrong" in both conditions.
             expect(ceilings.noisy, name).toBeGreaterThanOrEqual(ceilings.clean);
         });
     });
@@ -248,9 +226,6 @@ describe('the recording plan', () => {
     });
 
     it('keeps both halves of a pair in the same difficulty class', () => {
-        // The point of a pair is that its halves differ in language and in nothing else. A
-        // German half held to a looser ceiling than its English twin would make the §5.7
-        // margin a comparison of two ceilings rather than of two languages.
         const byPair = new Map();
         recordings.clips.forEach((row) => {
             const pair = transcripts.find(entry => entry.id === row.case).pair;

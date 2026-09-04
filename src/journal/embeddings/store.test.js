@@ -9,15 +9,6 @@ import {
 } from './store';
 import { INDEX_DIMS } from './embed';
 
-/**
- * The device-local index: what a row is, when a row is stale, and what a logout leaves.
- *
- * jsdom has no IndexedDB and this repository carries no polyfill for one, which is exactly
- * why `createVectorIndex` takes its backing store as a parameter. The memory backend below
- * lives here and only here — it is a test double, not a second implementation, and putting
- * it in the module would put a store that forgets everything into the app.
- */
-
 const memoryBackend = () => {
     const rows = new Map();
     return {

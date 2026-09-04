@@ -1,18 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
-/**
- * Discretion mode: shoulder-surfing protection, and nothing more than that.
- *
- * It is honest about its own scope. Names collapse to initials and notes blur **on this
- * screen**; the data is unchanged, the API responses are unchanged, and anyone with access
- * to the server files can still read everything. It defends against the person sitting next
- * to you, which is the threat this app actually has.
- *
- * Deliberately not transformed: `aria-label`s and titles used by assistive technology keep
- * the real name. Hiding a name from a screen reader would harm a user without protecting
- * them from anyone looking at the screen.
- */
-
 const DiscretionContext = createContext(null);
 
 const STORAGE_KEY = 'alq:discreet';
@@ -25,10 +12,6 @@ export const useDiscretion = () => {
     return value;
 };
 
-/**
- * "Alex" → "A.", "Sam Taylor" → "S. T.". Enough to tell your own stacks apart at a glance
- * without the name being readable across a room.
- */
 export const initials = (name) => {
     const words = String(name || '').trim().split(/\s+/).filter(Boolean);
     if (words.length === 0) return '—';
@@ -38,14 +21,6 @@ export const initials = (name) => {
 /** The blur applied to notes and tags. Literal strings — Tailwind cannot see composed ones. */
 export const BLUR_CLASS = 'blur-[3px] hover:blur-none focus-within:blur-none transition-[filter] duration-150';
 
-/**
- * Whether discretion mode is on, read straight from storage.
- *
- * Exported because not every consumer is a component: the vault dial's click track
- * (`src/mobile/knobFeedback.js`) has to know, and it is called from a pointer handler rather
- * than rendered. Reading the same key the provider writes keeps one source of truth — a
- * second copy of the string is how a mode ends up half-applied.
- */
 export const isDiscreetOnThisDevice = () => {
     try {
         return window.localStorage.getItem(STORAGE_KEY) === 'true';

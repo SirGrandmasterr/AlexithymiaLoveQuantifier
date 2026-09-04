@@ -5,16 +5,6 @@ import { DEEP_LINK_TARGETS, deepLinkTarget, pathFromLaunchUrl, watchDeepLinks } 
 import { JOURNAL_RECORD_PATH, RITUAL_PATH } from '../constants/journal';
 import AppLock, { hashPassphrase, setLockHash } from '../components/AppLock';
 
-/**
- * The two intents that name a screen: the reminder's tap and the launcher's shortcut.
- *
- * The second half of this file is the one §9.6 asks to be **verified rather than assumed** —
- * that a deep link lands on the lock screen first. It is a structural claim (the listener
- * lives under `AppLock`, which renders its children or the lock and never both), so it is
- * tested structurally: with a passphrase set, nothing registers and nothing navigates, and the
- * event Capacitor retained arrives only once the passphrase has been accepted.
- */
-
 const platformState = vi.hoisted(() => ({ native: true }));
 
 vi.mock('./platform', async (importOriginal) => ({
@@ -22,13 +12,6 @@ vi.mock('./platform', async (importOriginal) => ({
     isNative: () => platformState.native
 }));
 
-/**
- * A Capacitor listener registry with **retention**, because that is the behaviour the lock
- * case rests on: `Plugin.notifyListeners(name, data, retainUntilConsumed = true)` on the
- * native side holds an event that has no listener and hands it to the first one to register
- * (`Plugin.java`, `sendRetainedArgumentsForEvent`; the JavaScript side does the same in
- * `@capacitor/core`). Both events this app listens for are fired with that flag.
- */
 const bridge = vi.hoisted(() => {
     const state = { listeners: new Map(), retained: new Map() };
 
@@ -88,9 +71,7 @@ beforeEach(() => {
     window.localStorage.clear();
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* What a path may be                                                                     */
-/* ------------------------------------------------------------------------------------ */
+/* What a path may be */
 
 describe('the paths an intent may name', () => {
     it('reads the launcher shortcut as the journal, armed', () => {
@@ -105,10 +86,6 @@ describe('the paths an intent may name', () => {
     });
 
     it('refuses anything this app did not declare', () => {
-        // Every screen is behind the same session and the same lock, so none of these is a
-        // hole today. `MainActivity` is exported because it is the launcher activity, which
-        // means any installed app can send it an intent, and choosing the screen is not a
-        // decision to hand to one.
         expect(pathFromLaunchUrl('com.thinkmusic.alexithymia://profile')).toBeNull();
         expect(pathFromLaunchUrl('com.thinkmusic.alexithymia://journal?record=2')).toBeNull();
         expect(pathFromLaunchUrl('https://example.com/journal/ritual')).toBeNull();
@@ -120,9 +97,7 @@ describe('the paths an intent may name', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* The two channels                                                                       */
-/* ------------------------------------------------------------------------------------ */
+/* The two channels */
 
 describe('watching for one', () => {
     it('hands over the ritual when the reminder is tapped', () => {
@@ -176,9 +151,7 @@ describe('watching for one', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* §9.6: the lock is outermost, and the deep link lands on it first                        */
-/* ------------------------------------------------------------------------------------ */
+/* §9.6: the lock is outermost, and the deep link lands on it first */
 
 describe('a deep link on a locked phone', () => {
     it('lands on the lock screen, and opens the ritual only once the passphrase is accepted', async () => {

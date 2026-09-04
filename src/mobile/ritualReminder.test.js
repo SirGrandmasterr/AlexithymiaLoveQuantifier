@@ -9,16 +9,6 @@ import {
 import { syncReminders } from './cadenceReminders';
 import { JOURNAL_COPY, JOURNAL_STORAGE_KEYS, RITUAL_PATH } from '../constants/journal';
 
-/**
- * The nightly reminder (§3.6, §9.6).
- *
- * The plugin is faked with a **store** rather than with bare spies, because the two claims
- * that matter most are about state and not about calls: *one pending notification per night*
- * and *rescheduling replaces it*. A `vi.fn()` can only say that `schedule` was called twice;
- * a fake that keeps a pending list by id can say that twice produced one row, which is the
- * sentence the design document actually makes.
- */
-
 const platformState = vi.hoisted(() => ({ native: true }));
 
 vi.mock('./platform', async (importOriginal) => ({
@@ -79,9 +69,7 @@ beforeEach(() => {
     vi.restoreAllMocks();
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* The body, which is the whole point                                                     */
-/* ------------------------------------------------------------------------------------ */
+/* The body, which is the whole point */
 
 describe('what the notification says', () => {
     it('carries the fixed sentence and nothing else', async () => {
@@ -127,9 +115,7 @@ describe('what the notification says', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* One per night, replaced rather than stacked                                            */
-/* ------------------------------------------------------------------------------------ */
+/* One per night, replaced rather than stacked */
 
 describe('what is pending', () => {
     it('schedules exactly one, at the hour the user chose', async () => {
@@ -191,9 +177,7 @@ describe('what is pending', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* The permission, and the failures that must not reach a screen                          */
-/* ------------------------------------------------------------------------------------ */
+/* The permission, and the failures that must not reach a screen */
 
 describe('the permission', () => {
     it('is asked for when the ritual is switched on, and only then', async () => {
@@ -242,9 +226,7 @@ describe('the permission', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* The two channels                                                                       */
-/* ------------------------------------------------------------------------------------ */
+/* The two channels */
 
 describe('beside the cadence reminders', () => {
     it('survives a cadence re-sync, which used to cancel every pending notification', async () => {

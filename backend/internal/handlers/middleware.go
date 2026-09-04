@@ -37,15 +37,6 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// A signature is not an account. A token stays valid for its full lifetime even
-		// after the user row behind it is gone — a dropped volume, a `down -v`, a deleted
-		// account — and every protected route then runs for a user id that names nobody.
-		// The symptom is not an error page but a working-looking one: /me answered 404
-		// ("failed to load profile data") and the list endpoints answered `[]`, neither of
-		// which any client can act on, while the browser held a token it would keep sending
-		// forever. 401 is the honest answer, and it is the one the frontend's response
-		// interceptor already handles by clearing the token and returning to the landing
-		// page.
 		var user models.User
 		if err := database.DB.Select("id").First(&user, claims.UserID).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {

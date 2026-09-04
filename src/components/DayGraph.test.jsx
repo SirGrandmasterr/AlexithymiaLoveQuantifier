@@ -1,10 +1,6 @@
 import React from 'react';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-// `.jsx` spelled out, and it has to be. `dayGraph.js` and `DayGraph.jsx` differ only in case,
-// Windows and macOS filesystems do not, and Vite tries `.js` before `.jsx` — so a bare
-// `'./DayGraph'` resolves to the *geometry* module here, with no default export and no error
-// beyond "element type is invalid". See the same comment in `Journal.jsx`.
 import DayGraph, { MAX_YAW, ROTATE_PX, dayGraphInfo, dayWindow, opacityStops, timeMarks } from './DayGraph.jsx';
 import {
     EXTRAPOLATED_OPACITY,
@@ -15,17 +11,6 @@ import {
 } from './dayGraph.js';
 import { DiscretionProvider } from '../context/DiscretionContext';
 import { JOURNAL_COPY, fillCopy, humanMinutes } from '../constants/journal';
-
-/**
- * The component tests §8.4 says are only possible because this is hand-drawn SVG: a count of
- * `<path>`s, a `stroke-dasharray`, and an opacity — none of which a Recharts chart renders
- * under jsdom at all (invariant 19).
- *
- * Everything about *where* a line goes is `dayGraph.test.js`'s, with 62 tests against fixtures
- * and no DOM. What is here is the other half: that the drawing is a faithful `map` over that
- * geometry, that the camera moves, and that the gesture takes the axis it is allowed to take
- * and no more.
- */
 
 const DAY = '2026-08-21';
 
@@ -45,14 +30,6 @@ const checkin = (id, hour, minute, feelings, extra = {}) => ({
     mentions: []
 });
 
-/**
- * A day with something of everything in it: two feelings at one moment, one of them marked
- * unsure, one repeated three and a half hours later, `unclear` in the evening, and the
- * ritual's closing word — which carries no strength at all (§6.5).
- *
- * The one at 09:00 also names a person and a trigger, so the discretion test has something to
- * find if the graph ever grew a name.
- */
 const PERSON = 'Lucie';
 const TRIGGER = 'the deadline';
 
@@ -77,12 +54,6 @@ const pathFor = (feeling) => drawing().querySelector(`path[data-feeling="${feeli
 
 const draw = (props = {}) => render(<DayGraph day={DAY} entries={day} {...props} />);
 
-/**
- * Dispatched directly rather than through `fireEvent`, and wrapped in `act`: the graph listens
- * with `{ passive: false }` on the plot container, outside React's own event system, and what
- * these tests are about is whether that listener claims the gesture. Copied from the card
- * stack's tests, which is also where the 45 px and the 12 px come from.
- */
 const touch = (element, type, x, y) => {
     const event = new Event(type, { bubbles: true, cancelable: true });
     event.touches = [{ clientX: x, clientY: y }];
@@ -90,9 +61,7 @@ const touch = (element, type, x, y) => {
     return event;
 };
 
-/* ------------------------------------------------------------------------------------ */
-/* The drawing is a map over the geometry                                                 */
-/* ------------------------------------------------------------------------------------ */
+/* The drawing is a map over the geometry */
 
 describe('what gets drawn', () => {
     it('draws exactly one path per branch lifetime', () => {
@@ -162,9 +131,7 @@ describe('what gets drawn', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* The camera                                                                             */
-/* ------------------------------------------------------------------------------------ */
+/* The camera */
 
 describe('turning the drawing', () => {
     it('changes the projection when a button is pressed', async () => {
@@ -246,9 +213,7 @@ describe('turning the drawing', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* Touch-axis ownership (invariant 2g)                                                    */
-/* ------------------------------------------------------------------------------------ */
+/* Touch-axis ownership (invariant 2g) */
 
 describe('the axis the graph is allowed to take', () => {
     it('declares `pan-y` on the plot, and claims nothing above it', () => {
@@ -307,9 +272,7 @@ describe('the axis the graph is allowed to take', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* The ⓘ                                                                                  */
-/* ------------------------------------------------------------------------------------ */
+/* The ⓘ */
 
 describe('the ⓘ', () => {
     it('states the half-life the drawing actually uses', async () => {
@@ -343,9 +306,7 @@ describe('the ⓘ', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* A tap on a branch                                                                      */
-/* ------------------------------------------------------------------------------------ */
+/* A tap on a branch */
 
 describe('a tap on a branch', () => {
     it('opens the check-in it came from', async () => {
@@ -388,9 +349,7 @@ describe('a tap on a branch', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* A day with nothing in it, and a day under discretion                                   */
-/* ------------------------------------------------------------------------------------ */
+/* A day with nothing in it, and a day under discretion */
 
 describe('a day with nothing in it', () => {
     it('draws nothing at all, and does not throw', () => {
@@ -434,9 +393,7 @@ describe('discretion mode', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* The axis, as a function                                                                */
-/* ------------------------------------------------------------------------------------ */
+/* The axis, as a function */
 
 describe('dayWindow', () => {
     it('runs the civil day, 04:00 to 04:00', () => {
@@ -476,9 +433,6 @@ describe('opacityStops', () => {
             { x: 100, opacity: EXTRAPOLATED_OPACITY }
         ]);
 
-        // Two stops at one offset: SVG's way of writing a step, which is what
-        // `extrapolated: true` at a minute is. And no stop of zero extent at the end,
-        // which would describe a run that is not drawn.
         expect(stops.filter(stop => stop.offset === 0.6)).toHaveLength(2);
         expect(stops[0]).toEqual({ offset: 0, opacity: 1 });
         expect(stops[stops.length - 1]).toEqual({ offset: 1, opacity: EXTRAPOLATED_OPACITY });

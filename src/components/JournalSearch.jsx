@@ -15,36 +15,7 @@ import {
     timeOfDay
 } from '../constants/journal';
 
-/**
- * `/journal/search` — *"When did I last feel like this about work?"* (§5.8's third use).
- *
- * **Results are entries, and the app never summarises them.** There is no paragraph here
- * saying what the results have in common, no count, no trend and no score: every row is one
- * day the user wrote, with the words they wrote on it, and a link to that day. §5.8's rule 2
- * and the roadmap's no-hidden-math invariant both forbid the other thing, and the way this
- * screen keeps to it is by having nowhere to put a number — `recall` returns documents with
- * the ordering already thrown away.
- *
- * **Two lists, not one.** *Entries with these words* is a fact the reader can check by
- * looking at the row. *Entries with similar words* is this device's guess, and it is under
- * its own heading with its own sentence saying what was compared. A guess presented in the
- * same list as a find would be similarity making a claim.
- *
- * **Why the screen is behind the index toggle even though half of it needs no model.** The
- * lexical half would work with the feature off, and offering it would be the better product
- * in isolation. It is not offered, because §9.7 gives this one control — *"similar-entry
- * suggestions **and search**"* — and a search that quietly worked while the toggle said off
- * would make the settings row and the Vault's *"none are being made"* both untrue. G1
- * narrowed that label because it had built only the first half; this screen is what restores
- * it, and the two arrive together or not at all.
- *
- * **Discretion blurs the words and masks the names** (§9.6), exactly as the day view does: a
- * search result is a transcript excerpt, which is the most private thing this app renders.
- */
-
-/* ------------------------------------------------------------------------------------ */
-/* The pieces                                                                             */
-/* ------------------------------------------------------------------------------------ */
+/* The pieces */
 
 /** Long enough to recognise the day by, short enough that the list stays a list. */
 const EXCERPT = 160;
@@ -58,10 +29,6 @@ const Note = ({ children }) => (
     <p className="text-xs text-slate-400 font-light leading-relaxed max-w-md">{children}</p>
 );
 
-/**
- * One result: the day it is on, when in the day, its words, and the feelings it was filed
- * under. Nothing about *why* it is here — the heading above it already said that.
- */
 const Result = ({ doc }) => {
     const { blurClass } = useDiscretion();
 
@@ -130,9 +97,7 @@ const Results = ({ heading, note, docs, group }) => {
     );
 };
 
-/* ------------------------------------------------------------------------------------ */
-/* The screen                                                                             */
-/* ------------------------------------------------------------------------------------ */
+/* The screen */
 
 export default function JournalSearch() {
     const { loading, loadError, dismissLoadError, loadAll } = useJournal();
@@ -146,11 +111,6 @@ export default function JournalSearch() {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState({ matched: [], similar: [] });
 
-    // Every keystroke starts a search and the embedding half of one is asynchronous, so two
-    // can land out of order. `live` is the whole guard: React runs the previous effect's
-    // cleanup before the next effect body, so exactly one closure has `live === true` at any
-    // moment and an older answer cannot be drawn over a newer one. (A run counter beside it
-    // said the same thing twice and could not disagree with it.)
     useEffect(() => {
         if (!enabled || !query.trim()) {
             setResults({ matched: [], similar: [] });
@@ -174,9 +134,6 @@ export default function JournalSearch() {
         [query, results]
     );
 
-    // The same heading in both states, written once: the screen is the same place whether or
-    // not the switch is on, and the off state is a sentence inside it rather than a different
-    // page.
     const header = (
         <header className="space-y-1">
             <h1 className="text-xl sm:text-2xl font-light text-slate-800">{copy.heading}</h1>

@@ -2,13 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { MoreHorizontal } from 'lucide-react';
 import { cadenceLabel } from '../constants/cadence';
 
-/**
- * The stack header: what this pile of cards is, and what can be done to it as a whole.
- *
- * The card's own pencil edits one version; these act on the relationship. Keeping them in
- * separate places is the point — before Phase 4 the only rename available was the
- * per-version one, which silently split the stack instead of renaming it.
- */
 export default function StackActions({ stack, onRename, onCadence, onMerge, onDelete }) {
     const [open, setOpen] = useState(false);
     const containerRef = useRef(null);
@@ -39,8 +32,6 @@ export default function StackActions({ stack, onRename, onCadence, onMerge, onDe
 
     return (
         <div className="flex items-baseline justify-between gap-2 mb-2 px-1">
-            {/* The card below already carries the name in full; repeating it here would
-                just be noise. The menu button names the stack for screen readers. */}
             <span className="text-[11px] uppercase tracking-widest text-slate-400 truncate">
                 {count} snapshot{count === 1 ? '' : 's'}
                 {cadence && (
