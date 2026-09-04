@@ -11,7 +11,8 @@ import {
     FeelingChip,
     Frame,
     LoadFailed,
-    Loading
+    Loading,
+    QuoteLine
 } from './Journal';
 import {
     JOURNAL_COPY,
@@ -136,8 +137,9 @@ const MentionEntry = ({ entry, relationshipId }) => {
             {feelings.length > 0 && (
                 <ul className="flex flex-wrap gap-2">
                     {feelings.map((feeling, index) => (
-                        <li key={`${feeling.id ?? 'feeling'}-${index}`}>
+                        <li key={`${feeling.id ?? 'feeling'}-${index}`} className="flex flex-wrap items-center gap-2">
                             <FeelingChip feeling={feeling} />
+                            <QuoteLine quote={feeling.quote} />
                         </li>
                     ))}
                 </ul>

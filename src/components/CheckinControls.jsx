@@ -9,6 +9,7 @@ import {
     JOURNAL_COPY,
     MAX_TRIGGER_LABEL,
     PAYLOAD_VERSION,
+    TRIGGER_ROLES,
     UNCLEAR_FEELING_ID,
     activeFeelings,
     civilDay,
@@ -297,9 +298,15 @@ export const buildCheckinRequest = ({
     const declareTrigger = (about) => {
         if (triggersSeen.has(about.clientId)) return about.clientId;
         triggersSeen.add(about.clientId);
-        triggers.push(about.isNew
-            ? { label: about.label, client_id: about.clientId }
-            : { trigger: about.clientId });
+        if (about.isNew) {
+            const minted = { label: about.label, client_id: about.clientId };
+            // Which half the new word is, when the card knew. Absent stays absent: an
+            // existing trigger keeps the role it was minted with, and a chip has none.
+            if (TRIGGER_ROLES.includes(about.role)) minted.role = about.role;
+            triggers.push(minted);
+        } else {
+            triggers.push({ trigger: about.clientId });
+        }
         return about.clientId;
     };
 
@@ -313,6 +320,8 @@ export const buildCheckinRequest = ({
         const feeling = { id: entry.id, intensity: entry.intensity, about };
         // Absent, never `false` (invariant 14). Only `true` is a statement the user made.
         if (entry.uncertain === true) feeling.uncertain = true;
+        // The words behind it, when a model quoted them and the user kept the feeling.
+        if (typeof entry.quote === 'string' && entry.quote.trim()) feeling.quote = entry.quote.trim();
         return feeling;
     });
 

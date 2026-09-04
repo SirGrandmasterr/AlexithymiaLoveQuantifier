@@ -590,7 +590,7 @@ Request ([`CreateJournalEntryInput`](../backend/internal/handlers/journal.go)):
 | `mentions[]` | Each carries `ref` (its position, which a feeling's `about` points at), a `label` (the name as it was said, ≤ 40 characters), and **exactly one** of `relationship_id` or `name`. |
 | `mentions[].relationship_id` | Must be the caller's, else `404` for the whole request and nothing is written. |
 | `mentions[].name` | Trimmed, non-blank; resolved through `database.FindOrCreateRelationship` **inside the transaction** — the same function the snapshot path and the backfill use, so a check-in and a snapshot naming one person land on one relationship. The echoed row carries the resolved id, and the `label` defaults to the resolved name. |
-| `triggers[]` | Each is either `{"trigger": "<client_id>"}`, naming one of the caller's **live** (neither deleted nor superseded) `kind: "trigger"` entries — else `404` for the whole request — or `{"label": "…", "client_id": "…"}`, a new trigger created as its own entry **before** the one referencing it. Minting is find-or-create: naming the same new trigger twice creates it once. |
+| `triggers[]` | Each is either `{"trigger": "<client_id>"}`, naming one of the caller's **live** (neither deleted nor superseded) `kind: "trigger"` entries — else `404` for the whole request — or `{"label": "…", "client_id": "…"}`, a new trigger created as its own entry **before** the one referencing it. Minting is find-or-create: naming the same new trigger twice creates it once. A new one may carry `"role": "entity"` or `"role": "interaction"` (`domain.TriggerRoles`), stored on the minted row's payload; anything else is `400`, and an absent role stays absent. |
 | `supersedes_id` | Optional. The entry this one corrects. Must be the caller's (`404`) and not already superseded (`409`); it is stamped with this entry's own `at`, so the pair reads consistently in an export. |
 
 **Payload rules by kind** ([design §6.5](../product_vision/06-emotional-journal.md)). Every
@@ -606,16 +606,16 @@ user kept. Neither is input to anything: the server validates ids, not opinions.
 
 | `kind` | Validated |
 | :----- | :-------- |
-| `checkin` | ≤ 5 `feelings`, each `id` a known feeling; `intensity`, **when present**, is 1–3 — an absent one is not a zero, and the ritual's day word (`source: "ritual_word"`) is one tap on one word with no strength in it to record; every `about` is `person` (whose `ref` must index a mention), `tag` (≤ 40 characters) or `trigger` (whose id must appear in `triggers[]`); `tags` under the snapshot tag limits and stored trimmed; `transcript` ≤ 4 000 characters; `proposal.proposed` / `proposal.accepted` are known feeling ids. |
+| `checkin` | ≤ 5 `feelings`, each `id` a known feeling; `intensity`, **when present**, is 1–3 — an absent one is not a zero, and the ritual's day word (`source: "ritual_word"`) is one tap on one word with no strength in it to record; `quote`, when present, ≤ 300 characters and otherwise untouched (it is the user's own words, quoted); every `about` is `person` (whose `ref` must index a mention), `tag` (≤ 40 characters) or `trigger` (whose id must appear in `triggers[]`); `tags` under the snapshot tag limits and stored trimmed; `transcript` ≤ 4 000 characters; `proposal.proposed` / `proposal.accepted` are known feeling ids. |
 | `ritual` | Every key of `answers` and every entry of `question_set.asked` is a known question id, and every answer is a boolean; `day_word.id` is a known feeling. **A skipped question is absent from `answers`** — never `false` — and its absence is never an error. |
 | `person_fact` | Exactly one mention; `text` ≤ 120 characters. |
-| `trigger` | `label` trimmed, non-blank, ≤ 40 characters, and stored trimmed; `merged_into`, if present, names one of the caller's live triggers and not this one. |
+| `trigger` | `label` trimmed, non-blank, ≤ 40 characters, and stored trimmed; `merged_into`, if present, names one of the caller's live triggers and not this one; `role`, if present, is `entity` or `interaction`. |
 
 | Status | Body |
 | :----- | :--- |
 | `201` | The created row: `ID`, `CreatedAt`, the stored payload, and every mention with its resolved `relationship_id`. |
 | `200` | This `client_id` is already stored for this user; body is that row, mentions and all. Nothing else happens. |
-| `400` | `{"error":"…"}` naming the field — `unknown feeling id: bliss`, `unknown ritual question: hydrated`, `day must be within 36 hours of at`, `mention 1 needs relationship_id or name`, `feelings[0].intensity must be between 1 and 3`, `unlisted trigger: <id>`, `person_fact needs exactly one mention`, `client_id must be a UUID`, `payload.v must be 1`, `unknown trigger in merged_into: <id>`. Mentions and triggers are numbered from zero, the way `about.ref` addresses them. |
+| `400` | `{"error":"…"}` naming the field — `unknown feeling id: bliss`, `unknown ritual question: hydrated`, `day must be within 36 hours of at`, `mention 1 needs relationship_id or name`, `feelings[0].intensity must be between 1 and 3`, `feelings[0].quote exceeds 300 characters`, `unlisted trigger: <id>`, `triggers[0].role must be one of entity or interaction, got "place"`, `person_fact needs exactly one mention`, `client_id must be a UUID`, `payload.v must be 1`, `unknown trigger in merged_into: <id>`. Mentions and triggers are numbered from zero, the way `about.ref` addresses them. |
 | `401` | `{"error":"User ID not found in context"}` |
 | `404` | A `relationship_id`, a `supersedes_id`, or a referenced trigger that is not the caller's. Nothing is written. |
 | `409` | `supersedes_id` is already superseded, or the `client_id` is held by a **soft-deleted** entry — a retry after a delete conflicts rather than resurrecting the row. |

@@ -15,6 +15,7 @@ has not had:
 | **6-F** Android depth | **implemented in code** | F1–F2, 2026-09-04 | **nothing has run on a phone**; every device check is the operator's |
 | **6-G** The embedding index | **implemented in code, five of six uses** | G1–G2, 2026-09-04 | **the real model has never been loaded on any machine**; no native runtime; *already known?* deliberately not built |
 | **Z** Closeout | **done** | 2026-09-04 | — |
+| **6-H** The EmotionGuesser integration | **implemented in code**, after closeout | H1, 2026-09-04 | **no model has produced a v2 proposal on any machine**; the drift drawings have been seen only over fixtures — see §11's 6-H |
 
 The one-line version, because a status table can be read as more comfort than it is: **every
 line of this phase runs against a fake or against nothing.** Whisper tiny is the single model
@@ -2586,6 +2587,63 @@ model change marks them stale; `npm test` never loads real weights.
 a new trigger exists; accept it and confirm nothing was merged without the tap; search for a
 German phrase and get the right day; sign out and confirm the index is gone; the Vault line
 names EmbeddingGemma and its terms.
+
+### 6-H — The EmotionGuesser integration · **implemented 2026-09-04 (H1), after the closeout**
+
+> Added after the phase closed, on the operator's instruction to fold the standalone
+> *EmotionGuesser* prototype (a Python/Streamlit voice diary whose extraction quality had been
+> found substantially better) into this app. **Everything below runs against a fake or against
+> fixtures**, on the same terms as 6-C through 6-G: no model has produced a version-2 proposal on
+> any machine, and the drift drawings have been seen only over test data.
+
+**Outcome:** the prototype's four ideas, each in this app's material and under its invariants.
+
+1. **A trigger is two halves.** *Who or what* (an `entity`) and *what happened* (an
+   `interaction`), so *Lucie · meeting* and *Lucie · breakup* stay apart and *meetings with
+   anyone* pools. A `role` on the trigger row (`domain.TriggerRoles`; `payload.role`; optional,
+   absent on every older row and read as an entity), minted from the card with the new trigger
+   and carried through rename and merge. A person is always a person — §4.5 unchanged.
+2. **Evidence.** Every proposed feeling carries a `quote`: the words from the note that show it,
+   shown on the card under the chip and saved with the feeling if it is kept. It is the one
+   model-authored slot whose truth can be checked, so it is checked — a quote the transcript
+   does not contain is dropped before the card sees it — and never word-filtered, on the
+   transcript's carve-out. The server caps it at 300 characters and reads nothing else in it.
+3. **The review band.** `labelSimilarity` (the prototype's string similarity, carried over whole)
+   and `SIMILAR_FLOOR` = 0.62: a label or a name that *looks like* one the user has is offered
+   beside *new trigger* / *new person* as a question, on the same footing as §4.5's candidates,
+   and is never linked on the score. *Lucy* is proposed as *Lucie*; it is not merged. On every
+   device, with no model — the embedding index's offer (6-G) sits beside it, not instead of it.
+4. **Drift, on read.** `/journal/insights`: the observation table (`observationsOf`), the three
+   groupings (`atLevel`: pair, person, trigger), EWMA / slope / distance / weekly mood / heatmap /
+   families (`drift.js`, the prototype's `drift.py` case for case), drawn as hand-made SVG over
+   pure geometry (`charts.js`) — circumplex, drift bars, one-over-time, heatmap, three weekly
+   strips, a family radar — with every figure a sentence and the ⓘ stating the constants. The
+   vocabulary gained a third fixed axis for it (`dominance`) and a `family`.
+
+**And the vocabulary.** Nine feelings appended — *amusement, affection, admiration, relief,
+compassion, regret, disappointment, disgust, contempt* — the Geneva-wheel families the
+twenty-one had no word for. **This is the one place 6-H stepped over §5.3's rule** that a row
+changes on the user test's evidence, and it did so on the operator's instruction to integrate the
+prototype's vocabulary; the ids are permanent, the order is append-only, `guilt` was left out
+because it is on the forbidden list, and `hate` because the app has no register for it. Prompt
+version **2**.
+
+**Depends on:** 6-D (the card, the contract, the provenance block) and 6-A (triggers).
+
+**Verification**
+
+*Automated:* `journal.test.js` (the three axes, the families, the review band's cases,
+`readCheckin`'s quote, `readTrigger`'s role through rename and merge); `validate.test.js` (quote
+kept / dropped / read against the caller's transcript / never word-filtered; role kept / dropped;
+the prompt lists things and happenings apart); `observations.test.js`, `drift.test.js`,
+`charts.test.js` (the prototype's `test_pipeline.py` ported); `JournalInsights.test.jsx` (counts
+the SVG); `ProposalCard.test.jsx` (the quote line, the look-alike offer taken only on a tap, the
+role minted); Go: `TriggerRoles`, the role stored and refused, the quote capped. `npm test` 1571,
+`go test ./...`, `vite build` green.
+
+*Manual QA (unrun):* say *"broke up with Lucie, devastated, then the commute was awful"* and see
+*Lucie · breakup* and *commuting* proposed with quotes under each; put one down; save; see the
+quote under the feeling on the day; after a second week open Insights and see the pair move.
 
 ### Across all slices
 

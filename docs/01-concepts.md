@@ -148,6 +148,31 @@ transaction as the check-in that named it, and a check-in references it by `clie
 by label, so renaming one never rewrites what was already written. Merging two is one-way, and
 the dialog says so.
 
+**A trigger is one of two halves** (since the EmotionGuesser integration, 2026-09-04). An
+**entity** is who or what a feeling was about when it was not a person — *work*, *the gym*, *my
+flat*; an **interaction** is what happened — *meeting*, *breakup*, *being ignored*, *being tired* —
+a short generic phrase that can recur with other people and other things. A feeling carries both
+halves in its `about` when the note gave both (*Lucie · meeting*, *work · presentation*), so the
+journal can later be read three ways: everything about Lucie, everything that happened in
+meetings with anyone, or that one pair kept apart from the rest. The role is stored on the trigger
+row (`payload.role`), never required, and a trigger minted before roles existed reads as an entity.
+A person is always a person, never a trigger.
+
+### Quote
+The words from the note that show a feeling — *"felt very connected to her"* — as the model
+copied them, kept on the feeling when the user keeps the feeling. It is the evidence the proposal
+card shows under each suggestion so a wrong one can be put down at a glance, and it is the one
+model-authored slot whose truth can be checked: a quote the transcript does not contain is
+dropped before the card sees it. Like the transcript it is quoted from, it is never filtered for
+register, only capped.
+
+### Insights
+The journal read as drift: where each person, trigger or pair sits on three fixed axes
+(pleasant ↔ unpleasant, still ↔ energetic, overwhelmed ↔ in control), how far each has moved
+since the first time it was named, which feelings each brings, and the weeks on all three axes.
+Every drawing is arithmetic over what was recorded, computed on the device on read, and the screen
+says so; nothing on it grades the person who recorded it, and nothing on it is stored.
+
 ### The nightly ritual
 Five to nine binary questions, one card at a time, at an hour the user picks. The five core
 questions ask about the things that move how a day felt without being about anyone — sleep,

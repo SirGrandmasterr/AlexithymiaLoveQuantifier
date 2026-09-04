@@ -9,6 +9,7 @@ import { readKeepTranscripts } from '../constants/journalSettings';
 import {
     JOURNAL_COPY,
     MAX_FEELINGS_PER_CHECKIN,
+    TRIGGER_ROLES,
     UNCLEAR_FEELING_ID,
     clientId,
     feelingById,
@@ -55,12 +56,28 @@ export const resolvePerson = (name, relationships = []) => {
 
 const liveIdOf = (candidate) => candidate.live ?? candidate.trigger?.live ?? candidate.clientId;
 
-export const resolveTriggerLabel = (label, triggers = []) => {
-    const hit = triggerCandidates(label, triggers)[0];
+/**
+ * §4.5b step 1: an exact or case-insensitive match is the trigger, resolved. A label that
+ * merely *looks like* one the user has — the EmotionGuesser's review band — is new, with the
+ * look-alikes carried as `candidates` for the card to offer beside *new trigger*, on the
+ * same footing as a person's candidates: a question, never a link.
+ */
+export const resolveTriggerLabel = (label, triggers = [], role = null) => {
+    const candidates = triggerCandidates(label, triggers);
+    const hit = candidates.find(candidate => candidate.match === 'exact' || candidate.match === 'insensitive');
+    const known = TRIGGER_ROLES.includes(role) ? role : null;
     if (hit) {
-        return { key: keyOf(label), label: hit.label, live: liveIdOf(hit), isNew: false, clientId: null, confirmed: true };
+        return {
+            key: keyOf(label), label: hit.label, live: liveIdOf(hit), isNew: false, clientId: null, confirmed: true,
+            role: hit.trigger?.role ?? known, candidates: []
+        };
     }
-    return { key: keyOf(label), label, live: null, isNew: true, clientId: null, confirmed: false };
+    return {
+        key: keyOf(label), label, live: null, isNew: true, clientId: null, confirmed: false, role: known,
+        candidates: candidates
+            .filter(candidate => candidate.match === 'similar')
+            .map(candidate => ({ clientId: liveIdOf(candidate), label: candidate.label }))
+    };
 };
 
 export const cardStateFromProposal = (proposal, { relationships = [], triggers = [] } = {}) => {
@@ -71,9 +88,9 @@ export const cardStateFromProposal = (proposal, { relationships = [], triggers =
         return key;
     };
     const triggerRows = [];
-    const triggerKey = (label) => {
+    const triggerKey = (label, role) => {
         const key = keyOf(label);
-        if (!triggerRows.some(trigger => trigger.key === key)) triggerRows.push(resolveTriggerLabel(label, triggers));
+        if (!triggerRows.some(trigger => trigger.key === key)) triggerRows.push(resolveTriggerLabel(label, triggers, role));
         return key;
     };
 
@@ -88,9 +105,12 @@ export const cardStateFromProposal = (proposal, { relationships = [], triggers =
         confirmed: false,
         replaces: null,
         retrieval: null,
+        // The words behind it, as the validator let them through. Shown, and saved with the
+        // feeling if it is kept; never edited here — an edited quote is not a quote.
+        quote: typeof feeling.quote === 'string' && feeling.quote ? feeling.quote : null,
         about: (feeling.about || []).map(about => {
             if (about.kind === 'person') return { kind: 'person', person: personKey(about.name) };
-            if (about.kind === 'trigger') return { kind: 'trigger', trigger: triggerKey(about.label) };
+            if (about.kind === 'trigger') return { kind: 'trigger', trigger: triggerKey(about.label, about.role) };
             return { kind: 'tag', tag: about.tag };
         })
     }));
@@ -139,6 +159,7 @@ export const confirmedPicked = (state) => state.feelings
         id: feeling.id,
         intensity: feeling.intensity,
         uncertain: feeling.uncertain === true,
+        ...(feeling.quote ? { quote: feeling.quote } : {}),
         about: feeling.about.map(about => {
             if (about.kind === 'person') {
                 const person = state.people.find(entry => entry.key === about.person);
@@ -152,7 +173,9 @@ export const confirmedPicked = (state) => state.feelings
                     kind: 'trigger',
                     clientId: trigger.isNew ? trigger.clientId : trigger.live,
                     label: trigger.label,
-                    isNew: trigger.isNew
+                    isNew: trigger.isNew,
+                    // Only a new trigger is minted with a role; an existing one keeps its own.
+                    ...(trigger.isNew && TRIGGER_ROLES.includes(trigger.role) ? { role: trigger.role } : {})
                 };
             }
             return { kind: 'tag', tag: about.tag };
@@ -297,12 +320,17 @@ const AboutChip = ({ about, state, picked, onKeepTrigger, onPickUp, onRemove }) 
     );
 };
 
-const SimilarTriggerOffers = ({ offers, onUse }) => {
+/**
+ * *You've called this 'work' before — same thing?* Two sources feed it, and the attribute
+ * says which: `retrieval` is the embedding index (G1), `lexical` is the look-alike matching
+ * the EmotionGuesser integration brought, which runs on every device with no model at all.
+ */
+const SimilarTriggerOffers = ({ offers, onUse, source = 'retrieval' }) => {
     const { blurClass } = useDiscretion();
     if (!offers || offers.length === 0) return null;
 
     return (
-        <div className="flex flex-wrap items-center gap-2" data-similar-triggers>
+        <div className="flex flex-wrap items-center gap-2" data-similar-triggers={source}>
             {offers.map(offer => (
                 <button
                     key={offer.clientId}
@@ -356,9 +384,9 @@ const PastEntryOffers = ({ offers, onKeep }) => {
 
 /** One proposed feeling: dashed until kept, then its strength, its unsureness, its abouts. */
 const ProposedFeeling = ({
-    feeling, state, moving, pendingTriggers, changing, similar = [],
+    feeling, state, moving, pendingTriggers, changing, similar = [], lexical = [],
     onToggle, onChange, onCancelChange, onChangeTo, onCycleIntensity, onToggleUncertain, onRemove,
-    onAddAbout, onKeepTrigger, onPickUpAbout, onRemoveAbout, onMoveHere, onUseSimilar
+    onAddAbout, onKeepTrigger, onPickUpAbout, onRemoveAbout, onMoveHere, onUseSimilar, onUseLexical
 }) => {
     const known = feelingById(feeling.id);
     const hex = known?.hex ?? '#94a3b8';
@@ -369,6 +397,7 @@ const ProposedFeeling = ({
     const addAbout = (about) => { onAddAbout(feeling.key, about); closePicker(); };
     const movingFromHere = moving?.key === feeling.key;
     const copy = JOURNAL_COPY.proposal;
+    const { blurClass } = useDiscretion();
 
     return (
         <div
@@ -442,6 +471,12 @@ const ProposedFeeling = ({
                 </button>
             </div>
 
+            {feeling.quote && (
+                <p data-feeling-quote className={`text-[11px] text-slate-500 font-light italic ${blurClass}`}>
+                    {fillCopy(copy.quote, { quote: feeling.quote })}
+                </p>
+            )}
+
             {changing && (
                 <div data-change-grid={feeling.id} className="space-y-2 border-t border-slate-100 pt-2">
                     <p className="text-[11px] text-slate-400 font-light">{fillCopy(copy.changeHint, { label })}</p>
@@ -480,6 +515,15 @@ const ProposedFeeling = ({
                     </button>
                 )}
             </div>
+
+            {lexical.map(row => (
+                <SimilarTriggerOffers
+                    key={`lexical-${row.triggerKey}`}
+                    source="lexical"
+                    offers={row.offers}
+                    onUse={(offer) => onUseLexical(row.triggerKey, offer)}
+                />
+            ))}
 
             {similar.map(row => (
                 <SimilarTriggerOffers
@@ -978,20 +1022,30 @@ export default function ProposalCard({
 
     // One row per unresolved trigger, on the **first** feeling that names it, so a word two
     // feelings share is offered once rather than twice.
-    const similarRows = useMemo(() => {
+    const rowsFor = (offersOf) => {
         const rows = new Map();
         const placed = new Set();
         state.feelings.forEach(feeling => {
             feeling.about.forEach(about => {
                 if (about.kind !== 'trigger' || placed.has(about.trigger)) return;
-                const offers = similar[about.trigger];
+                const offers = offersOf(about.trigger);
                 if (!offers || offers.length === 0) return;
                 placed.add(about.trigger);
                 rows.set(feeling.key, [...(rows.get(feeling.key) ?? []), { triggerKey: about.trigger, offers }]);
             });
         });
         return rows;
-    }, [state.feelings, similar]);
+    };
+
+    const similarRows = useMemo(() => rowsFor(key => similar[key]), [state.feelings, similar]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // The look-alikes `resolveTriggerLabel` found by comparing the words themselves — the
+    // EmotionGuesser's review band, on every device, with no index and no model. Offered
+    // the same way, and never in place of *new trigger*.
+    const lexicalRows = useMemo(() => rowsFor(key => {
+        const trigger = state.triggers.find(entry => entry.key === key);
+        return trigger && !trigger.confirmed ? trigger.candidates ?? [] : [];
+    }), [state.feelings, state.triggers]); // eslint-disable-line react-hooks/exhaustive-deps
 
     /** Which of G1's trigger offers the user actually took, for `payload.retrieval`. */
     const [acceptedTriggers, setAcceptedTriggers] = useState([]);
@@ -1149,6 +1203,8 @@ export default function ProposalCard({
                         onMoveHere={moveHere}
                         similar={similarRows.get(feeling.key) ?? []}
                         onUseSimilar={useSimilarTrigger}
+                        lexical={lexicalRows.get(feeling.key) ?? []}
+                        onUseLexical={applySimilarTrigger}
                     />
                 ))}
 

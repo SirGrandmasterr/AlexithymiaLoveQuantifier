@@ -1,4 +1,4 @@
-import { activeFeelings, INTENSITY_LEVELS } from '../../constants/journal';
+import { activeFeelings, INTENSITY_LEVELS, TRIGGER_ROLES } from '../../constants/journal';
 import { CONTEXT_TAGS } from '../../constants/contextTags';
 import { FORBIDDEN_WORDS } from '../../constants/forbiddenWords';
 import { buildSchema, checkSchema, codePoints, LIMITS, AMBIGUITY } from './schema';
@@ -28,7 +28,11 @@ export const DROP_REASONS = Object.freeze({
     /** A second feeling with the same id, or a second person with the same name. */
     duplicate: 'duplicate',
     /** A feeling listed under `ambiguity: "feeling"`. */
-    inconsistent: 'inconsistent'
+    inconsistent: 'inconsistent',
+    /** A quote the transcript does not contain — the model paraphrased, or invented. The feeling stays. */
+    quote: 'quote',
+    /** A trigger role that is neither half. The label stays, with no role. */
+    unknown_role: 'unknown_role'
 });
 
 /* 2. Text */
@@ -117,6 +121,27 @@ const cleanLanguage = (value) => {
 // fact about *lucie* is about *Lucie*, and both are kept under the listed spelling.
 const foldName = (value) => cleanSlot(value).normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 
+// A quote is checked against the transcript as words, not characters: a transcriber's comma
+// or a model's dropped full stop must not turn a real quotation into an invented one.
+const foldForQuote = (value) => (
+    foldName(value).replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+);
+
+/** True when every word of `quote` appears, in order and adjacent, in `transcript`. */
+export const transcriptContains = (transcript, quote) => {
+    const haystack = ` ${foldForQuote(transcript)} `;
+    const needle = foldForQuote(quote);
+    return needle.length > 0 && haystack.includes(` ${needle} `);
+};
+
+const cleanQuote = (value, transcript) => {
+    if (typeof value !== 'string') return null;
+    const cleaned = cleanSlot(value);
+    if (!cleaned) return null;
+    if (codePoints(cleaned) > LIMITS.quote) return null;
+    return transcriptContains(transcript, cleaned) ? cleaned : null;
+};
+
 /* 3. Parsing */
 
 export const parseRaw = (raw) => {
@@ -151,7 +176,12 @@ const tagsOf = (context) => (
     Array.isArray(context?.tags) && context.tags.length ? context.tags : [...CONTEXT_TAGS]
 );
 
-export const validateProposal = (raw, context = {}) => {
+/**
+ * `options.transcript` is the words the quotes are read against when the caller knows them
+ * better than the model does — text mode, where the input is the transcript (§5.2). Absent,
+ * the model's own transcript is the reference.
+ */
+export const validateProposal = (raw, context = {}, options = {}) => {
     const feelingIds = feelingIdsOf(context);
     const tags = tagsOf(context);
 
@@ -174,6 +204,9 @@ export const validateProposal = (raw, context = {}) => {
 
     const transcript = truncateTranscript(parsed.transcript);
     const language = cleanLanguage(parsed.language);
+    const spoken = typeof options.transcript === 'string' && options.transcript.trim()
+        ? options.transcript
+        : transcript;
 
     /* ---- people ---------------------------------------------------------------------- */
 
@@ -222,7 +255,11 @@ export const validateProposal = (raw, context = {}) => {
                 if (codePoints(label) > LIMITS.label) { drop(path, DROP_REASONS.length); return null; }
                 if (isForbidden(label)) { drop(path, DROP_REASONS.forbidden_word); return null; }
                 if (looksUnsafe(label)) { drop(path, DROP_REASONS.unsafe); return null; }
-                return { kind: 'trigger', label };
+                // The role is a closed vocabulary, not free text: a wrong one is counted and
+                // the label kept without it, the reading every trigger had before roles.
+                if (entry.role === undefined) return { kind: 'trigger', label };
+                if (!TRIGGER_ROLES.includes(entry.role)) { drop(`${path}.role`, DROP_REASONS.unknown_role); return { kind: 'trigger', label }; }
+                return { kind: 'trigger', label, role: entry.role };
             }
             default:
                 drop(path, DROP_REASONS.unknown_kind);
@@ -248,8 +285,16 @@ export const validateProposal = (raw, context = {}) => {
             if (admitted) about.push(admitted);
         });
 
+        // The evidence. Kept only when the transcript actually contains it — a quote is the
+        // one slot whose truth can be checked, so it is checked rather than word-filtered.
+        let quote;
+        if (entry.quote !== undefined) {
+            quote = cleanQuote(entry.quote, spoken);
+            if (quote === null) drop(`${path}.quote`, DROP_REASONS.quote);
+        }
+
         seenIds.add(entry.id);
-        feelings.push({ id: entry.id, intensity: entry.intensity, about, rawIndex: index });
+        feelings.push({ id: entry.id, intensity: entry.intensity, about, rawIndex: index, ...(quote ? { quote } : {}) });
     });
 
     /* ---- facts ----------------------------------------------------------------------- */
@@ -282,7 +327,7 @@ export const validateProposal = (raw, context = {}) => {
     const proposal = {
         transcript,
         language,
-        feelings: kept.map(({ id, intensity, about }) => ({ id, intensity, about })),
+        feelings: kept.map(({ id, intensity, about, quote }) => ({ id, intensity, ...(quote ? { quote } : {}), about })),
         people,
         facts,
         ambiguity

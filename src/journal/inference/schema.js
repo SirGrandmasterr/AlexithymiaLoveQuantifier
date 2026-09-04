@@ -2,8 +2,10 @@ import {
     activeFeelings,
     INTENSITY_LEVELS,
     MAX_FEELINGS_PER_CHECKIN,
+    MAX_QUOTE_LENGTH,
     MAX_TRANSCRIPT_LENGTH,
-    MAX_TRIGGER_LABEL
+    MAX_TRIGGER_LABEL,
+    TRIGGER_ROLES
 } from '../../constants/journal';
 import { CONTEXT_TAGS, MAX_TAG_LENGTH } from '../../constants/contextTags';
 
@@ -20,6 +22,7 @@ export const LIMITS = Object.freeze({
     name: 60,
     label: MAX_TRIGGER_LABEL,
     text: 120,
+    quote: MAX_QUOTE_LENGTH,
     feelings: MAX_FEELINGS_PER_CHECKIN,
     about: 3,
     people: 6,
@@ -55,6 +58,11 @@ export const buildSchema = ({ feelingIds, tags } = {}) => {
                     properties: {
                         id: { enum: ids },
                         intensity: { enum: [...INTENSITY_LEVELS] },
+                        // The words from the note that show this feeling (the EmotionGuesser
+                        // integration). Optional in the schema so a reference written before
+                        // it existed still validates; the prompt asks for it every time, and
+                        // the validator drops one the transcript does not contain.
+                        quote: { type: 'string', maxLength: LIMITS.quote },
                         about: {
                             type: 'array',
                             maxItems: LIMITS.about,
@@ -84,7 +92,12 @@ export const buildSchema = ({ feelingIds, tags } = {}) => {
                                         required: ['kind', 'label'],
                                         properties: {
                                             kind: { const: 'trigger' },
-                                            label: { type: 'string', maxLength: LIMITS.label }
+                                            label: { type: 'string', maxLength: LIMITS.label },
+                                            // Which half of a trigger the label is: who or
+                                            // what (`entity`), or what happened
+                                            // (`interaction`). Optional, for the same reason
+                                            // as `quote`.
+                                            role: { enum: [...TRIGGER_ROLES] }
                                         }
                                     }
                                 ]

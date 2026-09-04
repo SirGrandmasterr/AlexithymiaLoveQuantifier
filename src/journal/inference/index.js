@@ -1,7 +1,7 @@
 import { FAILURE_KINDS, INPUT_MODES, TASKS } from './contract';
 import { validateProposal, truncateTranscript } from './validate';
 import { validateRitualProposal } from './ritual';
-import { activeFeelings } from '../../constants/journal';
+import { activeFeelings, TRIGGER_ROLES } from '../../constants/journal';
 import { CONTEXT_TAGS } from '../../constants/contextTags';
 
 /* 1. The vocabulary of outcomes */
@@ -54,8 +54,23 @@ export const buildContext = ({ relationships = [], triggers = [], language = nul
     tags: [...CONTEXT_TAGS],
     people: uniqueStrings(relationships.map(person => person?.name ?? person?.Name ?? person)),
     triggers: uniqueStrings(triggers.map(trigger => trigger?.label ?? trigger)),
+    // Which half each label is, by label — never by id (§5.1). The prompt lists things and
+    // happenings apart so the model reuses each in its own slot. A label with no role is
+    // listed as a thing, which is what every trigger was before roles existed.
+    triggerRoles: triggerRolesOf(triggers),
     language
 });
+
+function triggerRolesOf(triggers) {
+    const roles = {};
+    triggers.forEach((trigger) => {
+        const label = typeof trigger?.label === 'string' ? trigger.label.trim() : '';
+        const role = trigger?.role;
+        if (!label || !TRIGGER_ROLES.includes(role) || roles[label]) return;
+        roles[label] = role;
+    });
+    return roles;
+}
 
 function uniqueStrings(values) {
     const seen = new Set();
@@ -136,7 +151,13 @@ export const propose = async (input, context, runtime) => {
         });
     }
 
-    const { proposal, provenance } = validateProposal(raw, context);
+    // In text mode the words are the input, so the quotes are read against the input rather
+    // than against whatever the model echoed back as the transcript.
+    const { proposal, provenance } = validateProposal(
+        raw,
+        context,
+        normalized.kind === INPUT_MODES.text ? { transcript: normalized.text } : {}
+    );
 
     if (normalized.kind === INPUT_MODES.text) {
         proposal.transcript = truncateTranscript(normalized.text);

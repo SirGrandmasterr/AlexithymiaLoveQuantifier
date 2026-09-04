@@ -11,6 +11,7 @@ import usePullToRefresh from '../mobile/usePullToRefresh';
 import DayGraph from './DayGraph.jsx';
 import { Modal } from './RelationshipDialogs';
 import {
+    INSIGHTS_PATH,
     JOURNAL_COPY,
     JOURNAL_ROOT,
     PEOPLE_PATH,
@@ -175,6 +176,17 @@ const AboutChip = ({ about, mentionsByRef }) => {
     return null;
 };
 
+/** The words behind a feeling, when a model quoted them and the user kept it. Blurred like any note. */
+export const QuoteLine = ({ quote }) => {
+    const { blurClass } = useDiscretion();
+    if (!quote) return null;
+    return (
+        <p data-feeling-quote className={`w-full text-[11px] text-slate-400 font-light italic ${blurClass}`}>
+            “{quote}”
+        </p>
+    );
+};
+
 const FeelingRow = ({ feeling, mentionsByRef }) => (
     <li className="flex flex-wrap items-center gap-2">
         <FeelingChip feeling={feeling} />
@@ -190,6 +202,7 @@ const FeelingRow = ({ feeling, mentionsByRef }) => (
                 ))}
             </>
         )}
+        <QuoteLine quote={feeling.quote} />
     </li>
 );
 
@@ -506,6 +519,13 @@ const DayHeader = ({ day, today, onCompose, voice }) => (
                 className="text-xs font-medium text-slate-500 hover:text-slate-800 underline underline-offset-4"
             >
                 {JOURNAL_COPY.triggers.heading}
+            </Link>
+            <Link
+                to={INSIGHTS_PATH}
+                data-journal-insights-link
+                className="text-xs font-medium text-slate-500 hover:text-slate-800 underline underline-offset-4"
+            >
+                {JOURNAL_COPY.insights.heading}
             </Link>
             <Link
                 to={SEARCH_PATH}
