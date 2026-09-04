@@ -122,7 +122,9 @@ export const createFakeJournalPlugin = (options = {}) => {
         },
         cancelFetch: async ({ id } = {}) => { record('cancelFetch', { id }); if (fetching && fetching.id === id) fetching.cancelled = true; return {}; },
         modelStatus: async (args) => { record('modelStatus', args); return { ready: onDevice }; },
-        removeModel: async (args) => { record('removeModel', args); onDevice = false; return { removed: true }; }
+        removeModel: async (args) => { record('removeModel', args); onDevice = false; return { removed: true }; },
+        removeAllModels: async () => { record('removeAllModels'); onDevice = false; return { removed: true }; },
+        modelStorageInfo: async () => { record('modelStorageInfo'); return { bytes: onDevice ? 2_588_159_070 : 0 }; }
     };
 
     return plugin;

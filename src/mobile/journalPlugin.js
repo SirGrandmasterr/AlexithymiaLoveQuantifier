@@ -212,3 +212,21 @@ export const createNativeDownloader = (model, options = {}) => {
         }
     };
 };
+
+export const removeAllNativeModels = async (plugin = AlqJournal) => {
+    try {
+        const result = await plugin.removeAllModels();
+        return result?.removed === true;
+    } catch {
+        return false;
+    }
+};
+
+export const getNativeModelStorage = async (plugin = AlqJournal) => {
+    try {
+        const result = await plugin.modelStorageInfo();
+        return Number(result?.bytes) || 0;
+    } catch {
+        return 0;
+    }
+};

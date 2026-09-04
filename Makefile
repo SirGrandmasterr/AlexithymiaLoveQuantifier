@@ -358,6 +358,16 @@ GEMMA_E2B_LITERTLM_REV := b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1
 GEMMA_E2B_LITERTLM_URL := https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/$(GEMMA_E2B_LITERTLM_REV)
 GEMMA_E2B_LITERTLM_DIR := litert-community/gemma-4-E2B-it-litert-lm
 
+# Gemma 4 E4B: LiteRT-LM bundle for Android native inference (3.66 GB)
+GEMMA_E4B_LITERTLM_REV := 2eee7ac325f20eb8c9ac1d0e972f7c84663062da
+GEMMA_E4B_LITERTLM_URL := https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/$(GEMMA_E4B_LITERTLM_REV)
+GEMMA_E4B_LITERTLM_DIR := litert-community/gemma-4-E4B-it-litert-lm
+
+# Gemma 4 E4B: ONNX export for WebGPU browser inference (~5.2 GB)
+GEMMA_E4B_ONNX_REV := 843f250f23bc91754def1e0f0db390dacd1e6b05
+GEMMA_E4B_ONNX_URL := https://huggingface.co/onnx-community/gemma-4-E4B-it-ONNX/resolve/$(GEMMA_E4B_ONNX_REV)
+GEMMA_E4B_ONNX_DIR := onnx-community/gemma-4-E4B-it-ONNX
+
 # The index's model: EmbeddingGemma 300m, ONNX, q4, for transformers.js (§5.8, session G1).
 #
 # One graph beside one .onnx_data of weights, like every other ONNX row here, plus the
@@ -420,6 +430,25 @@ MODEL_MANIFEST := \
 	gemma-4-e2b-onnx|$(GEMMA_E2B_ONNX_DIR)/onnx/vision_encoder_q4f16.onnx_data|$(GEMMA_E2B_ONNX_URL)/onnx/vision_encoder_q4f16.onnx_data|0835071d2c79c105f8e1b549b7f8dd8c9af07fa95f01ead2e7add280602d3c6d \
 	gemma-4-e2b-litertlm|$(GEMMA_E2B_LITERTLM_DIR)/LICENSE.txt|$(APACHE_20_URL)|$(APACHE_20_SHA) \
 	gemma-4-e2b-litertlm|$(GEMMA_E2B_LITERTLM_DIR)/gemma-4-E2B-it.litertlm|$(GEMMA_E2B_LITERTLM_URL)/gemma-4-E2B-it.litertlm|181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c \
+	gemma-4-e4b-litertlm|$(GEMMA_E4B_LITERTLM_DIR)/LICENSE.txt|$(APACHE_20_URL)|$(APACHE_20_SHA) \
+	gemma-4-e4b-litertlm|$(GEMMA_E4B_LITERTLM_DIR)/gemma-4-E4B-it.litertlm|$(GEMMA_E4B_LITERTLM_URL)/gemma-4-E4B-it.litertlm|0b2a8980ce155fd97673d8e820b4d29d9c7d99b8fa6806f425d969b145bd52e0 \
+	gemma-4-e4b-onnx|$(GEMMA_E4B_ONNX_DIR)/LICENSE.txt|$(APACHE_20_URL)|$(APACHE_20_SHA) \
+	gemma-4-e4b-onnx|$(GEMMA_E4B_ONNX_DIR)/config.json|$(GEMMA_E4B_ONNX_URL)/config.json|2033bacb60b38bb3d43be4978c64618e7d8abd7f \
+	gemma-4-e4b-onnx|$(GEMMA_E4B_ONNX_DIR)/generation_config.json|$(GEMMA_E4B_ONNX_URL)/generation_config.json|b2b0ab11eaf5317ad648bb48ce64b110532d661a \
+	gemma-4-e4b-onnx|$(GEMMA_E4B_ONNX_DIR)/preprocessor_config.json|$(GEMMA_E4B_ONNX_URL)/preprocessor_config.json|6418e09c5fdb500f7ad9e86a7de9de7e60317f34 \
+	gemma-4-e4b-onnx|$(GEMMA_E4B_ONNX_DIR)/processor_config.json|$(GEMMA_E4B_ONNX_URL)/processor_config.json|5465974d23e1eca2c46c2809b26c997946ce0d90 \
+	gemma-4-e4b-onnx|$(GEMMA_E4B_ONNX_DIR)/chat_template.jinja|$(GEMMA_E4B_ONNX_URL)/chat_template.jinja|07e50e69a8c445f2c31a089b828e85b2a93942bf \
+	gemma-4-e4b-onnx|$(GEMMA_E4B_ONNX_DIR)/tokenizer.json|$(GEMMA_E4B_ONNX_URL)/tokenizer.json|47bd35616c7c782aaca6ccf48c75f3461d5877170984b8836b375107d0a9f566 \
+	gemma-4-e4b-onnx|$(GEMMA_E4B_ONNX_DIR)/tokenizer_config.json|$(GEMMA_E4B_ONNX_URL)/tokenizer_config.json|8dc6453271e40decb8ebdb68f4f9421d306dd6b3 \
+	gemma-4-e4b-onnx|$(GEMMA_E4B_ONNX_DIR)/onnx/embed_tokens_q4f16.onnx|$(GEMMA_E4B_ONNX_URL)/onnx/embed_tokens_q4f16.onnx|aa48aa1806eda0ea42b79cd8eea355aebaf3b6ae3b04190bfee7ceef308603a4 \
+	gemma-4-e4b-onnx|$(GEMMA_E4B_ONNX_DIR)/onnx/embed_tokens_q4f16.onnx_data|$(GEMMA_E4B_ONNX_URL)/onnx/embed_tokens_q4f16.onnx_data|fd0f39c08f7e20a31145c2351a76a408b6c4ab60d15cc33f40e29cf30c0b2451 \
+	gemma-4-e4b-onnx|$(GEMMA_E4B_ONNX_DIR)/onnx/decoder_model_merged_q4f16.onnx|$(GEMMA_E4B_ONNX_URL)/onnx/decoder_model_merged_q4f16.onnx|43aa27452be3dd7fbb9524257dd66af957add748ddab20ea63ae71923e59aa08 \
+	gemma-4-e4b-onnx|$(GEMMA_E4B_ONNX_DIR)/onnx/decoder_model_merged_q4f16.onnx_data|$(GEMMA_E4B_ONNX_URL)/onnx/decoder_model_merged_q4f16.onnx_data|b6aa13eab3ecdf4721293e93c806c279ca0516956187f7aec63ee90ec7216e73 \
+	gemma-4-e4b-onnx|$(GEMMA_E4B_ONNX_DIR)/onnx/decoder_model_merged_q4f16.onnx_data_1|$(GEMMA_E4B_ONNX_URL)/onnx/decoder_model_merged_q4f16.onnx_data_1|84e1c5f09ba88a5351959e4f73f62bce46f92dc19a7d7c82376ef36771c26a30 \
+	gemma-4-e4b-onnx|$(GEMMA_E4B_ONNX_DIR)/onnx/audio_encoder_q4f16.onnx|$(GEMMA_E4B_ONNX_URL)/onnx/audio_encoder_q4f16.onnx|abf9f3db89b336579c786704e147747085ccca23f28ecdf33f6736a93e3fbc47 \
+	gemma-4-e4b-onnx|$(GEMMA_E4B_ONNX_DIR)/onnx/audio_encoder_q4f16.onnx_data|$(GEMMA_E4B_ONNX_URL)/onnx/audio_encoder_q4f16.onnx_data|814635b03d618d2513d377e051d491d0a5448f1407864fb2535e4b8182f9eced \
+	gemma-4-e4b-onnx|$(GEMMA_E4B_ONNX_DIR)/onnx/vision_encoder_q4f16.onnx|$(GEMMA_E4B_ONNX_URL)/onnx/vision_encoder_q4f16.onnx|7475ce3d5d98d74003410367cc53f23ddb38891e1847cce0a4535fb6d953c540 \
+	gemma-4-e4b-onnx|$(GEMMA_E4B_ONNX_DIR)/onnx/vision_encoder_q4f16.onnx_data|$(GEMMA_E4B_ONNX_URL)/onnx/vision_encoder_q4f16.onnx_data|6cada2b035aed2284ef3a379fb6523906b95da1c1a24af7182161342d1269a52 \
 	embeddinggemma|$(EMBEDDING_GEMMA_DIR)/config.json|$(EMBEDDING_GEMMA_URL)/config.json|6e1f06404b7163e0325ed2ea3e6781cde50f4a50b31780a95ad0d30e8404d77b \
 	embeddinggemma|$(EMBEDDING_GEMMA_DIR)/tokenizer.json|$(EMBEDDING_GEMMA_URL)/tokenizer.json|4dda02faaf32bc91031dc8c88457ac272b00c1016cc679757d1c441b248b9c47 \
 	embeddinggemma|$(EMBEDDING_GEMMA_DIR)/tokenizer_config.json|$(EMBEDDING_GEMMA_URL)/tokenizer_config.json|3ca953eea6c3c9fcda9cf3df22949ff18b216f7c74bd6459230f3f1013953f3a \

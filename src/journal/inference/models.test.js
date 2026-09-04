@@ -4,6 +4,8 @@ import { createHash } from 'node:crypto';
 import {
     WHISPER_TINY,
     EMBEDDING_GEMMA_ONNX,
+    GEMMA_E4B_LITERTLM,
+    GEMMA_E4B_ONNX,
     MODEL_BASE_PATH,
     modelFileUrl,
     totalBytes,
@@ -217,5 +219,40 @@ describe('the Gemma Terms of Use', () => {
     it('says where it came from, so the copy can be checked against the source', () => {
         expect(terms).toContain('https://ai.google.dev/gemma/terms');
         expect(terms).toContain('Retrieved  2026-09-04');
+    });
+});
+
+describe('the Gemma 4 E4B LiteRT-LM manifest', () => {
+    it('holds the same files and sums as the Makefile', () => {
+        const rows = manifestRows('gemma-4-e4b-litertlm');
+        expect(rows.length).toBe(2);
+
+        const fromMake = Object.fromEntries(rows.map(row => [row.path, row.sha256]));
+        const fromApp = Object.fromEntries(GEMMA_E4B_LITERTLM.files.map(file => [file.path, file.sha256]));
+        expect(fromApp).toEqual(fromMake);
+    });
+
+    it('pins the revision the Makefile pins', () => {
+        expect(makefile).toContain(`GEMMA_E4B_LITERTLM_REV := ${GEMMA_E4B_LITERTLM.revision}`);
+    });
+
+    it('carries the licence beside the model weights', () => {
+        expect(GEMMA_E4B_LITERTLM.licence).toBe('Apache 2.0');
+        expect(GEMMA_E4B_LITERTLM.files.some(file => file.path.endsWith('LICENSE.txt'))).toBe(true);
+    });
+});
+
+describe('the Gemma 4 E4B ONNX manifest', () => {
+    it('holds the same files and sums as the Makefile', () => {
+        const rows = manifestRows('gemma-4-e4b-onnx');
+        expect(rows.length).toBe(17);
+
+        const fromMake = Object.fromEntries(rows.map(row => [row.path, row.sha256]));
+        const fromApp = Object.fromEntries(GEMMA_E4B_ONNX.files.map(file => [file.path, file.sha256]));
+        expect(fromApp).toEqual(fromMake);
+    });
+
+    it('pins the revision the Makefile pins', () => {
+        expect(makefile).toContain(`GEMMA_E4B_ONNX_REV := ${GEMMA_E4B_ONNX.revision}`);
     });
 });

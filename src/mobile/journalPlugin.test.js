@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createRecorder, watchLifecycle, MAX_CLIP_MS, METER_INTERVAL_MS, ERROR_KINDS } from '../journal/recorder';
-import { createNativeDownloader, nativeCaptureDeps, nativeAudio, isNativeAudio, primeNativeTier } from './journalPlugin';
+import { createNativeDownloader, nativeCaptureDeps, nativeAudio, isNativeAudio, primeNativeTier, removeAllNativeModels, getNativeModelStorage } from './journalPlugin';
 import { createFakeJournalPlugin, createFakeAppPlugin } from './journalPlugin.fake';
 import { WHISPER_TINY, totalBytes } from '../journal/inference/models';
 import { nativeTierReport, setNativeTierReport, detectTier, TIERS } from '../journal/inference/tier';
@@ -264,6 +264,14 @@ describe('the native downloader', () => {
         expect(await downloader.remove()).toBe(true);
         expect(await downloader.isDownloaded()).toBe(false);
         expect(plugin.names()).toEqual(['modelStatus', 'removeModel', 'modelStatus']);
+    });
+
+    it('queries storage bytes and deletes all models on the phone when requested', async () => {
+        const plugin = createFakeJournalPlugin({ downloaded: true });
+        expect(await getNativeModelStorage(plugin)).toBe(2_588_159_070);
+        expect(await removeAllNativeModels(plugin)).toBe(true);
+        expect(await getNativeModelStorage(plugin)).toBe(0);
+        expect(plugin.names()).toEqual(['modelStorageInfo', 'removeAllModels', 'modelStorageInfo']);
     });
 
     it('refuses to start with no server configured', async () => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { User, Mail, Shield, Save, Upload, Loader2, Info, Bell, NotebookPen, Download } from 'lucide-react';
 import axios from 'axios';
 import { resolveAssetUrl } from '../mobile/serverUrl';
@@ -42,7 +42,9 @@ import {
 } from '../journal/inference/models';
 import { embeddingsAvailable } from '../journal/embeddings/availability';
 import { isNative } from '../mobile/platform';
-import { createNativeDownloader, primeNativeTier } from '../mobile/journalPlugin';
+import {
+    createNativeDownloader, primeNativeTier, removeAllNativeModels, getNativeModelStorage
+} from '../mobile/journalPlugin';
 
 const VoiceSettings = () => {
     const native = isNative();
@@ -101,9 +103,34 @@ const VoiceSettings = () => {
         }
     };
 
+    const [storedBytes, setStoredBytes] = useState(0);
+
+    const refreshStorage = useCallback(() => {
+        if (native) {
+            getNativeModelStorage().then(bytes => setStoredBytes(bytes));
+        }
+    }, [native]);
+
+    useEffect(() => {
+        refreshStorage();
+    }, [refreshStorage, onDevice]);
+
     const removeFiles = async () => {
         await downloader.remove();
+        if (native) await removeAllNativeModels();
         setOnDevice(false);
+        refreshStorage();
+    };
+
+    const deleteAllModels = async () => {
+        if (window.confirm?.(JOURNAL_COPY.settings.voice.deleteAllConfirm) === false) return;
+        if (native) {
+            await removeAllNativeModels();
+        } else {
+            await downloader.remove();
+        }
+        setOnDevice(false);
+        refreshStorage();
     };
 
     return (
@@ -183,15 +210,27 @@ const VoiceSettings = () => {
                                 })}
                         </p>
 
-                        {onDevice && (
-                            <button
-                                type="button"
-                                data-setting="remove-model"
-                                onClick={removeFiles}
-                                className="mt-3 px-4 py-2 min-h-[44px] bg-white border border-slate-200 text-slate-600 text-sm rounded-xl hover:border-slate-400 transition-all"
-                            >
-                                {JOURNAL_COPY.settings.voice.remove}
-                            </button>
+                        {(onDevice || storedBytes > 0) && (
+                            <div className="flex flex-wrap gap-2 mt-3">
+                                <button
+                                    type="button"
+                                    data-setting="remove-model"
+                                    onClick={removeFiles}
+                                    className="px-4 py-2 min-h-[44px] bg-white border border-slate-200 text-slate-600 text-sm rounded-xl hover:border-slate-400 transition-all"
+                                >
+                                    {JOURNAL_COPY.settings.voice.remove}
+                                </button>
+                                {native && (
+                                    <button
+                                        type="button"
+                                        data-setting="delete-all-models"
+                                        onClick={deleteAllModels}
+                                        className="px-4 py-2 min-h-[44px] bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl hover:border-red-400 transition-all"
+                                    >
+                                        {JOURNAL_COPY.settings.voice.deleteAll}
+                                    </button>
+                                )}
+                            </div>
                         )}
 
                         {voice && (

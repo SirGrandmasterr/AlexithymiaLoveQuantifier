@@ -105,6 +105,44 @@ public final class ModelStore {
         return all;
     }
 
+    public boolean removeAll() {
+        return deleteContents(root);
+    }
+
+    public long getStorageBytes() {
+        return measureDirectory(root);
+    }
+
+    private static boolean deleteContents(File dir) {
+        if (dir == null || !dir.exists()) return true;
+        File[] children = dir.listFiles();
+        boolean all = true;
+        if (children != null) {
+            for (File child : children) {
+                if (child.isDirectory()) {
+                    if (!deleteContents(child)) all = false;
+                    if (!child.delete()) all = false;
+                } else {
+                    if (!child.delete()) all = false;
+                }
+            }
+        }
+        return all;
+    }
+
+    private static long measureDirectory(File dir) {
+        if (dir == null || !dir.exists()) return 0;
+        if (dir.isFile()) return dir.length();
+        long total = 0;
+        File[] children = dir.listFiles();
+        if (children != null) {
+            for (File child : children) {
+                total += measureDirectory(child);
+            }
+        }
+        return total;
+    }
+
     public void fetch(String baseUrl, List<FileSpec> files, Listener listener, AtomicBoolean cancel) throws Failure {
         long total = 0;
         for (FileSpec spec : files) total += spec.bytes;
