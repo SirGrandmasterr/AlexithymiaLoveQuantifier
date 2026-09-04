@@ -3,7 +3,11 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import axios from 'axios';
-import Vault, { buildCSV, buildJournalCSV, describeBackend } from './Vault';
+import Vault, { AI_CLAIM, OUTBOX_CLAIM, SIMILAR_CLAIM, buildCSV, buildJournalCSV, describeBackend } from './Vault';
+import { JOURNAL_COPY, JOURNAL_STORAGE_KEYS } from '../constants/journal';
+import { MAX_CLIP_MS, SILENCE_HOLD_MS } from '../journal/recorder';
+import { IDLE_LIMIT_MS } from './AppLock';
+import * as tier from '../journal/inference/tier';
 import { SubjectsProvider } from '../context/SubjectsContext';
 
 vi.mock('axios');
@@ -214,24 +218,170 @@ describe('Vault page', () => {
         expect(screen.queryByText(/\d+ journal entr/)).not.toBeInTheDocument();
     });
 
-    it('states plainly that nothing is sent anywhere and nothing is encrypted', async () => {
+    /**
+     * The claims, verbatim, in both opt-in states.
+     *
+     * Verbatim and not fuzzy on purpose: this page is the one place in the app where the
+     * exact words are the feature, and a regex that passes on a paraphrase is a test that
+     * lets the paraphrase ship. §10.2 asks for seven claims across two states, and **G1 is
+     * the seventh**: the similar-entry answer, in the two variants §10.2 wrote as one — see
+     * `SIMILAR_CLAIM` for why the design document's single row became two.
+     */
+    const claims = async () => {
         renderVault();
         await screen.findByText(/SQLite file/);
 
-        // The two claims that have to stay true of the code as written.
-        expect(screen.getByText(/Every request goes to this app's own origin/)).toBeInTheDocument();
-        expect(screen.getByText(/anyone with\s+access to the server can read it/)).toBeInTheDocument();
-        expect(screen.getByText(/There are none, by design/)).toBeInTheDocument();
+        expect(screen.getByText(/Every request goes to this app's own origin/)).toHaveTextContent(
+            "Nothing. Every request goes to this app's own origin — you can check that in your "
+            + "browser's network tab. There is no analytics, no telemetry, and no third-party "
+            + 'script. If you turn on voice check-ins, the speech and language model files are downloaded once, '
+            + 'from this same server, and run here.'
+        );
 
-        // 6-A stores the journal in the clear like everything else, and the sentence names it
+        // §4.2's numbers, read off the recorder's own constants rather than retyped.
+        expect(screen.getByText(/Only while the record button is lit/)).toHaveTextContent(
+            'Only while the record button is lit. There is no wake word, no background capture, '
+            + `and recording stops when you tap, after ${Math.round(SILENCE_HOLD_MS / 1000)} seconds `
+            + `of silence, or at ${Math.round(MAX_CLIP_MS / 1000)} seconds.`
+        );
+
+        // The journal is stored in the clear like everything else, and the sentence names it
         // in the journal's own words rather than leaving it under "notes" (Phase 6 §6.6). This
         // must not promise encryption later: docs/13 is an unconfirmed option, not a schedule.
         expect(screen.getByText(/Passwords are hashed/)).toHaveTextContent(
             'Passwords are hashed, but your notes, scores, and everything in the journal — the words '
-            + 'you tapped, what you typed, the people and things you named, and your answers to the '
-            + 'evening questions — are not.'
+            + 'you tapped, what you typed, the people and things you named, your answers to the '
+            + 'evening questions, and journal transcripts — are not.'
         );
+    };
+
+    /** The `**bold**` markers are formatting, not words; the page renders them as `<strong>`. */
+    const plain = (text) => text.replace(/\*\*/g, '');
+
+    it('states every privacy claim verbatim with voice off — the default', async () => {
+        await claims();
+        expect(screen.getByText(/None are running/)).toHaveTextContent(plain(AI_CLAIM.off));
+        // The "voice on" paragraphs must not be reachable in this state, and neither must any
+        // part of them: the page describes this device, not what the build can do. The same
+        // holds for the index, which is off here too — so **no** model is named on this page
+        // in the default state, EmbeddingGemma included.
+        expect(screen.queryByText(/Whisper tiny/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/Gemma/)).not.toBeInTheDocument();
     });
+
+    /* -------------------------------------------------------------------------------- */
+    /* G1 — the seventh claim                                                            */
+    /* -------------------------------------------------------------------------------- */
+
+    it('states the similar-entry answer verbatim with the index off — the default', async () => {
+        await claims();
+
+        const answer = document.querySelector('[data-similar-claim]');
+        expect(answer).toHaveAttribute('data-similar-claim', 'off');
+        expect(answer).toHaveTextContent(plain(SIMILAR_CLAIM.off));
+        expect(screen.getByText(/What about the similar-entry suggestions\?/)).toBeInTheDocument();
+        // Nothing on the page claims a second model on a device that has not made one number.
+        expect(answer.textContent).not.toContain('EmbeddingGemma');
+    });
+
+    it('states it verbatim with the index on, naming the model and its terms', async () => {
+        // Both halves have to agree, exactly as `voiceIsOn` asks the tier as well as the key:
+        // a `true` written by a better browser cannot make this page describe an index that
+        // was never built here.
+        vi.stubGlobal('indexedDB', { open: () => ({}) });
+        window.localStorage.setItem(JOURNAL_STORAGE_KEYS.embeddings, 'true');
+
+        await claims();
+
+        const answer = document.querySelector('[data-similar-claim]');
+        expect(answer).toHaveAttribute('data-similar-claim', 'on');
+        expect(answer).toHaveTextContent(plain(SIMILAR_CLAIM.on));
+
+        vi.unstubAllGlobals();
+    });
+
+    it('names EmbeddingGemma and the Gemma terms rather than Apache, which is §5.6 rule', () => {
+        expect(SIMILAR_CLAIM.on).toContain('EmbeddingGemma');
+        expect(SIMILAR_CLAIM.on).toContain('Gemma Terms of Use');
+        expect(SIMILAR_CLAIM.on).toContain('rather than Apache');
+        // The three promises the index has code under: same origin, device-only, cleared.
+        expect(SIMILAR_CLAIM.on).toContain('downloaded once from this server');
+        expect(SIMILAR_CLAIM.on).toContain('kept only on this device');
+        expect(SIMILAR_CLAIM.on).toContain('deleted when you sign out');
+    });
+
+    it('says the key is off in the off variant, which is the clause that cannot be in both', () => {
+        expect(SIMILAR_CLAIM.off).toContain('it is off until you turn it on');
+        expect(SIMILAR_CLAIM.on).not.toContain('it is off until you turn it on');
+    });
+
+    /**
+     * G2. The switch these two paragraphs describe now also opens `/journal/search`, so both
+     * of them have to say so — and each has to say the *true* half. Off: the journal cannot
+     * be searched. On: it can, here, without asking the server, and signing out costs it.
+     */
+    it('names search in both variants, because the switch now opens a search screen', () => {
+        expect(SIMILAR_CLAIM.off).toContain('cannot be searched');
+        expect(SIMILAR_CLAIM.on).toContain('search the journal');
+        expect(SIMILAR_CLAIM.on).toContain('asks the server nothing');
+        expect(SIMILAR_CLAIM.on).toContain('search finds nothing until this device');
+    });
+
+    it('keeps the settings toggle and this page saying the same thing (§9.7)', () => {
+        expect(JOURNAL_COPY.settings.embeddings.label).toContain('search');
+        expect(JOURNAL_COPY.settings.embeddings.description).toContain('kept only on this device');
+        expect(JOURNAL_COPY.settings.embeddings.description).toContain('deleted when you sign out');
+    });
+
+    it('states the Full tier "voice on" paragraph verbatim — one model, named, with its licence', async () => {
+        window.localStorage.setItem(JOURNAL_STORAGE_KEYS.voice, 'true');
+        // The page asks the device as well as the key: a `true` alone is not enough, because
+        // jsdom cannot record and this page may only describe what is running here.
+        vi.spyOn(tier, 'detectTier').mockReturnValue('full');
+
+        await claims();
+        expect(screen.getByText(/One model, and it runs on this device/)).toHaveTextContent(plain(AI_CLAIM.on));
+        expect(screen.queryByText(/None are running/)).not.toBeInTheDocument();
+        // The Light tier's sentence describes two models. A Full-tier device runs one, and
+        // saying otherwise would be false in the direction this page exists to get right.
+        expect(screen.queryByText(/One small model writes the words down/)).not.toBeInTheDocument();
+    });
+
+    it('states the Light tier "voice on" paragraph verbatim — two models, both named', async () => {
+        // §5.5's Light tier is Whisper tiny for the words and Gemma 4 E2B for the tags, and
+        // §5.6 asks the Vault's model line to name every model and every licence. This is
+        // that sentence, on the device it is true of.
+        window.localStorage.setItem(JOURNAL_STORAGE_KEYS.voice, 'true');
+        vi.spyOn(tier, 'detectTier').mockReturnValue('light');
+
+        await claims();
+        expect(screen.getByText(/One small model writes the words down/))
+            .toHaveTextContent(plain(AI_CLAIM.onLight));
+        expect(screen.queryByText(/None are running/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/One model, and it runs on this device/)).not.toBeInTheDocument();
+    });
+
+    it('names a licence for every model it names, on both tiers', async () => {
+        // The §5.6 rule as an assertion rather than a reading: redistributing weights from
+        // the operator's own server needs the licence to travel with them, and the page that
+        // names the model is where the user is told which licence that is.
+        [AI_CLAIM.on, AI_CLAIM.onLight].forEach((claim) => {
+            if (claim.includes('Gemma 4 E2B')) expect(claim).toContain('Apache 2.0');
+            if (claim.includes('Whisper tiny')) expect(claim).toContain('Apache 2.0');
+        });
+        expect(AI_CLAIM.onLight).toContain('Whisper tiny and Gemma 4 E2B');
+    });
+
+    it('says a model is not running on a device that could not run one', async () => {
+        // The stale-`true` case: another browser on the same profile turned voice on. This
+        // page must still say none are running, because none are running *here*.
+        window.localStorage.setItem(JOURNAL_STORAGE_KEYS.voice, 'true');
+        vi.spyOn(tier, 'detectTier').mockReturnValue('text-only');
+
+        await claims();
+        expect(screen.getByText(/None are running/)).toBeInTheDocument();
+    });
+
 
     it('says "never" until an export has happened', async () => {
         renderVault();
@@ -284,5 +434,186 @@ describe('Vault page', () => {
 
         expect(screen.getByText(/It does not encrypt the database/)).toBeInTheDocument();
         expect(screen.getByText(/There is no recovery/)).toBeInTheDocument();
+    });
+});
+
+/* ------------------------------------------------------------------------------------ */
+/* F1 — the outbox, stated on the page (invariant 2e)                                     */
+/* ------------------------------------------------------------------------------------ */
+
+const platformState = vi.hoisted(() => ({ native: false }));
+
+vi.mock('../mobile/platform', async (importOriginal) => ({
+    ...(await importOriginal()),
+    isNative: () => platformState.native
+}));
+
+describe('what the page says about the journal outbox', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        localStorage.clear();
+        mockFetch();
+    });
+
+    afterEach(() => {
+        platformState.native = false;
+    });
+
+    it('names the exception verbatim on a phone', async () => {
+        // *"Everything you have written is stored in your database"* is the sentence above it,
+        // and a queued check-in is a moment when that is not the whole truth. The page says so
+        // rather than saying less (invariant 2e).
+        platformState.native = true;
+        renderVault();
+
+        const claim = await screen.findByText(/One exception, on this phone/);
+        expect(claim).toHaveTextContent(OUTBOX_CLAIM.replace(/\*\*/g, ''));
+    });
+
+    it('claims no such thing in a browser, where there is no queue', async () => {
+        renderVault();
+
+        await waitFor(() => expect(screen.getByText(/Everything you have written is stored/)).toBeInTheDocument());
+        expect(screen.queryByText(/One exception, on this phone/)).not.toBeInTheDocument();
+    });
+
+    it('states the scope, not only the existence', async () => {
+        // The three things that make the exception safe to state at all: it is sent once, the
+        // analyses are never queued, and a sign-out takes it with them.
+        expect(OUTBOX_CLAIM).toContain('sent once when the connection is back');
+        expect(OUTBOX_CLAIM).toContain('your analyses are never queued');
+        expect(OUTBOX_CLAIM).toContain('signing out clears it');
+        // And that it is not encrypted here either, which the section below says of the
+        // database and which would otherwise be silently untrue of the device.
+        expect(OUTBOX_CLAIM).toContain('plain text');
+    });
+});
+
+/* ------------------------------------------------------------------------------------ */
+/* Z — the closeout audit of invariant 2e                                                 */
+/* ------------------------------------------------------------------------------------ */
+
+/**
+ * §10.2 gave this page seven *claims* and the suite above holds all seven verbatim, in both
+ * opt-in states and on every tier. But invariant 2e is not about seven claims — it is about
+ * **every sentence on the page**, and the Phase 6 closeout walked the rendered page line by
+ * line against the code beside it and found seven sentences that no test had ever read.
+ *
+ * None of them was false. Each is asserted here anyway, because the difference between
+ * "true" and "held true" is a test, and a sentence nothing reads is a sentence the next
+ * change is free to falsify. They are the sentences that predate Phase 6 and were never
+ * revisited by it — which is exactly why they were the ones left uncovered.
+ *
+ * Each assertion below names the code that makes its sentence true.
+ */
+describe('every other sentence on the Vault page (invariant 2e, discharged)', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        localStorage.clear();
+        mockFetch();
+    });
+
+    it('says who can see this, and the answer is the per-query user scope', async () => {
+        // True because authorisation *is* `AND user_id = ?` on every query (agent guide
+        // invariant 7), there is no ACL layer, no share endpoint and no second account —
+        // and since Phase 6 that includes all five journal handlers, each of which reads
+        // the id from `c.Get("userID")` and returns 404 rather than 403 on a miss.
+        renderVault();
+        await screen.findByText(/SQLite file/);
+
+        expect(screen.getByText(/Whoever can reach the server/)).toHaveTextContent(
+            'Whoever can reach the server it runs on and sign in as you. There are no other '
+            + "accounts, no sharing, and no way for one user to see another's analyses."
+        );
+    });
+
+    it('describes the export as complete, including what Phase 6 added to it', async () => {
+        // True because `ExportVault` reads every journal row this user has — every kind,
+        // superseded ones included — with `Preload("Mentions")`, and renders corrections as
+        // `supersedes` client ids. "Anything you have since corrected" is that clause.
+        renderVault();
+        await screen.findByText(/SQLite file/);
+
+        expect(screen.getByText(/A complete copy/)).toHaveTextContent(
+            'A complete copy — every relationship, every snapshot, notes, tags, uncertainty '
+            + 'flags and guided answers included, and every journal entry with the people it '
+            + 'names, the triggers it leans on, and anything you have since corrected.'
+        );
+    });
+
+    it('promises two CSV sheets and no transcript in them', async () => {
+        // True because `exportCSV` downloads the snapshot sheet and then, only when
+        // `buildJournalCSV` returns something, a second file — and `buildJournalCSV` has no
+        // transcript column, which the suite above asserts directly.
+        renderVault();
+        await screen.findByText(/SQLite file/);
+
+        expect(screen.getByText(/The JSON file is the one that can be imported again/))
+            .toHaveTextContent(
+                'The JSON file is the one that can be imported again; the CSV is for '
+                + 'spreadsheets, and arrives as two sheets when there is a journal to write — '
+                + 'one row per snapshot, one row per feeling. What was said stays in the JSON.'
+            );
+    });
+
+    it('promises an idempotent import, by the id the entry was written with', async () => {
+        // True because `applyJournal` matches on `client_id` against rows already scoped to
+        // this user, and `minImportVersion` still accepts a v1 file — "the one before it".
+        renderVault();
+        await screen.findByText(/SQLite file/);
+
+        expect(screen.getByText(/Import a JSON export/)).toHaveTextContent(
+            'Import a JSON export, from this version of the app or the one before it. '
+            + 'Snapshots already here are skipped, and a journal entry is matched by the id '
+            + 'it was written with, so importing the same file twice changes nothing.'
+        );
+    });
+
+    it('states the lock\'s scope and its idle limit from the constant that enforces it', async () => {
+        // The number is read off `IDLE_LIMIT_MS` rather than retyped, for the reason the
+        // *"Does it listen?"* sentence reads `SILENCE_HOLD_MS` and `MAX_CLIP_MS`: a page
+        // that quotes a constant must not be able to describe a machine the code stopped
+        // being.
+        renderVault();
+        await screen.findByText(/SQLite file/);
+
+        expect(screen.getByText(/An optional passphrase/)).toHaveTextContent(
+            'An optional passphrase that covers the app on this device, asked for on load '
+            + `and after ${IDLE_LIMIT_MS / 60000} minutes idle.`
+        );
+    });
+
+    it('says the lock is unavailable where the hashing it needs is, and offers no form', async () => {
+        // `isLockAvailable()` is `Boolean(globalThis.crypto?.subtle)`, and `crypto.subtle`
+        // exists only in a secure context — HTTPS or localhost, which is what the sentence
+        // says. The claim is not only the words: on a device where it is false the page
+        // must not also render a passphrase field it cannot honour.
+        const subtle = globalThis.crypto.subtle;
+        Object.defineProperty(globalThis.crypto, 'subtle', { value: undefined, configurable: true });
+
+        try {
+            renderVault();
+            await screen.findByText(/SQLite file/);
+
+            expect(screen.getByText(/Unavailable here/)).toHaveTextContent(
+                'Unavailable here — the browser only offers the hashing this needs over HTTPS '
+                + 'or on localhost.'
+            );
+            expect(screen.queryByLabelText('New passphrase')).not.toBeInTheDocument();
+        } finally {
+            Object.defineProperty(globalThis.crypto, 'subtle', { value: subtle, configurable: true });
+        }
+    });
+
+    it('counts what this browser session actually loaded, and nothing more', async () => {
+        // The footer says *snapshots*, and `useSubjects().people` is the snapshot list — two
+        // of them in this fixture, against one relationship. A sentence that read the wrong
+        // list would be off by one here and plausible everywhere.
+        renderVault();
+        await screen.findByText(/SQLite file/);
+
+        expect(screen.getByText(/loaded in this browser session/)).toHaveTextContent(
+            `${subjects.length} snapshots loaded in this browser session.`
+        );
     });
 });

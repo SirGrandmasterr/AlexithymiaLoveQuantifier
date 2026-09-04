@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The launcher's static app shortcut — §9.2 of product_vision/06-emotional-journal.md.
+
+  One long-press on the home-screen icon, one tap, and the journal opens with the check-in
+  composer already up. There is no widget and no background process behind it: a shortcut is
+  a row in this file, resolved by the launcher, and the only thing it does is start the
+  activity the launcher would have started anyway with one extra piece of information.
+
+  Static rather than dynamic (ShortcutManager) on purpose. A dynamic shortcut is published by
+  code at runtime, which means a background component deciding what the launcher shows and
+  keeping it in step; this is a resource, it is right from the first launch, it survives an
+  app that has never been opened, and it needs no native code of any kind.
+
+  The intent is explicit — targetPackage and targetClass name this app's own activity — so no
+  <intent-filter> is added to the manifest for it. Adding one would make the scheme reachable
+  from any browser and any other app, which is a wider door than a home-screen shortcut needs.
+  Capacitor's App plugin fires `appUrlOpen` for an ACTION_VIEW intent carrying data whether or
+  not a filter matched it, and `src/mobile/deepLink.js` accepts the URL only if it is one of
+  the two this app itself declared.
+
+  The scheme is Capacitor's `custom_url_scheme`, which is the application id; the rest is the
+  route, and `src/constants/journal.js`'s JOURNAL_RECORD_PATH is the same string on the other
+  side. `record=1` **arms** the composer — the recording starts on the confirming tap inside
+  it, never on the launch.
+
+  Deliberately one shortcut and not two. The nightly ritual has its notification (§3.6) and
+  its place in the app; a second row here would be a second nudge in the one surface Android
+  gives an app on the home screen, and §3.6's rule about the two nudges is the same rule.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="journal-checkin"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_checkin_short_label"
+        android:shortcutLongLabel="@string/shortcut_checkin_long_label">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.thinkmusic.alexithymia"
+            android:targetClass="com.thinkmusic.alexithymia.MainActivity"
+            android:data="com.thinkmusic.alexithymia://journal?record=1" />
+    </shortcut>
+</shortcuts>

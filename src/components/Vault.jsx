@@ -4,6 +4,11 @@ import { Archive, Download, Upload, Loader2, ShieldCheck, Lock, Info } from 'luc
 import { useSubjects } from '../context/SubjectsContext';
 import { CATEGORIES } from '../constants/categories';
 import { hashPassphrase, readLockHash, setLockHash, isLockAvailable } from './AppLock';
+import { readEmbeddings, readVoiceSetting } from '../constants/journalSettings';
+import { embeddingsAvailable } from '../journal/embeddings/availability';
+import { canTranscribe, detectTier, TIERS } from '../journal/inference/tier';
+import { MAX_CLIP_MS, SILENCE_HOLD_MS } from '../journal/recorder';
+import { isNative } from '../mobile/platform';
 
 /**
  * The Vault: what is stored, how to take it with you, and how to put it back.
@@ -15,6 +20,149 @@ import { hashPassphrase, readLockHash, setLockHash, isLockAvailable } from './Ap
  */
 
 const LAST_EXPORT_KEY = 'alq:last-export-at';
+
+/**
+ * The §10.2 variants of *What about AI features?*, chosen by what **this device** has been
+ * asked to do — read from the same `localStorage` key the settings screen writes, the way
+ * `remindersEnabled()` is read.
+ *
+ * **D3 restored the full paragraph, which C3 had deliberately narrowed.** Until this commit
+ * the app had no proposal model: it wrote words down and handed them to the same chips the
+ * user had always tapped, so the *voice on* variant said *"it proposes nothing"* — §10.2's
+ * paragraph with every suggestion clause removed, because a Vault sentence the code cannot
+ * support is the one thing invariant 2e forbids absolutely. The model now exists, the card
+ * that renders its proposals exists, and every clause below is true of the code as written.
+ *
+ * **Three variants and not two, because the Light tier is genuinely two models** (§5.5, §5.1).
+ * A Full-tier device runs one audio-native pass; a Light-tier device runs Whisper tiny for the
+ * words and Gemma 4 E2B for the tags. Saying *"one model"* on a device running two would be
+ * false in the direction that matters most on this page — the number of models is exactly the
+ * kind of thing this section exists to state — so the Light tier gets §10.2's own alternative
+ * sentence, and both name every model and its licence (§5.6).
+ *
+ * Exported so `Vault.test.jsx` can assert all three verbatim, which is what keeps them honest.
+ */
+
+/**
+ * The outbox (design §9.5), stated where the user can see it.
+ *
+ * *"Everything you have written is stored in your database"* is the first sentence of the
+ * section below, and F1 made it momentarily untrue on a phone: a check-in saved in a tunnel is
+ * on the device and nowhere else until it can be sent. Invariant 2e does not allow that gap to
+ * go unstated, and softening the sentence above into something vaguer is the one move that is
+ * never available — so the exception is named instead, with its scope, because a queue the user
+ * does not know about is a copy of their writing they do not know about.
+ *
+ * Shown **only on the phone**, since that is the only place the outbox exists. In a browser a
+ * failed save still fails and still says so, and a sentence about a queue that is not there
+ * would be the same kind of untrue in the other direction.
+ *
+ * Exported so `Vault.test.jsx` can assert it verbatim.
+ */
+export const OUTBOX_CLAIM = 'One exception, on this phone: a check-in you save with no '
+    + 'connection is kept **on this device** until it can be sent, marked **not yet synced** on '
+    + 'its day. It is sent once when the connection is back, however many times it is tried, '
+    + 'and it is held in plain text here in the meantime, like everything else. It is the only '
+    + 'thing this app keeps that way — your analyses are never queued — and signing out clears '
+    + 'it.';
+
+export const AI_CLAIM = {
+    off: 'None are running. The journal can write down a voice note and suggest what it was '
+        + 'about using a model that runs **on this device only**; it is off until you turn it '
+        + 'on in your profile. Right now nothing here infers, scores, or interprets on your '
+        + 'behalf — every number in this app is one you set yourself, and every journal entry '
+        + 'is one you wrote or tapped.',
+
+    on: 'One model, and it runs on this device: Gemma 4 E2B, open weights under the Apache '
+        + '2.0 licence, downloaded once from this server. It **writes down** a voice note — '
+        + 'the audio is never saved and never sent — and **suggests** feelings, people and '
+        + 'triggers to tag from what was said. It is asked only what you said, never how you '
+        + 'sounded. Every suggestion waits for you to confirm, change, or discard it — '
+        + '**nothing it proposes is saved on its own**, and it never touches your love '
+        + 'snapshots. It switches off in your profile at any time.',
+
+    onLight: 'One small model writes the words down and a second one suggests tags; both run '
+        + 'on this device: Whisper tiny and Gemma 4 E2B, open weights under the Apache 2.0 '
+        + 'licence, downloaded once from this server. They **write down** a voice note — the '
+        + 'audio is never saved and never sent — and **suggest** feelings, people and triggers '
+        + 'to tag from what was said. They are asked only what you said, never how you '
+        + 'sounded. Every suggestion waits for you to confirm, change, or discard it — '
+        + '**nothing they propose is saved on its own**, and they never touch your love '
+        + 'snapshots. They switch off in your profile at any time.'
+};
+
+/** Which of the two *voice on* paragraphs describes this device. */
+export const aiClaimFor = (tier) => (tier === TIERS.light ? AI_CLAIM.onLight : AI_CLAIM.on);
+
+/**
+ * §10.2's *"What about the similar-entry suggestions?"* — G1, and **two variants where the
+ * design document wrote one.**
+ *
+ * The split is the same one C3 made for *What about AI features?* and for the same reason:
+ * §10.2's row reads *"A second small model … turns your entries into numbers … It is off
+ * until you turn it on"*, and on a device where it **is** off the first clause is a present
+ * tense about something that is not happening. This page describes *this machine*, so the
+ * off state says what is true of it and names no model, exactly as *"None are running"* does
+ * — and the on state carries §10.2's sentences with only their last clause changed, because
+ * *"it is off until you turn it on"* is the one sentence that cannot be true once it is on.
+ * §10.2 now records both.
+ *
+ * Three things the on paragraph must name, and each is a promise with code under it:
+ *
+ * - **EmbeddingGemma, and its licence.** It is **not** Apache 2.0 like Gemma 4 and Whisper:
+ *   it is under Google's Gemma Terms of Use, and §5.6 requires those terms to travel with
+ *   any copy the operator serves. `make models-fetch` puts the file beside the weights.
+ * - **Downloaded once from this server.** The manifest is `/models/`-relative and
+ *   `connect-src 'self'` would refuse anywhere else.
+ * - **Kept only on this device, and deleted when you sign out.** The index has no server
+ *   endpoint, no export path, and `JournalContext` empties it on the branch that runs with
+ *   no session — the same branch that drops the outbox (§5.8 rule 1).
+ *
+ * **G2 widened both variants to name search**, because §9.7's row always read *"similar-entry
+ * suggestions **and search**"* and G1 shipped only the first half. Two clauses had to change
+ * rather than one: the off variant now says the journal *cannot be searched*, which is true —
+ * `/journal/search` is behind the same switch — and the on variant says the search happens
+ * here and asks the server nothing, which `retrieval.test.jsx` holds by asserting that typing
+ * a query makes no request. The sign-out clause gained its consequence for the same reason: a
+ * user who is told the numbers are deleted should be told what that costs them.
+ */
+export const SIMILAR_CLAIM = {
+    off: 'None are being made, and the journal cannot be searched. The journal can find the '
+        + 'words you have used before — "you have called this \'work\' before" — and look '
+        + 'through what you have written, with a second small model that runs **on this '
+        + 'device only**; it is off until you turn it on in your profile. Right now nothing '
+        + 'here is turning your entries into numbers.',
+
+    on: 'A second small model — EmbeddingGemma, downloaded once from this server, open '
+        + 'weights under **Google\'s Gemma Terms of Use** rather than Apache — turns your '
+        + 'entries into numbers that this device uses to find entries with similar words: '
+        + '"you have called this \'work\' before". It is also what lets you search the '
+        + 'journal, which happens here and asks the server nothing. Those numbers are '
+        + '**kept only on this device**, never sent, never exported, and **deleted when you '
+        + 'sign out** — after which search finds nothing until this device has read your '
+        + 'entries back. Nothing is merged or renamed unless you tap it, and it switches off '
+        + 'in your profile at any time.'
+};
+
+/**
+ * Whether an index is being kept **on this device**, which is the only thing this page may
+ * claim. It asks the same two questions the settings screen does, and both have to agree.
+ */
+export const embeddingsAreOn = () => readEmbeddings(embeddingsAvailable());
+
+/** The `**bold**` runs §10.2 writes, rendered without a markdown dependency for two words. */
+const emphasised = (text) => text.split(/\*\*(.+?)\*\*/g).map((part, index) => (
+    index % 2 === 1 ? <strong key={index} className="font-medium text-slate-700">{part}</strong> : part
+));
+
+/**
+ * Whether a model is on **on this device**, which is the only thing this page may claim.
+ *
+ * It asks the tier as well as the key, and both have to agree, so a `true` written by a
+ * better browser on the same profile cannot make this page describe a model that is not
+ * running here.
+ */
+export const voiceIsOn = () => readVoiceSetting(canTranscribe(detectTier()));
 
 const readLastExport = () => {
     try {
@@ -193,6 +341,16 @@ export default function Vault() {
     const fileInput = useRef(null);
 
     const [lockSet, setLockSet] = useState(() => Boolean(readLockHash()));
+    // Read once, like the lock hash beside it: the settings screen is a different route,
+    // so this page is remounted after any change that could move it.
+    const [voiceOn] = useState(voiceIsOn);
+    // Which paragraph describes this device: one model on the Full tier, two on the Light
+    // one. Read once, like every other fact on this page.
+    const [voiceTier] = useState(() => detectTier());
+    // Read once on mount, like `voiceOn` above and for the same reason: this page describes
+    // the device as it was when it was opened, and a value that changed under it mid-read
+    // would be a claim nobody could check against what they saw.
+    const [similarOn] = useState(embeddingsAreOn);
     const [passphrase, setPassphrase] = useState('');
 
     useEffect(() => {
@@ -410,6 +568,14 @@ export default function Vault() {
                             )}
                         </>
                     )}
+
+                    {/* Outside the `meta` branch above on purpose: this is a fact about this
+                        phone, and it is true whether or not the server answered. */}
+                    {isNative() && (
+                        <p data-outbox-claim className="text-sm text-slate-600 font-light leading-relaxed mt-2">
+                            {emphasised(OUTBOX_CLAIM)}
+                        </p>
+                    )}
                 </Section>
 
                 <Section icon={ShieldCheck} title="What leaves this machine">
@@ -426,14 +592,36 @@ export default function Vault() {
                             <dd className="text-slate-600 mt-1">
                                 Nothing. Every request goes to this app's own origin — you can check that in
                                 your browser's network tab. There is no analytics, no telemetry, and no
-                                third-party script.
+                                third-party script.{' '}
+                                <span className="font-medium text-slate-700">
+                                    If you turn on voice check-ins, the speech and language model files
+                                    are downloaded once, from this same server, and run here.
+                                </span>
                             </dd>
                         </div>
                         <div>
                             <dt className="font-medium text-slate-800">What about AI features?</dt>
+                            <dd className="text-slate-600 mt-1" data-ai-claim={voiceOn ? 'on' : 'off'}>
+                                {emphasised(voiceOn ? aiClaimFor(voiceTier) : AI_CLAIM.off)}
+                            </dd>
+                        </div>
+                        <div>
+                            <dt className="font-medium text-slate-800">
+                                What about the similar-entry suggestions?
+                            </dt>
+                            <dd className="text-slate-600 mt-1" data-similar-claim={similarOn ? 'on' : 'off'}>
+                                {emphasised(similarOn ? SIMILAR_CLAIM.on : SIMILAR_CLAIM.off)}
+                            </dd>
+                        </div>
+                        <div>
+                            {/* The numbers come from the recorder's own constants, so this
+                                sentence cannot describe a machine the code stopped being. */}
+                            <dt className="font-medium text-slate-800">Does it listen?</dt>
                             <dd className="text-slate-600 mt-1">
-                                There are none, by design. Nothing here infers, scores, or interprets on your
-                                behalf — every number in this app is one you set yourself.
+                                Only while the record button is lit. There is no wake word, no background
+                                capture, and recording stops when you tap, after{' '}
+                                {Math.round(SILENCE_HOLD_MS / 1000)} seconds of silence, or at{' '}
+                                {Math.round(MAX_CLIP_MS / 1000)} seconds.
                             </dd>
                         </div>
                         <div>
@@ -442,8 +630,8 @@ export default function Vault() {
                                 No. The database is a plain file (or your Postgres instance); anyone with
                                 access to the server can read it. Passwords are hashed, but your notes,
                                 scores, and everything in the journal — the words you tapped, what you typed,
-                                the people and things you named, and your answers to the evening questions —
-                                are not. Protecting the machine is the protection.
+                                the people and things you named, your answers to the evening questions, and
+                                journal transcripts — are not. Protecting the machine is the protection.
                             </dd>
                         </div>
                     </dl>

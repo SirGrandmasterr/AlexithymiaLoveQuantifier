@@ -1,0 +1,10 @@
+# The recordings themselves stay out of git. The reasons, and how to reverse this, are in
+# README.md §7 — short version: they are identifiable voices saying sentences about named
+# third parties, and consent to be recorded for an evaluation is not consent to be published.
+#
+# Tracked: this file, README.md, and the lock file, which is how a report stays reproducible
+# without the audio being here.
+*
+!.gitignore
+!README.md
+!manifest.lock.json

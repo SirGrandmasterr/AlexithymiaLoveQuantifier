@@ -1,0 +1,30 @@
+{
+  "_note": "The consent register. One row per speaker directory under ../audio/. A directory with no row here is skipped by `make journal-audio-check` and refused by `make journal-eval` — that check is what §5.7's 'consent for any real clip is recorded alongside it' amounts to in code. `id` is the directory name and never a person's name. `kind` is \"human\" (needs consent/<id>.md) or \"synthetic\" (needs the voice and its licence in `notes`). `languages` is what the speaker actually speaks, and the harness warns when a clip's language is not one of them, because §12.4 question 8 is about German being read by German speakers rather than translated at the microphone. `withdrawn` is null or a date; a withdrawn speaker's clips are deleted from ../audio/ and their row stays here so a later reader knows why the numbers moved.",
+  "version": 1,
+  "_example": {
+    "id": "sp01",
+    "kind": "human",
+    "languages": [
+      "de",
+      "en"
+    ],
+    "consent_file": "sp01.md",
+    "consent_date": "2026-09-03",
+    "withdrawn": null,
+    "notes": "Reads the German half; comfortable enough in English for the paired halves."
+  },
+  "speakers": [
+    {
+      "id": "sp01",
+      "kind": "human",
+      "languages": [
+        "de",
+        "en"
+      ],
+      "consent_file": "sp01.md",
+      "consent_date": "2026-09-03",
+      "withdrawn": null,
+      "notes": "Reads the German half; comfortable enough in English for the paired halves."
+    }
+  ]
+}

@@ -1,0 +1,330 @@
+{
+  "version": 1,
+  "note": "The retrieval golden set (§5.8, session G2). Given these entries, query x returns y in the top three — in German and in English. `mode` says what a case needs: a `lexical` case is answered by words alone and runs in `npm test`; a `semantic` case shares no content word with its target and can only be scored by a device that has the embedding model, so `npm test` records it as skipped and `make journal-eval` scores it. Nothing here is a count, a score or a threshold: a case passes when the entry it names is among the first three results.",
+
+  "relationships": [
+    { "ID": 1, "name": "Lucie" },
+    { "ID": 2, "name": "Alex Weber" },
+    { "ID": 3, "name": "Alex Berger" }
+  ],
+
+  "triggers": [
+    { "client_id": "t-arbeit", "label": "Arbeit" },
+    { "client_id": "t-umzug", "label": "Umzug" },
+    { "client_id": "t-geld", "label": "Geld" },
+    { "client_id": "t-work", "label": "work" },
+    { "client_id": "t-move", "label": "the move" },
+    { "client_id": "t-money", "label": "money" }
+  ],
+
+  "snapshots": [
+    {
+      "ID": 1,
+      "relationship_id": 1,
+      "name": "Lucie",
+      "date": "2026-05-01",
+      "description": "Ruhiger Monat. Wir haben viel gemeinsam gekocht und wenig geredet.",
+      "tags": ["routine period"]
+    },
+    {
+      "ID": 2,
+      "relationship_id": 1,
+      "name": "Lucie",
+      "date": "2026-06-01",
+      "description": "A quiet month. We cooked together a lot and said little.",
+      "tags": ["routine period"]
+    }
+  ],
+
+  "entries": [
+    {
+      "client_id": "de-1", "day": "2026-03-02", "at": "2026-03-02T19:40:00+01:00", "language": "de",
+      "transcript": "Der Tag im Büro war wieder lang, und ich bin danach völlig erschöpft nach Hause gekommen.",
+      "feelings": [{ "id": "stress", "about": [{ "kind": "trigger", "trigger": "t-arbeit" }] }],
+      "mentions": []
+    },
+    {
+      "client_id": "de-2", "day": "2026-03-14", "at": "2026-03-14T17:10:00+01:00", "language": "de",
+      "transcript": "In der Besprechung hat niemand zugehört, und ich habe den ganzen Nachmittag daran gekaut.",
+      "feelings": [
+        { "id": "stress", "about": [{ "kind": "trigger", "trigger": "t-arbeit" }] },
+        { "id": "irritation", "about": [{ "kind": "trigger", "trigger": "t-arbeit" }] }
+      ],
+      "mentions": []
+    },
+    {
+      "client_id": "de-3", "day": "2026-03-05", "at": "2026-03-05T15:00:00+01:00", "language": "de",
+      "transcript": "Langer Spaziergang mit Lucie am Fluss, wir haben über alles Mögliche geredet.",
+      "feelings": [
+        { "id": "rapport", "about": [{ "kind": "person", "ref": 0 }] },
+        { "id": "pleasure", "about": [{ "kind": "person", "ref": 0 }] }
+      ],
+      "mentions": [{ "relationship_id": 1, "label": "Lucie" }]
+    },
+    {
+      "client_id": "de-4", "day": "2026-04-01", "at": "2026-04-01T20:15:00+02:00", "language": "de",
+      "transcript": "Die Kartons stapeln sich im Flur und der Umzug rückt näher, als mir lieb ist.",
+      "feelings": [{ "id": "overwhelm", "about": [{ "kind": "trigger", "trigger": "t-umzug" }] }],
+      "mentions": []
+    },
+    {
+      "client_id": "de-5", "day": "2026-04-08", "at": "2026-04-08T18:05:00+02:00", "language": "de",
+      "transcript": "Die Nebenkostenabrechnung kam heute, und ich habe danach lange auf den Kontostand gestarrt.",
+      "feelings": [{ "id": "anxiety", "about": [{ "kind": "trigger", "trigger": "t-geld" }] }],
+      "mentions": []
+    },
+    {
+      "client_id": "de-6", "day": "2026-04-12", "at": "2026-04-12T16:30:00+02:00", "language": "de",
+      "transcript": "Beim Fußball im Park war ich zum ersten Mal seit Wochen richtig gelöst.",
+      "feelings": [{ "id": "pleasure", "about": [{ "kind": "tag", "tag": "routine period" }] }],
+      "mentions": []
+    },
+    {
+      "client_id": "de-7", "day": "2026-04-20", "at": "2026-04-20T21:00:00+02:00", "language": "de",
+      "transcript": "Ich habe Lucie von der Arbeit erzählt, und danach war es leichter.",
+      "feelings": [
+        { "id": "gratitude", "about": [{ "kind": "person", "ref": 0 }] },
+        { "id": "calm", "about": [{ "kind": "trigger", "trigger": "t-arbeit" }] }
+      ],
+      "mentions": [{ "relationship_id": 1, "label": "Lucie" }]
+    },
+    {
+      "client_id": "de-8", "day": "2026-05-03", "at": "2026-05-03T11:20:00+02:00", "language": "de",
+      "transcript": "Alex hat den Bericht ohne ein Wort umgeschrieben.",
+      "feelings": [
+        { "id": "irritation", "about": [{ "kind": "person", "ref": 0 }, { "kind": "trigger", "trigger": "t-arbeit" }] }
+      ],
+      "mentions": [{ "relationship_id": 2, "label": "Alex" }]
+    },
+    {
+      "client_id": "de-9", "day": "2026-05-09", "at": "2026-05-09T18:45:00+02:00", "language": "de",
+      "transcript": "Mit Alex an der Kletterwand, dreimal denselben Zug probiert und dann saß er.",
+      "feelings": [{ "id": "joy", "about": [{ "kind": "person", "ref": 0 }] }],
+      "mentions": [{ "relationship_id": 3, "label": "Alex" }]
+    },
+    {
+      "client_id": "de-10", "day": "2026-05-18", "at": "2026-05-18T20:00:00+02:00", "language": "de",
+      "transcript": "Den halben Samstag Kartons getragen, abends war nichts mehr im Tank.",
+      "feelings": [{ "id": "tiredness", "about": [{ "kind": "trigger", "trigger": "t-umzug" }] }],
+      "mentions": []
+    },
+    {
+      "client_id": "de-11", "day": "2026-06-02", "at": "2026-06-02T22:30:00+02:00", "language": "de",
+      "transcript": "Der Abend war still, und es war niemand da, den ich hätte anrufen wollen.",
+      "feelings": [{ "id": "loneliness", "about": [] }],
+      "mentions": []
+    },
+    {
+      "client_id": "de-12", "day": "2026-06-11", "at": "2026-06-11T19:15:00+02:00", "language": "de",
+      "transcript": "Die Rechnung ist bezahlt, und zum ersten Mal seit Wochen war der Kopf ruhig.",
+      "feelings": [{ "id": "calm", "about": [{ "kind": "trigger", "trigger": "t-geld" }] }],
+      "mentions": []
+    },
+
+    {
+      "client_id": "en-1", "day": "2026-03-03", "at": "2026-03-03T19:40:00+00:00", "language": "en",
+      "transcript": "Another long day at the office, and I came home with nothing left in me.",
+      "feelings": [{ "id": "stress", "about": [{ "kind": "trigger", "trigger": "t-work" }] }],
+      "mentions": []
+    },
+    {
+      "client_id": "en-2", "day": "2026-03-15", "at": "2026-03-15T17:10:00+00:00", "language": "en",
+      "transcript": "Nobody listened in the review, and I chewed on it all afternoon.",
+      "feelings": [
+        { "id": "stress", "about": [{ "kind": "trigger", "trigger": "t-work" }] },
+        { "id": "irritation", "about": [{ "kind": "trigger", "trigger": "t-work" }] }
+      ],
+      "mentions": []
+    },
+    {
+      "client_id": "en-3", "day": "2026-03-06", "at": "2026-03-06T15:00:00+00:00", "language": "en",
+      "transcript": "Long walk with Lucie along the river, we talked about everything and nothing.",
+      "feelings": [
+        { "id": "rapport", "about": [{ "kind": "person", "ref": 0 }] },
+        { "id": "pleasure", "about": [{ "kind": "person", "ref": 0 }] }
+      ],
+      "mentions": [{ "relationship_id": 1, "label": "Lucie" }]
+    },
+    {
+      "client_id": "en-4", "day": "2026-04-02", "at": "2026-04-02T20:15:00+01:00", "language": "en",
+      "transcript": "The boxes are stacking up in the hallway and the move is closer than I would like.",
+      "feelings": [{ "id": "overwhelm", "about": [{ "kind": "trigger", "trigger": "t-move" }] }],
+      "mentions": []
+    },
+    {
+      "client_id": "en-5", "day": "2026-04-09", "at": "2026-04-09T18:05:00+01:00", "language": "en",
+      "transcript": "The utility bill arrived today and I stared at the balance for a long time.",
+      "feelings": [{ "id": "anxiety", "about": [{ "kind": "trigger", "trigger": "t-money" }] }],
+      "mentions": []
+    },
+    {
+      "client_id": "en-6", "day": "2026-04-13", "at": "2026-04-13T16:30:00+01:00", "language": "en",
+      "transcript": "Football in the park, and for the first time in weeks I was properly loose.",
+      "feelings": [{ "id": "pleasure", "about": [{ "kind": "tag", "tag": "routine period" }] }],
+      "mentions": []
+    },
+    {
+      "client_id": "en-7", "day": "2026-04-21", "at": "2026-04-21T21:00:00+01:00", "language": "en",
+      "transcript": "I told Lucie about work, and afterwards it was lighter.",
+      "feelings": [
+        { "id": "gratitude", "about": [{ "kind": "person", "ref": 0 }] },
+        { "id": "calm", "about": [{ "kind": "trigger", "trigger": "t-work" }] }
+      ],
+      "mentions": [{ "relationship_id": 1, "label": "Lucie" }]
+    },
+    {
+      "client_id": "en-8", "day": "2026-05-04", "at": "2026-05-04T11:20:00+01:00", "language": "en",
+      "transcript": "Alex rewrote the report without a word.",
+      "feelings": [
+        { "id": "irritation", "about": [{ "kind": "person", "ref": 0 }, { "kind": "trigger", "trigger": "t-work" }] }
+      ],
+      "mentions": [{ "relationship_id": 2, "label": "Alex" }]
+    },
+    {
+      "client_id": "en-9", "day": "2026-05-10", "at": "2026-05-10T18:45:00+01:00", "language": "en",
+      "transcript": "On the climbing wall with Alex, tried the same reach three times and then it held.",
+      "feelings": [{ "id": "joy", "about": [{ "kind": "person", "ref": 0 }] }],
+      "mentions": [{ "relationship_id": 3, "label": "Alex" }]
+    },
+    {
+      "client_id": "en-10", "day": "2026-05-19", "at": "2026-05-19T20:00:00+01:00", "language": "en",
+      "transcript": "Carried boxes for half of Saturday, and by the evening there was nothing left in the tank.",
+      "feelings": [{ "id": "tiredness", "about": [{ "kind": "trigger", "trigger": "t-move" }] }],
+      "mentions": []
+    },
+    {
+      "client_id": "en-11", "day": "2026-06-03", "at": "2026-06-03T22:30:00+01:00", "language": "en",
+      "transcript": "The evening was quiet, and there was nobody I wanted to call.",
+      "feelings": [{ "id": "loneliness", "about": [] }],
+      "mentions": []
+    },
+    {
+      "client_id": "en-12", "day": "2026-06-12", "at": "2026-06-12T19:15:00+01:00", "language": "en",
+      "transcript": "The bill is paid, and for the first time in weeks my head was quiet.",
+      "feelings": [{ "id": "calm", "about": [{ "kind": "trigger", "trigger": "t-money" }] }],
+      "mentions": []
+    }
+  ],
+
+  "cases": [
+    {
+      "id": "de.buero", "language": "de", "mode": "lexical",
+      "query": "Buro", "expect": ["de-1"],
+      "note": "Diacritics fold both ways: the user types no umlaut and the entry has one."
+    },
+    {
+      "id": "de.fussball", "language": "de", "mode": "lexical",
+      "query": "Fussball", "expect": ["de-6"],
+      "note": "ß is not a diacritic and NFD leaves it standing. This is the case the extra fold exists for."
+    },
+    {
+      "id": "de.nebenkosten", "language": "de", "mode": "lexical",
+      "query": "Nebenkosten", "expect": ["de-5"],
+      "note": "A German compound found by its first half, with no compound splitter anywhere."
+    },
+    {
+      "id": "de.kartons", "language": "de", "mode": "lexical",
+      "query": "Kartons", "expect": ["de-4", "de-10"],
+      "note": "Two days, both in the top three, and the query names neither."
+    },
+    {
+      "id": "de.spaziergang", "language": "de", "mode": "lexical",
+      "query": "Spaziergang mit Lucie", "expect": ["de-3"],
+      "note": "A phrase, verbatim."
+    },
+    {
+      "id": "de.kletterwand", "language": "de", "mode": "lexical",
+      "query": "Kletterwand", "expect": ["de-9"], "must_not": ["de-8"],
+      "note": "One of the two Alexes, by what was around them rather than by the name."
+    },
+    {
+      "id": "de.rechnung", "language": "de", "mode": "lexical",
+      "query": "Rechnung bezahlt", "expect": ["de-12"]
+    },
+    {
+      "id": "de.snapshot", "language": "de", "mode": "lexical",
+      "query": "gemeinsam gekocht", "expect": ["snapshot:1"],
+      "note": "§5.8's 'and snapshot notes'. A love snapshot's note is searchable; its seven numbers are not."
+    },
+    {
+      "id": "de.trigger.label", "language": "de", "mode": "lexical",
+      "query": "Umzug", "expect": ["de-4", "de-10"],
+      "note": "de-10 says nothing about a move; it is filed under the trigger whose label does."
+    },
+
+    {
+      "id": "en.office", "language": "en", "mode": "lexical",
+      "query": "office", "expect": ["en-1"]
+    },
+    {
+      "id": "en.boxes", "language": "en", "mode": "lexical",
+      "query": "boxes", "expect": ["en-4", "en-10"]
+    },
+    {
+      "id": "en.utility", "language": "en", "mode": "lexical",
+      "query": "utility bill", "expect": ["en-5"]
+    },
+    {
+      "id": "en.river", "language": "en", "mode": "lexical",
+      "query": "walk along the river", "expect": ["en-3"],
+      "note": "Four of these five words are in most entries; the ranking is the rare one's doing."
+    },
+    {
+      "id": "en.climbing", "language": "en", "mode": "lexical",
+      "query": "climbing wall", "expect": ["en-9"], "must_not": ["en-8"]
+    },
+    {
+      "id": "en.report", "language": "en", "mode": "lexical",
+      "query": "rewrote the report", "expect": ["en-8"]
+    },
+    {
+      "id": "en.snapshot", "language": "en", "mode": "lexical",
+      "query": "cooked together", "expect": ["snapshot:2"]
+    },
+    {
+      "id": "en.quiet", "language": "en", "mode": "lexical",
+      "query": "nobody I wanted to call", "expect": ["en-11"]
+    },
+    {
+      "id": "en.trigger.label", "language": "en", "mode": "lexical",
+      "query": "the move", "expect": ["en-4", "en-10"]
+    },
+
+    {
+      "id": "de.sem.job", "language": "de", "mode": "semantic",
+      "query": "Wann war ich zuletzt so ausgelaugt von meinem Job?", "expect": ["de-1"],
+      "note": "The design document's own question, in German, with no word shared with its answer."
+    },
+    {
+      "id": "de.sem.einsam", "language": "de", "mode": "semantic",
+      "query": "Wann habe ich mich zuletzt einsam gefühlt?", "expect": ["de-11"], "must_not": ["de-3"],
+      "note": "The entry never says einsam; it says the evening was quiet and there was nobody to call."
+    },
+    {
+      "id": "de.sem.sorgen", "language": "de", "mode": "semantic",
+      "query": "Sorgen wegen der Miete", "expect": ["de-5"]
+    },
+    {
+      "id": "en.sem.wornout", "language": "en", "mode": "semantic",
+      "query": "When did I last feel worn out by my job?", "expect": ["en-1"]
+    },
+    {
+      "id": "en.sem.lonely", "language": "en", "mode": "semantic",
+      "query": "When did I last feel lonely?", "expect": ["en-11"], "must_not": ["en-3"]
+    },
+    {
+      "id": "en.sem.moneyworry", "language": "en", "mode": "semantic",
+      "query": "worrying about the rent", "expect": ["en-5"]
+    },
+    {
+      "id": "xl.de.query.en.entry", "language": "de", "mode": "semantic",
+      "query": "Umzugskisten schleppen", "expect": ["en-10"],
+      "note": "A German query reaching an English entry. EmbeddingGemma is multilingual; this is the case that says whether that survives the truncation to 256."
+    },
+    {
+      "id": "xl.en.query.de.entry", "language": "en", "mode": "semantic",
+      "query": "worries about money", "expect": ["de-5"],
+      "note": "The mirror of the case above, and §12.1's mixed-language user is the reason both are here."
+    }
+  ]
+}

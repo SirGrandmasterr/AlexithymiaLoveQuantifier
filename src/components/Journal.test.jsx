@@ -1,16 +1,40 @@
 import React from 'react';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import Journal from './Journal';
 import MobileBottomNav from './MobileBottomNav';
 import { SubjectsProvider } from '../context/SubjectsContext';
 import { JournalProvider } from '../context/JournalContext';
 import { DiscretionProvider, BLUR_CLASS } from '../context/DiscretionContext';
-import { JOURNAL_COPY, JOURNAL_STORAGE_KEYS, PEOPLE_PATH, TRIGGERS_PATH } from '../constants/journal';
+import {
+    JOURNAL_COPY,
+    JOURNAL_RECORD_PATH,
+    JOURNAL_STORAGE_KEYS,
+    PEOPLE_PATH,
+    TRIGGERS_PATH
+} from '../constants/journal';
+import { fakeKit } from './voiceKit.fake';
 
 vi.mock('axios');
+
+/**
+ * F2 — the launcher shortcut arrives as `?record=1`, and what this device offers decides
+ * which composer it arms. The hook is the real one with two fields overridden, so every
+ * other test in this file keeps the answer jsdom actually gives (text-only: no
+ * `mediaDevices`, so no microphone) and the shortcut tests can put a phone's answer in.
+ */
+const voiceState = vi.hoisted(() => ({ showMicrophone: false, primed: true }));
+
+vi.mock('./VoiceCheckin', async (importOriginal) => {
+    const actual = await importOriginal();
+    return {
+        ...actual,
+        useVoiceAvailability: () => ({ ...actual.useVoiceAvailability(), ...voiceState }),
+        createVoiceKit: () => voiceState.kit
+    };
+});
 
 const TODAY = '2026-08-21';
 
@@ -488,5 +512,235 @@ describe('MobileBottomNav', () => {
         const nav = screen.getByRole('navigation', { name: 'Primary' });
         expect(within(nav).getByRole('link', { name: JOURNAL_COPY.nav.label }))
             .toHaveAttribute('aria-current', 'page');
+    });
+});
+
+/* ------------------------------------------------------------------------------------ */
+/* F1 — what a queued entry looks like on the day (§9.5)                                  */
+/* ------------------------------------------------------------------------------------ */
+
+const platformState = vi.hoisted(() => ({ native: false }));
+
+vi.mock('../mobile/platform', async (importOriginal) => ({
+    ...(await importOriginal()),
+    isNative: () => platformState.native
+}));
+
+const OUTBOX_KEY = 'alq:journal-outbox';
+
+/** One entry in the outbox on the device, as a relaunched app would find it. */
+const queued = (overrides = {}) => ({
+    client_id: 'queued-1',
+    queued_at: 1_755_000_000_000,
+    error: null,
+    request: {
+        client_id: 'queued-1',
+        kind: 'checkin',
+        at: '2026-08-21T18:42:10Z',
+        day: TODAY,
+        schema_version: 1,
+        payload: {
+            v: 1,
+            source: 'typed',
+            tz_offset_min: 120,
+            note: 'On the train, no signal.',
+            feelings: [{ id: 'calm', intensity: 2, about: [] }]
+        },
+        mentions: [],
+        triggers: [],
+        supersedes_id: null
+    },
+    ...overrides
+});
+
+describe('an entry saved with no connectivity', () => {
+    beforeEach(() => {
+        platformState.native = true;
+    });
+
+    afterEach(() => {
+        platformState.native = false;
+    });
+
+    it('is on the day, with the not yet synced mark', async () => {
+        window.localStorage.setItem(OUTBOX_KEY, JSON.stringify([queued()]));
+
+        renderAt(`/journal/${TODAY}`);
+        const day = await rows();
+
+        expect(day.getByText('On the train, no signal.')).toBeInTheDocument();
+        expect(day.getByText(JOURNAL_COPY.day.notSynced)).toBeInTheDocument();
+        expect(document.querySelector('[data-entry-kind="checkin"][data-pending="true"]')).toBeInTheDocument();
+    });
+
+    it('is still there after the app is killed and relaunched', async () => {
+        window.localStorage.setItem(OUTBOX_KEY, JSON.stringify([queued()]));
+
+        const first = renderAt(`/journal/${TODAY}`);
+        await rows();
+        first.unmount();
+
+        // Nothing is handed across: the second mount reads the device, as a cold start does.
+        renderAt(`/journal/${TODAY}`);
+        const day = await rows();
+
+        expect(day.getByText('On the train, no signal.')).toBeInTheDocument();
+        expect(day.getByText(JOURNAL_COPY.day.notSynced)).toBeInTheDocument();
+    });
+
+    it('offers no delete control, because there is no offline delete', async () => {
+        window.localStorage.setItem(OUTBOX_KEY, JSON.stringify([queued()]));
+
+        renderAt(`/journal/${TODAY}`);
+        await rows();
+
+        // §9.5. The row id a `DELETE` would name is the server's and this entry has none, and
+        // dropping it from the queue instead would be an offline delete — which this slice
+        // deliberately does not build. The mark stands where the trash icon stands.
+        const pending = document.querySelector('[data-entry-kind="checkin"][data-pending="true"]');
+        expect(within(pending).queryByLabelText(JOURNAL_COPY.checkin.delete.action)).toBeNull();
+        expect(within(pending).getByText(JOURNAL_COPY.day.notSynced)).toBeInTheDocument();
+    });
+
+    it('keeps the day out of its empty state', async () => {
+        window.localStorage.setItem(OUTBOX_KEY, JSON.stringify([queued()]));
+
+        renderAt(`/journal/${TODAY}`);
+        await rows();
+
+        // A day the user wrote a check-in on is not a day with nothing on it, whatever the
+        // radio was doing at the time.
+        expect(screen.queryByText(JOURNAL_COPY.empty.today)).toBeNull();
+        expect(screen.queryByText(JOURNAL_COPY.empty.pastDay)).toBeNull();
+    });
+
+    it('marks its day in the month strip', async () => {
+        window.localStorage.setItem(OUTBOX_KEY, JSON.stringify([queued()]));
+
+        renderAt(`/journal/${TODAY}`);
+        await rows();
+
+        const cell = screen.getByLabelText(TODAY);
+        expect(cell.querySelector('[data-marked]')).toBeInTheDocument();
+    });
+
+    it('says what the server said when the server refused it', async () => {
+        window.localStorage.setItem(OUTBOX_KEY, JSON.stringify([queued({ error: 'unknown feeling id: bliss' })]));
+
+        renderAt(`/journal/${TODAY}`);
+        const day = await rows();
+
+        // Not "not yet synced" — that would be a promise the code cannot keep, since this
+        // body will be refused again. The entry stays on the screen and says why.
+        expect(day.queryByText(JOURNAL_COPY.day.notSynced)).toBeNull();
+        expect(day.getByText('Not sent — unknown feeling id: bliss')).toBeInTheDocument();
+    });
+
+    it('does not exist on the web, where a failed save says so instead', async () => {
+        platformState.native = false;
+        window.localStorage.setItem(OUTBOX_KEY, JSON.stringify([queued()]));
+
+        renderAt(`/journal/${TODAY}`);
+
+        await waitFor(() => expect(screen.getByText(JOURNAL_COPY.empty.today)).toBeInTheDocument());
+        expect(screen.queryByText(JOURNAL_COPY.day.notSynced)).toBeNull();
+    });
+});
+
+/* ------------------------------------------------------------------------------------ */
+/* F2 — the launcher's Check in shortcut (§9.2)                                           */
+/* ------------------------------------------------------------------------------------ */
+
+describe('arriving from the launcher shortcut', () => {
+    beforeEach(() => {
+        mockFetch({});
+        voiceState.showMicrophone = false;
+        voiceState.primed = true;
+        voiceState.kit = fakeKit();
+    });
+
+    afterEach(() => {
+        voiceState.showMicrophone = false;
+        voiceState.primed = true;
+    });
+
+    it('arms the recording rather than starting it', async () => {
+        voiceState.showMicrophone = true;
+
+        renderAt(JOURNAL_RECORD_PATH);
+
+        // The sheet is up and the microphone is on it, waiting.
+        const button = await waitFor(() => {
+            const found = document.querySelector('[data-voice-record]');
+            expect(found).not.toBeNull();
+            return found;
+        });
+        expect(document.querySelector('[data-voice-block="capture"]')).toBeInTheDocument();
+        expect(button).toHaveAttribute('aria-pressed', 'false');
+
+        // Nothing was recorded by arriving. §4.2: the microphone is open only while the
+        // button is lit, and a long-press on a home screen is not a decision to record.
+        expect(voiceState.kit.recorder.tap).not.toHaveBeenCalled();
+        expect(voiceState.kit.recorder.start).not.toHaveBeenCalled();
+
+        // One confirming tap, and then it starts.
+        await userEvent.click(button);
+        expect(voiceState.kit.recorder.tap).toHaveBeenCalledTimes(1);
+    });
+
+    it('opens the chips composer where the device offers no microphone', async () => {
+        voiceState.showMicrophone = false;
+
+        renderAt(JOURNAL_RECORD_PATH);
+
+        expect(await screen.findByText(JOURNAL_COPY.checkin.prompt)).toBeInTheDocument();
+        expect(document.querySelector('[data-voice-record]')).toBeNull();
+    });
+
+    it('waits for the tier before deciding which one to arm', async () => {
+        // On Android the tier is the plugin's memory report and it lands a moment after
+        // mount. Arming before it does would open the keyboard on a phone with a
+        // transcriber, which is the wrong composer and an unrecoverable one — the sheet is
+        // already up by the time the answer arrives.
+        voiceState.primed = false;
+        voiceState.showMicrophone = false;
+
+        renderAt(JOURNAL_RECORD_PATH);
+        await waitFor(() => expect(screen.getByText(JOURNAL_COPY.empty.today)).toBeInTheDocument());
+        expect(screen.queryByText(JOURNAL_COPY.checkin.prompt)).toBeNull();
+    });
+
+    it('opens nothing without the parameter', async () => {
+        renderAt('/journal');
+
+        await waitFor(() => expect(screen.getByText(JOURNAL_COPY.empty.today)).toBeInTheDocument());
+        expect(screen.queryByText(JOURNAL_COPY.checkin.prompt)).toBeNull();
+    });
+
+    it('consumes the parameter, so closing the sheet does not re-open it', async () => {
+        const Where = () => <output data-where>{useLocation().search}</output>;
+
+        render(
+            <MemoryRouter initialEntries={[JOURNAL_RECORD_PATH]}>
+                <DiscretionProvider>
+                    <SubjectsProvider>
+                        <JournalProvider>
+                            <Where />
+                            <Routes>
+                                <Route path="/journal" element={<Journal />} />
+                            </Routes>
+                        </JournalProvider>
+                    </SubjectsProvider>
+                </DiscretionProvider>
+            </MemoryRouter>
+        );
+
+        await screen.findByText(JOURNAL_COPY.checkin.prompt);
+        // The query is gone from the URL, so a reload, a back gesture out of the sheet, or a
+        // second render of this screen finds an ordinary /journal.
+        await waitFor(() => expect(document.querySelector('[data-where]')).toHaveTextContent(''));
+
+        await userEvent.keyboard('{Escape}');
+        await waitFor(() => expect(screen.queryByText(JOURNAL_COPY.checkin.prompt)).toBeNull());
     });
 });

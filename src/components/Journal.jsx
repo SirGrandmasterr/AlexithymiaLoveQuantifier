@@ -1,9 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Info, Loader2, NotebookPen, Trash2 } from 'lucide-react';
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Activity, ChevronLeft, ChevronRight, CloudOff, Info, Loader2, NotebookPen, Trash2 } from 'lucide-react';
 import { useJournal } from '../context/JournalContext';
 import { useDiscretion } from '../context/DiscretionContext';
 import CheckinComposer, { CheckinButton, CheckinFab, chipClass } from './CheckinComposer';
+import { useVoiceAvailability } from './VoiceCheckin';
+import { buildContext } from '../journal/inference';
+import { useSubjects } from '../context/SubjectsContext';
+import usePullToRefresh from '../mobile/usePullToRefresh';
 // The extension is deliberate: `dayGraph.js` (the geometry) and `DayGraph.jsx` (the drawing)
 // differ only in case, this filesystem does not, and Vite resolves `.js` before `.jsx` — so
 // a bare `'./DayGraph'` silently imports the geometry module and renders `undefined`.
@@ -13,6 +17,9 @@ import {
     JOURNAL_COPY,
     JOURNAL_ROOT,
     PEOPLE_PATH,
+    RECORD_PARAM,
+    RECORD_PARAM_VALUE,
+    SEARCH_PATH,
     TRIGGERS_PATH,
     UNCLEAR_FEELING_ID,
     civilDay,
@@ -50,9 +57,39 @@ import { ritualSettingUntouched } from '../constants/journalSettings';
  * `FEELINGS` for the same reason.
  */
 
-export const Frame = ({ children }) => (
+/**
+ * Every journal screen's page frame.
+ *
+ * The three pull props are optional and default to the shape of a screen with no gesture on
+ * it, which is every caller but the day view: `pull` is 0 on the web and on any screen that
+ * does not wire `usePullToRefresh`, so the indicator and the translate below cost those
+ * screens one comparison and change nothing about what they render. The markup is the
+ * dashboard's, deliberately — one gesture in this app, one thing it looks like.
+ */
+export const Frame = ({ children, pull = 0, refreshing = false, armed = false }) => (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800 selection:bg-slate-200">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-6">{children}</div>
+        {pull > 0 && (
+            <div
+                className="fixed top-0 inset-x-0 z-30 flex justify-center pointer-events-none"
+                style={{ transform: `translateY(${pull}px)` }}
+            >
+                <div className="mt-2 p-2 bg-white rounded-full shadow-md border border-slate-100">
+                    <Activity
+                        size={18}
+                        className={`transition-colors ${refreshing ? 'animate-spin text-rose-500'
+                            : armed ? 'text-rose-500' : 'text-slate-300'
+                            }`}
+                    />
+                </div>
+            </div>
+        )}
+
+        <div
+            className="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-6"
+            style={pull > 0 ? { transform: `translateY(${pull}px)` } : undefined}
+        >
+            {children}
+        </div>
     </div>
 );
 
@@ -88,6 +125,28 @@ export const LoadFailed = ({ message, onDismiss }) => (
 // Re-exported, not redeclared: it is defined in CheckinComposer because that module cannot
 // import this one. Two identical literals is the shape a restyle silently half-applies.
 export { chipClass };
+
+/**
+ * The *not yet synced* mark (§9.5) — what an entry in the outbox wears until it lands.
+ *
+ * It sits where the delete control sits on a stored entry, and that is deliberate rather than
+ * convenient: the two are mutually exclusive. There is no offline delete, so an entry that has
+ * not reached the server has nothing to offer a trash icon; a tap on one would have to either
+ * lie or drop a check-in the user wrote.
+ *
+ * Grey and small, in the register the rest of this screen uses. Nothing is wrong, nothing is
+ * owed and nothing was lost — the entry is on the device rather than on the server, which is a
+ * fact about the connection and not about the person holding the phone.
+ */
+export const PendingMark = ({ error = null }) => (
+    <span
+        data-pending-mark
+        className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-400"
+    >
+        <CloudOff size={12} className="flex-shrink-0" />
+        {error ? fillCopy(JOURNAL_COPY.day.notSent, { reason: error }) : JOURNAL_COPY.day.notSynced}
+    </span>
+);
 
 /**
  * One feeling, in its own colour.
@@ -303,6 +362,7 @@ const CheckinEntry = ({ entry, opened = false }) => {
             ref={article}
             data-entry-kind="checkin"
             data-opened={opened ? 'true' : undefined}
+            data-pending={entry.pending ? 'true' : undefined}
             className={`bg-white rounded-2xl shadow-sm border p-4 sm:p-5 space-y-3 transition-colors ${opened ? 'border-slate-300 ring-2 ring-slate-200' : 'border-slate-100'
                 }`}
         >
@@ -312,14 +372,22 @@ const CheckinEntry = ({ entry, opened = false }) => {
                         {time}
                     </time>
                 )}
-                <button
-                    type="button"
-                    onClick={() => setConfirming(true)}
-                    aria-label={JOURNAL_COPY.checkin.delete.action}
-                    className="ml-auto -mt-1 -mr-1 p-1 rounded-full text-slate-300 hover:text-rose-600 transition-colors"
-                >
-                    <Trash2 size={14} />
-                </button>
+                {/* §9.5: a queued entry is marked and is not deletable. Its row id is the
+                    server's and it has none, so there is nothing `DELETE` could name — and
+                    dropping it from the queue instead would be an offline delete, which this
+                    slice deliberately does not build. It waits, in view, until it lands. */}
+                {entry.pending ? (
+                    <span className="ml-auto"><PendingMark error={entry.outbox_error} /></span>
+                ) : (
+                    <button
+                        type="button"
+                        onClick={() => setConfirming(true)}
+                        aria-label={JOURNAL_COPY.checkin.delete.action}
+                        className="ml-auto -mt-1 -mr-1 p-1 rounded-full text-slate-300 hover:text-rose-600 transition-colors"
+                    >
+                        <Trash2 size={14} />
+                    </button>
+                )}
             </div>
 
             {confirming && (
@@ -420,10 +488,16 @@ const RitualFooter = ({ entry }) => {
     return (
         <section
             data-entry-kind="ritual"
+            data-pending={entry.pending ? 'true' : undefined}
             aria-label={JOURNAL_COPY.day.ritualHeading}
             className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 sm:p-5 space-y-3"
         >
-            <h2 className="text-sm font-medium text-slate-500">{JOURNAL_COPY.day.ritualHeading}</h2>
+            <div className="flex items-baseline justify-between gap-3">
+                <h2 className="text-sm font-medium text-slate-500">{JOURNAL_COPY.day.ritualHeading}</h2>
+                {/* A ritual answered in a tunnel is queued like a check-in, and reads here the
+                    same way it will once it lands — with the mark until then. */}
+                {entry.pending && <PendingMark error={entry.outbox_error} />}
+            </div>
 
             <dl className="space-y-1.5">
                 {ritual.asked.map(id => (
@@ -491,14 +565,14 @@ const MonthStrip = ({ day }) => {
     );
 };
 
-const DayHeader = ({ day, today, onCompose }) => (
+const DayHeader = ({ day, today, onCompose, voice }) => (
     <header className="space-y-4">
         {/* The strip and the primary button share a row, so the button lands in the corner
             the dashboard puts *New Analysis* in (§9.2). Below `md` it is not rendered at
             all — there the way in is the round button over the bottom bar. */}
         <div className="flex items-start justify-between gap-4">
             <MonthStrip day={day} />
-            <CheckinButton onOpen={onCompose} />
+            <CheckinButton onOpen={onCompose} voice={voice} />
         </div>
 
         <div className="flex items-center justify-between gap-3">
@@ -535,9 +609,12 @@ const DayHeader = ({ day, today, onCompose }) => (
             </Link>
         </div>
 
-        {/* The two vocabularies, from the screen they were grown on. The bottom bar has
-            one journal slot and the day is what it opens (§9.2), so this is the only way
-            in to either — a screen nobody can reach is not a screen. */}
+        {/* The two vocabularies and, since G2, recall — each from the screen they were
+            grown on. The bottom bar has one journal slot and the day is what it opens
+            (§9.2), so this is the only way in to any of them — a screen nobody can reach
+            is not a screen. Search is linked whether or not the index is on, because the
+            screen behind it says out loud that it is off and where the switch is; a link
+            that vanished would leave a user who turned the toggle on with nothing to find. */}
         <nav aria-label={JOURNAL_COPY.nav.label} className="flex items-center justify-center gap-5">
             <Link
                 to={PEOPLE_PATH}
@@ -550,6 +627,13 @@ const DayHeader = ({ day, today, onCompose }) => (
                 className="text-xs font-medium text-slate-500 hover:text-slate-800 underline underline-offset-4"
             >
                 {JOURNAL_COPY.triggers.heading}
+            </Link>
+            <Link
+                to={SEARCH_PATH}
+                data-journal-search-link
+                className="text-xs font-medium text-slate-500 hover:text-slate-800 underline underline-offset-4"
+            >
+                {JOURNAL_COPY.similar.search.heading}
             </Link>
         </nav>
     </header>
@@ -580,10 +664,26 @@ const EmptyDay = ({ day, today, firstRun }) => (
 export default function Journal() {
     const { day: dayParam } = useParams();
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
     const {
-        entries, entriesForDay, loading, loadError, dismissLoadError, loadRange
+        entries, entriesForDay, pendingForDay, triggers, loading, loadError, dismissLoadError,
+        loadRange, refresh
     } = useJournal();
-    const [composing, setComposing] = useState(false);
+    const { relationships } = useSubjects();
+    // `null`, `'chips'` or `'voice'` — which way in was taken, not merely that one was.
+    const [composing, setComposing] = useState(null);
+
+    // Whether this screen offers a microphone at all: the device has to be able to run
+    // the transcriber, the user has to have turned it on, and discretion mode replaces it
+    // with the keyboard outright (§4.4, §9.6).
+    const voice = useVoiceAvailability();
+
+    // The closed vocabularies plus this user's own names and labels — and never an id
+    // (§5.1). Built here because this is the screen that holds both lists.
+    const proposalContext = useMemo(
+        () => buildContext({ relationships, triggers, language: voice.language }),
+        [relationships, triggers, voice.language]
+    );
     // Which check-in the graph is pointing at. Cleared by the day change below, because a row
     // id from yesterday is not on this screen.
     const [openedCheckin, setOpenedCheckin] = useState(null);
@@ -600,13 +700,52 @@ export default function Journal() {
 
     useEffect(() => { setOpenedCheckin(null); }, [day]);
 
+    /**
+     * The launcher's *Check in* shortcut, arriving as `?record=1` (§9.2).
+     *
+     * It **arms** the composer and stops there: the microphone where this device offers one,
+     * the keyboard where it does not — the same choice the button and the FAB make — and the
+     * recording begins on the confirming tap inside the sheet. A long-press on a home screen
+     * is too easy to make by accident to be allowed to open a microphone by itself, and
+     * §4.2's position is that this app records only while the button is lit.
+     *
+     * It waits for `voice.primed` because on Android the tier is the plugin's memory report
+     * and it lands a moment after mount; deciding before it does would arm the keyboard on a
+     * phone that has a transcriber. The parameter is then consumed, so that closing the sheet
+     * — or a reload, or a back gesture — does not re-open it.
+     */
+    useEffect(() => {
+        if (searchParams.get(RECORD_PARAM) !== RECORD_PARAM_VALUE || !voice.primed) return;
+
+        setComposing(voice.showMicrophone ? 'voice' : 'chips');
+
+        const next = new URLSearchParams(searchParams);
+        next.delete(RECORD_PARAM);
+        setSearchParams(next, { replace: true });
+    }, [searchParams, setSearchParams, voice.primed, voice.showMicrophone]);
+
+    // The third of §9.5's three flush signals, and the only one that is a gesture. It calls
+    // the provider's `refresh`, which flushes the outbox on every fetch that comes back — so
+    // pulling the day down is also how a user who knows the tunnel is behind them can ask for
+    // the queued check-in to go now. No-op on web; see `src/mobile/usePullToRefresh.js`.
+    const { pull, refreshing, armed } = usePullToRefresh(refresh);
+
     const dayEntries = entriesForDay(day);
+    // The outbox's rows for this day (§9.5), kept apart from the stored ones all the way to
+    // the render: they carry no row id, so they belong in nothing that opens or deletes by
+    // one — including the day graph below, which is drawn from `dayEntries` alone.
+    const dayPending = pendingForDay(day);
     // Newest first — the opposite of the server's order, which is oldest-first because the
     // day graph reads it left to right.
     const checkins = dayEntries.filter(entry => entry.kind === 'checkin').slice().reverse();
+    const pendingCheckins = dayPending.filter(entry => entry.kind === 'checkin').slice().reverse();
     const facts = dayEntries.filter(entry => entry.kind === 'person_fact').slice().reverse();
     // One ritual a day by construction; the last one wins if a correction ever produced two.
-    const ritual = dayEntries.filter(entry => entry.kind === 'ritual').slice(-1)[0] ?? null;
+    // A queued one stands in until it lands, so a ritual answered offline is not a day that
+    // reads as though nothing happened.
+    const ritual = dayEntries.filter(entry => entry.kind === 'ritual').slice(-1)[0]
+        ?? dayPending.filter(entry => entry.kind === 'ritual').slice(-1)[0]
+        ?? null;
 
     // A path that is present and is not a day is a typo or an old link, not a day with
     // nothing on it. Send it to today rather than drawing "Invalid Date".
@@ -614,7 +753,7 @@ export default function Journal() {
         return <Navigate to={JOURNAL_ROOT} replace />;
     }
 
-    const empty = checkins.length === 0 && facts.length === 0 && !ritual;
+    const empty = checkins.length === 0 && pendingCheckins.length === 0 && facts.length === 0 && !ritual;
     const firstRun = empty && entries.length === 0 && day === today && ritualSettingUntouched();
 
     /**
@@ -628,13 +767,18 @@ export default function Journal() {
     };
 
     return (
-        <Frame>
-            <DayHeader day={day} today={today} onCompose={() => setComposing(true)} />
+        <Frame pull={pull} refreshing={refreshing} armed={armed}>
+            <DayHeader day={day} today={today} onCompose={setComposing} voice={voice.showMicrophone} />
 
-            <CheckinFab onOpen={() => setComposing(true)} />
+            <CheckinFab onOpen={setComposing} voice={voice.showMicrophone} />
 
             {composing && (
-                <CheckinComposer onClose={() => setComposing(false)} onSaved={followSavedEntry} />
+                <CheckinComposer
+                    mode={composing}
+                    context={proposalContext}
+                    onClose={() => setComposing(null)}
+                    onSaved={followSavedEntry}
+                />
             )}
 
             {loadError && <LoadFailed message={loadError} onDismiss={dismissLoadError} />}
@@ -644,7 +788,7 @@ export default function Journal() {
                 would be a second, emptier one. */}
             <DayGraph day={day} entries={dayEntries} onOpenCheckin={setOpenedCheckin} />
 
-            {loading && dayEntries.length === 0 && !loadError ? (
+            {loading && dayEntries.length === 0 && dayPending.length === 0 && !loadError ? (
                 <Loading />
             ) : (
                 <>
@@ -652,6 +796,15 @@ export default function Journal() {
                         <EmptyDay day={day} today={today} firstRun={firstRun} />
                     ) : (
                         <div className="space-y-3">
+                            {/* Above the stored ones, because they are the most recent thing
+                                the user did — the same newest-first order the day already
+                                reads in. Keyed by `client_id`: a queued entry has no row id,
+                                and that id is the one thing about it that never changes,
+                                through a replacement in the outbox and through the post that
+                                finally lands it. */}
+                            {pendingCheckins.map(entry => (
+                                <CheckinEntry key={entry.client_id} entry={entry} />
+                            ))}
                             {checkins.map(entry => (
                                 <CheckinEntry key={entry.ID} entry={entry} opened={openedCheckin === entry.ID} />
                             ))}

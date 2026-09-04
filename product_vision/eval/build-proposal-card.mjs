@@ -48,9 +48,13 @@ const html = template
     .replace('__MAXFEEL__', String(journal.MAX_FEELINGS_PER_CHECKIN))
     .replace('__UNCLEAR__', journal.UNCLEAR_FEELING_ID)
     .replace('__INTENSITIES__', JSON.stringify(journal.INTENSITY_LEVELS))
+    // The two sentences the real card (D2) and this fixture share, read from the app's copy so
+    // the forbidden-word walk that covers `JOURNAL_COPY.proposal` covers this page too.
+    .replace('__DASHED__', JSON.stringify(journal.JOURNAL_COPY.proposal.dashed))
+    .replace('__REPHRASE__', JSON.stringify(journal.JOURNAL_COPY.proposal.notIt))
     .replace('__GENERATED__', stamp);
 
-for (const token of ['__VOCAB__', '__MAXFEEL__', '__UNCLEAR__', '__INTENSITIES__', '__GENERATED__']) {
+for (const token of ['__VOCAB__', '__MAXFEEL__', '__UNCLEAR__', '__INTENSITIES__', '__DASHED__', '__REPHRASE__', '__GENERATED__']) {
     if (html.includes(token)) throw new Error(`template still holds ${token}`);
 }
 

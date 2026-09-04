@@ -596,6 +596,14 @@ Request ([`CreateJournalEntryInput`](../backend/internal/handlers/journal.go)):
 **Payload rules by kind** ([design §6.5](../product_vision/06-emotional-journal.md)). Every
 payload needs `"v": 1`.
 
+**Only the keys named below are validated; everything else in a payload travels through
+untouched** — `decodePayload` reads the struct's keys and stores the map as it arrived, because
+a newer client may write a field this server has never heard of and dropping it silently would
+be the description-wipe mistake in a new form. That is what lets the client add provenance
+without a server change: `proposal` (§6.3, session D2) and, since G2, **`retrieval`** — the
+`from: "retrieval"` block recording what the on-device embedding index offered and what the
+user kept. Neither is input to anything: the server validates ids, not opinions.
+
 | `kind` | Validated |
 | :----- | :-------- |
 | `checkin` | ≤ 5 `feelings`, each `id` a known feeling; `intensity`, **when present**, is 1–3 — an absent one is not a zero, and the ritual's day word (`source: "ritual_word"`) is one tap on one word with no strength in it to record; every `about` is `person` (whose `ref` must index a mention), `tag` (≤ 40 characters) or `trigger` (whose id must appear in `triggers[]`); `tags` under the snapshot tag limits and stored trimmed; `transcript` ≤ 4 000 characters; `proposal.proposed` / `proposal.accepted` are known feeling ids. |

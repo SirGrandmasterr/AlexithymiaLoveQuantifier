@@ -22,11 +22,17 @@ of love styles present in one relationship at one point in time.
 
 Two consequences shape the entire product:
 
-1. **Self-scored, not computed.** The application contains no inference engine, no
-   questionnaire scoring algorithm, and no AI. The user moves seven sliders; the
-   backend stores those seven numbers verbatim. Every "metric" description in the UI is
-   guidance for the human doing the rating — see
-   [Category Explorer](#5-the-category-explorer-aboutmodal).
+1. **Self-scored, not computed.** The **love snapshots** contain no inference engine, no
+   scoring algorithm, and no AI: the user moves seven sliders and the backend stores those
+   seven numbers verbatim. Every "metric" description in the UI is guidance for the human
+   doing the rating — see [Category Explorer](#5-the-category-explorer-aboutmodal).
+
+   The **emotional journal** (Phase 6) may, on this device and only when turned on,
+   **transcribe a spoken note and propose labels for it**. It writes the words down, shows
+   them to you to correct, and offers feelings, people and triggers it heard — every one of
+   them dashed until you tap it. **A proposal is never a record until the user confirms it**,
+   and what is saved is built from the confirmed state and nothing else. No model has ever
+   written a score, and none can: the proposal contract has no slot for one.
 2. **Longitudinal by design.** Because a single self-assessment is noisy and because
    feelings change, the primary unit is not "a person" but "a dated snapshot of a
    person". Change over time is the actual signal — hence the versioning and timeline
@@ -518,15 +524,41 @@ Knowing the negative space prevents wrong assumptions when extending the project
 - **No clinical claim.** Nothing in the codebase performs alexithymia screening (no
   TAS-20 or similar). "Alexithymia" names the motivating problem, not a diagnostic
   feature.
-- **No notifications sent anywhere.** Reminders now exist, but they are in-app only, opt-in
-  per relationship, off by default, and computed in the browser. There is no scheduler, no
-  email, no push, and nothing that runs when the tab is closed.
+- **No AI that decides.** Where a model runs, it runs on the device, off by default, and its
+  output is a proposal the user accepts or rejects chip by chip. Nothing a model says is
+  written without that tap, and no model ever writes a score. Since Phase 6-D the journal can
+  run Gemma 4 E2B on the device to write a spoken note down and suggest labels for it; the
+  suggestion arrives on a card where every chip is dashed until it is confirmed, the save
+  payload is built from what was confirmed, and the server validates ids rather than opinions.
+  Since 6-G there is a **second** on-device model behind a **second** switch, off by default:
+  EmbeddingGemma turns the words you have already used into numbers, kept only on that device
+  and deleted when you sign out, so the journal can say *"you've called this 'work' before"*
+  when a new label looks like an old one. It offers; it never merges, never renames, and never
+  shows a number — and it only offers at all when something structural agrees, meaning the same
+  person or the same trigger. The same switch is what lets the journal be **searched**, on the
+  device and without asking the server anything, and what comes back is entries — a day, a
+  time, your own words — never a summary of them and never a score. The love snapshots are
+  untouched by any of it.
+- **No listening.** The microphone is open only while the record button is active. There is
+  no wake word and no background capture, recording stops on a second tap, after two
+  seconds of silence or at thirty, and **the audio is never stored** — it lives in memory
+  until the words exist and is overwritten the moment they do. A voice is a biometric; a
+  transcript is not.
+- **No notifications sent anywhere.** Reminders now exist, and on Android they are system
+  notifications — but every one of them is scheduled by the app, on the device, from data the
+  device already holds. Opt-in, off by default, and due-ness computed in the browser or the
+  WebView: there is no push service, no token, no email, and no server that knows when
+  anything is due. On the web there is no scheduler at all and nothing runs when the tab is
+  closed. **The nightly ritual's reminder is a local notification with fixed, content-free
+  text, scheduled on the device like the cadence reminders** — one sentence saying the
+  questions are ready, never what they are, because a lock screen is readable by whoever is
+  holding the phone.
 - **No gamification.** No streaks, no badges, no scores about your scoring. See
   [Cadence](#cadence-and-the-two-nudges) for the rules this holds itself to.
 - **No encryption at rest.** The database is a plain file or your Postgres instance.
   Passwords are hashed; notes and scores are not, and neither is anything the journal holds —
-  the words tapped, what was typed, the people and triggers named, and the answers to the
-  evening questions all sit in the same plain rows. The Vault page says so rather than
+  the words tapped, what was typed, the people and triggers named, the answers to the
+  evening questions **and journal transcripts** all sit in the same plain rows. The Vault page says so rather than
   implying otherwise. [`docs/13`](13-zero-knowledge-encryption.md) describes an envelope
   scheme that would change this; it is an **unconfirmed option and not a schedule**, and
   nothing in the product promises it.

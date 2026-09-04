@@ -10,6 +10,7 @@ import TimelineRoute, { LegacyTimelineRedirect } from './components/TimelineRout
 import Journal from './components/Journal';
 import JournalPeople, { JournalPerson } from './components/JournalPeople';
 import JournalTriggers from './components/JournalTriggers';
+import JournalSearch from './components/JournalSearch';
 import RitualCards from './components/RitualCards';
 import Vault from './components/Vault';
 import AppLock from './components/AppLock';
@@ -18,6 +19,7 @@ import ServerSettingsModal from './components/ServerSettingsModal';
 import { SubjectsProvider } from './context/SubjectsContext';
 import { JournalProvider } from './context/JournalContext';
 import { DiscretionProvider, useDiscretion } from './context/DiscretionContext';
+import { EmbeddingProvider } from './journal/embeddings/EmbeddingContext';
 import { isNative } from './mobile/platform';
 // Imported for its side effect as much as its exports: the module sets
 // `axios.defaults.baseURL` at evaluation time, which must happen before any component can
@@ -92,7 +94,13 @@ export default function App() {
                             and reads them from `useSubjects()` rather than fetching a second
                             copy of the list (invariant 17). */}
                         <JournalProvider enabled={!!token}>
-                            <Shell token={token} onLogout={handleLogout} onLogin={handleLogin} />
+                            {/* Inside the journal, not beside it: the index is built from the
+                                trigger vocabulary and the check-ins that provider already
+                                holds, and it is off on every device until someone turns it
+                                on (§5.8). It reads no state of its own and posts nothing. */}
+                            <EmbeddingProvider>
+                                <Shell token={token} onLogout={handleLogout} onLogin={handleLogin} />
+                            </EmbeddingProvider>
                         </JournalProvider>
                     </SubjectsProvider>
                 </DiscretionProvider>
@@ -164,6 +172,10 @@ function Shell({ token, onLogin, onLogout }) {
                 <Route
                     path="/journal/triggers"
                     element={token ? <JournalTriggers /> : <Navigate to="/login" />}
+                />
+                <Route
+                    path="/journal/search"
+                    element={token ? <JournalSearch /> : <Navigate to="/login" />}
                 />
                 <Route
                     path="/journal/:day"

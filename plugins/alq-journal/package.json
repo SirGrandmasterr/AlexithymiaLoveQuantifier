@@ -1,0 +1,19 @@
+{
+  "name": "alq-journal",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The Emotional Journal's narrow native plugin for the Android shell: record, transcribe, propose, embed, and report memory and tier. The JavaScript side lives in src/mobile/journalPlugin.js; this package is the Android module only.",
+  "license": "UNLICENSED",
+  "files": [
+    "android/src/main/",
+    "android/build.gradle"
+  ],
+  "capacitor": {
+    "android": {
+      "src": "android"
+    }
+  },
+  "peerDependencies": {
+    "@capacitor/core": ">=8.0.0"
+  }
+}

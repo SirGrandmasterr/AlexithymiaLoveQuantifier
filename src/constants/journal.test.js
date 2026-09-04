@@ -51,6 +51,7 @@ import {
     mergeTriggerRequest
 } from './journal';
 import { MAX_TAG_LENGTH } from './contextTags';
+import { FORBIDDEN_WORDS } from './forbiddenWords';
 
 /* ------------------------------------------------------------------------------------ */
 /* Rail 1 — the forbidden-word walk                                                       */
@@ -60,12 +61,24 @@ import { MAX_TAG_LENGTH } from './contextTags';
  * The words this feature may not say, extended from cadence.test.js's six. The point of
  * walking the object rather than listing the strings is that a sentence added next session
  * is covered without anyone remembering to add it here.
+ *
+ * Since D1 the list itself lives in `constants/forbiddenWords.js`, because the proposal
+ * filter (`journal/inference/validate.js`) reads the same words over what a model writes.
+ * The pin below is what stops a shared list from being a shrinkable one: every word this
+ * walk has ever refused is still in it, by name.
  */
-const FORBIDDEN = [
-    'overdue', 'missed', 'streak', 'forgot', 'should', 'behind', '!',
-    'healthy', 'unhealthy', 'concerning', 'symptom', 'disorder', 'diagnos',
-    'fail', 'guilt', 'lazy', 'bad', 'good job'
-];
+const FORBIDDEN = FORBIDDEN_WORDS;
+
+describe('the forbidden list itself', () => {
+    it('still holds every word the walk has ever refused', () => {
+        expect(FORBIDDEN).toEqual(expect.arrayContaining([
+            'overdue', 'missed', 'streak', 'forgot', 'should', 'behind', '!',
+            'healthy', 'unhealthy', 'concerning', 'symptom', 'disorder', 'diagnos',
+            'fail', 'guilt', 'lazy', 'bad', 'good job'
+        ]));
+        expect(FORBIDDEN).toHaveLength(18);
+    });
+});
 
 /** Every string anywhere inside a value, with the path that reaches it. */
 const walkStrings = (value, path = '') => {
@@ -104,6 +117,49 @@ describe('the forbidden-word walk', () => {
         // vocabulary is in this object too, so the walk reads it with everything else.
         expect(found.map(entry => entry.path)).toContain('dayGraph.rotateRight');
         expect(found.map(entry => entry.path)).toContain('dayGraph.branch');
+        // D2's proposal card: the four §4.6 sentences, the resolution states and the exits.
+        // Every word the card can show is a template in this group, so the walk reads the
+        // whole card and the model's output only ever fills a slot.
+        ['proposal.ambiguity.feeling', 'proposal.ambiguity.target', 'proposal.ambiguity.conflict',
+            'proposal.people.matches', 'proposal.people.newPerson', 'proposal.people.candidate',
+            'proposal.notIt', 'proposal.exits.rerecord', 'proposal.dashed', 'proposal.saveError',
+            'settings.suggestions.model']
+            .forEach(path => expect(found.map(entry => entry.path)).toContain(path));
+        // G1's similarity copy: both screens' words, and the licence line beside the toggle.
+        ['similar.offer', 'similar.keep', 'similar.note', 'similar.pairsHeading',
+            'similar.pairsNote', 'similar.pair', 'similar.pairAction',
+            'settings.embeddings.licence', 'settings.embeddings.unavailable']
+            .forEach(path => expect(found.map(entry => entry.path)).toContain(path));
+    });
+
+    /**
+     * §5.8 rule 2, as the other half of this walk: **similarity proposes, and never shows a
+     * number.**
+     *
+     * Not a score, not a percentage, not *"three entries like this"*. The check is a digit
+     * scan over `JOURNAL_COPY.similar`, which is where every string either screen can say
+     * about a similar word lives — and it catches a template slot as surely as a literal,
+     * because a `{count}` that a screen fills is a number on the screen.
+     *
+     * `similar.js` is the other end of the same promise: what it returns has no similarity on
+     * it at all, so there is nothing for a component to interpolate even by accident.
+     */
+    it('shows no number in anything the similarity copy can say (rule 2)', () => {
+        const strings = walkStrings(JOURNAL_COPY.similar);
+        expect(strings.length).toBeGreaterThan(5);
+
+        strings.forEach(({ path, text }) => {
+            expect(`${path}: ${text}`).not.toMatch(/[0-9]/);
+            // The slots too: a template that takes a count is a number one fill away.
+            [...text.matchAll(/\{(\w+)\}/g)].forEach(([, slot]) => {
+                expect(`${path} fills {${slot}}`).not.toMatch(/count|score|percent|total|rank/i);
+            });
+        });
+    });
+
+    it('would catch a number added to the similarity copy later', () => {
+        const planted = { similar: { offer: 'You have called this work before (3 times).' } };
+        expect(walkStrings(planted).filter(({ text }) => /[0-9]/.test(text))).toHaveLength(1);
     });
 
     it('finds no evaluative or urgency vocabulary in JOURNAL_COPY', () => {

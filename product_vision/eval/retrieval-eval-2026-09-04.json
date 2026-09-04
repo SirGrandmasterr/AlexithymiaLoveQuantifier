@@ -1,0 +1,535 @@
+{
+  "documents": 26,
+  "cases": [
+    {
+      "id": "de.buero",
+      "language": "de",
+      "mode": "lexical",
+      "query": "Buro",
+      "expect": [
+        "de-1"
+      ],
+      "must_not": [],
+      "status": "pass",
+      "top": [
+        "de-1"
+      ],
+      "found": [
+        "de-1"
+      ],
+      "missing": [],
+      "forbidden": []
+    },
+    {
+      "id": "de.fussball",
+      "language": "de",
+      "mode": "lexical",
+      "query": "Fussball",
+      "expect": [
+        "de-6"
+      ],
+      "must_not": [],
+      "status": "pass",
+      "top": [
+        "de-6"
+      ],
+      "found": [
+        "de-6"
+      ],
+      "missing": [],
+      "forbidden": []
+    },
+    {
+      "id": "de.nebenkosten",
+      "language": "de",
+      "mode": "lexical",
+      "query": "Nebenkosten",
+      "expect": [
+        "de-5"
+      ],
+      "must_not": [],
+      "status": "pass",
+      "top": [
+        "de-5"
+      ],
+      "found": [
+        "de-5"
+      ],
+      "missing": [],
+      "forbidden": []
+    },
+    {
+      "id": "de.kartons",
+      "language": "de",
+      "mode": "lexical",
+      "query": "Kartons",
+      "expect": [
+        "de-4",
+        "de-10"
+      ],
+      "must_not": [],
+      "status": "pass",
+      "top": [
+        "de-10",
+        "de-4"
+      ],
+      "found": [
+        "de-4",
+        "de-10"
+      ],
+      "missing": [],
+      "forbidden": []
+    },
+    {
+      "id": "de.spaziergang",
+      "language": "de",
+      "mode": "lexical",
+      "query": "Spaziergang mit Lucie",
+      "expect": [
+        "de-3"
+      ],
+      "must_not": [],
+      "status": "pass",
+      "top": [
+        "de-3",
+        "de-9"
+      ],
+      "found": [
+        "de-3"
+      ],
+      "missing": [],
+      "forbidden": []
+    },
+    {
+      "id": "de.kletterwand",
+      "language": "de",
+      "mode": "lexical",
+      "query": "Kletterwand",
+      "expect": [
+        "de-9"
+      ],
+      "must_not": [
+        "de-8"
+      ],
+      "status": "pass",
+      "top": [
+        "de-9"
+      ],
+      "found": [
+        "de-9"
+      ],
+      "missing": [],
+      "forbidden": []
+    },
+    {
+      "id": "de.rechnung",
+      "language": "de",
+      "mode": "lexical",
+      "query": "Rechnung bezahlt",
+      "expect": [
+        "de-12"
+      ],
+      "must_not": [],
+      "status": "pass",
+      "top": [
+        "de-12",
+        "de-5"
+      ],
+      "found": [
+        "de-12"
+      ],
+      "missing": [],
+      "forbidden": []
+    },
+    {
+      "id": "de.snapshot",
+      "language": "de",
+      "mode": "lexical",
+      "query": "gemeinsam gekocht",
+      "expect": [
+        "snapshot:1"
+      ],
+      "must_not": [],
+      "status": "pass",
+      "top": [
+        "snapshot:1"
+      ],
+      "found": [
+        "snapshot:1"
+      ],
+      "missing": [],
+      "forbidden": []
+    },
+    {
+      "id": "de.trigger.label",
+      "language": "de",
+      "mode": "lexical",
+      "query": "Umzug",
+      "expect": [
+        "de-4",
+        "de-10"
+      ],
+      "must_not": [],
+      "status": "pass",
+      "top": [
+        "de-10",
+        "de-4"
+      ],
+      "found": [
+        "de-4",
+        "de-10"
+      ],
+      "missing": [],
+      "forbidden": []
+    },
+    {
+      "id": "en.office",
+      "language": "en",
+      "mode": "lexical",
+      "query": "office",
+      "expect": [
+        "en-1"
+      ],
+      "must_not": [],
+      "status": "pass",
+      "top": [
+        "en-1"
+      ],
+      "found": [
+        "en-1"
+      ],
+      "missing": [],
+      "forbidden": []
+    },
+    {
+      "id": "en.boxes",
+      "language": "en",
+      "mode": "lexical",
+      "query": "boxes",
+      "expect": [
+        "en-4",
+        "en-10"
+      ],
+      "must_not": [],
+      "status": "pass",
+      "top": [
+        "en-10",
+        "en-4"
+      ],
+      "found": [
+        "en-4",
+        "en-10"
+      ],
+      "missing": [],
+      "forbidden": []
+    },
+    {
+      "id": "en.utility",
+      "language": "en",
+      "mode": "lexical",
+      "query": "utility bill",
+      "expect": [
+        "en-5"
+      ],
+      "must_not": [],
+      "status": "pass",
+      "top": [
+        "en-5",
+        "en-12"
+      ],
+      "found": [
+        "en-5"
+      ],
+      "missing": [],
+      "forbidden": []
+    },
+    {
+      "id": "en.river",
+      "language": "en",
+      "mode": "lexical",
+      "query": "walk along the river",
+      "expect": [
+        "en-3"
+      ],
+      "must_not": [],
+      "status": "pass",
+      "top": [
+        "en-3"
+      ],
+      "found": [
+        "en-3"
+      ],
+      "missing": [],
+      "forbidden": []
+    },
+    {
+      "id": "en.climbing",
+      "language": "en",
+      "mode": "lexical",
+      "query": "climbing wall",
+      "expect": [
+        "en-9"
+      ],
+      "must_not": [
+        "en-8"
+      ],
+      "status": "pass",
+      "top": [
+        "en-9"
+      ],
+      "found": [
+        "en-9"
+      ],
+      "missing": [],
+      "forbidden": []
+    },
+    {
+      "id": "en.report",
+      "language": "en",
+      "mode": "lexical",
+      "query": "rewrote the report",
+      "expect": [
+        "en-8"
+      ],
+      "must_not": [],
+      "status": "pass",
+      "top": [
+        "en-8"
+      ],
+      "found": [
+        "en-8"
+      ],
+      "missing": [],
+      "forbidden": []
+    },
+    {
+      "id": "en.snapshot",
+      "language": "en",
+      "mode": "lexical",
+      "query": "cooked together",
+      "expect": [
+        "snapshot:2"
+      ],
+      "must_not": [],
+      "status": "pass",
+      "top": [
+        "snapshot:2"
+      ],
+      "found": [
+        "snapshot:2"
+      ],
+      "missing": [],
+      "forbidden": []
+    },
+    {
+      "id": "en.quiet",
+      "language": "en",
+      "mode": "lexical",
+      "query": "nobody I wanted to call",
+      "expect": [
+        "en-11"
+      ],
+      "must_not": [],
+      "status": "pass",
+      "top": [
+        "en-11"
+      ],
+      "found": [
+        "en-11"
+      ],
+      "missing": [],
+      "forbidden": []
+    },
+    {
+      "id": "en.trigger.label",
+      "language": "en",
+      "mode": "lexical",
+      "query": "the move",
+      "expect": [
+        "en-4",
+        "en-10"
+      ],
+      "must_not": [],
+      "status": "pass",
+      "top": [
+        "en-10",
+        "en-4"
+      ],
+      "found": [
+        "en-4",
+        "en-10"
+      ],
+      "missing": [],
+      "forbidden": []
+    },
+    {
+      "id": "de.sem.job",
+      "language": "de",
+      "mode": "semantic",
+      "query": "Wann war ich zuletzt so ausgelaugt von meinem Job?",
+      "expect": [
+        "de-1"
+      ],
+      "must_not": [],
+      "status": "skipped",
+      "reason": "needs the embedding model: this query shares no content word with its answer",
+      "top": [],
+      "found": [],
+      "missing": [
+        "de-1"
+      ]
+    },
+    {
+      "id": "de.sem.einsam",
+      "language": "de",
+      "mode": "semantic",
+      "query": "Wann habe ich mich zuletzt einsam gefühlt?",
+      "expect": [
+        "de-11"
+      ],
+      "must_not": [
+        "de-3"
+      ],
+      "status": "skipped",
+      "reason": "needs the embedding model: this query shares no content word with its answer",
+      "top": [],
+      "found": [],
+      "missing": [
+        "de-11"
+      ]
+    },
+    {
+      "id": "de.sem.sorgen",
+      "language": "de",
+      "mode": "semantic",
+      "query": "Sorgen wegen der Miete",
+      "expect": [
+        "de-5"
+      ],
+      "must_not": [],
+      "status": "skipped",
+      "reason": "needs the embedding model: this query shares no content word with its answer",
+      "top": [],
+      "found": [],
+      "missing": [
+        "de-5"
+      ]
+    },
+    {
+      "id": "en.sem.wornout",
+      "language": "en",
+      "mode": "semantic",
+      "query": "When did I last feel worn out by my job?",
+      "expect": [
+        "en-1"
+      ],
+      "must_not": [],
+      "status": "skipped",
+      "reason": "needs the embedding model: this query shares no content word with its answer",
+      "top": [],
+      "found": [],
+      "missing": [
+        "en-1"
+      ]
+    },
+    {
+      "id": "en.sem.lonely",
+      "language": "en",
+      "mode": "semantic",
+      "query": "When did I last feel lonely?",
+      "expect": [
+        "en-11"
+      ],
+      "must_not": [
+        "en-3"
+      ],
+      "status": "skipped",
+      "reason": "needs the embedding model: this query shares no content word with its answer",
+      "top": [],
+      "found": [],
+      "missing": [
+        "en-11"
+      ]
+    },
+    {
+      "id": "en.sem.moneyworry",
+      "language": "en",
+      "mode": "semantic",
+      "query": "worrying about the rent",
+      "expect": [
+        "en-5"
+      ],
+      "must_not": [],
+      "status": "skipped",
+      "reason": "needs the embedding model: this query shares no content word with its answer",
+      "top": [],
+      "found": [],
+      "missing": [
+        "en-5"
+      ]
+    },
+    {
+      "id": "xl.de.query.en.entry",
+      "language": "de",
+      "mode": "semantic",
+      "query": "Umzugskisten schleppen",
+      "expect": [
+        "en-10"
+      ],
+      "must_not": [],
+      "status": "skipped",
+      "reason": "needs the embedding model: this query shares no content word with its answer",
+      "top": [],
+      "found": [],
+      "missing": [
+        "en-10"
+      ]
+    },
+    {
+      "id": "xl.en.query.de.entry",
+      "language": "en",
+      "mode": "semantic",
+      "query": "worries about money",
+      "expect": [
+        "de-5"
+      ],
+      "must_not": [],
+      "status": "skipped",
+      "reason": "needs the embedding model: this query shares no content word with its answer",
+      "top": [],
+      "found": [],
+      "missing": [
+        "de-5"
+      ]
+    }
+  ],
+  "summary": {
+    "total": 26,
+    "pass": 18,
+    "fail": 0,
+    "skipped": 8,
+    "lexical": {
+      "total": 18,
+      "pass": 18,
+      "fail": 0
+    },
+    "semantic": {
+      "total": 8,
+      "pass": 0,
+      "fail": 0,
+      "skipped": 8
+    },
+    "byLanguage": {
+      "de": {
+        "total": 13,
+        "pass": 9,
+        "fail": 0
+      },
+      "en": {
+        "total": 13,
+        "pass": 9,
+        "fail": 0
+      }
+    }
+  }
+}

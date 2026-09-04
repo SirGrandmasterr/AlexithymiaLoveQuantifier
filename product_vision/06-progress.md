@@ -42,26 +42,28 @@ and whether the weights stay out of it entirely.
 | A10 | 6-A closeout: docs, QA, review | done | — | 2026-08-22 | **Slice 6-A ships.** Ten QA items on a real stack, three defects found and fixed, thirteen documents made true, a review pass and a simplify pass |
 | B1 | Day graph: the geometry | done | — | 2026-08-23 | Four pure functions and 62 tests; nothing renders, and nothing reaches the bundle yet |
 | B2 | Day graph: the component | done | — | 2026-08-23 | **Slice 6-B ships.** Hand-drawn SVG, mounted; 32 component tests; the tilt needed a floor and a smaller angle to be legible |
-| U1 | The user test | **instrument built, run not done — the gate is open** | — | 2026-08-25 | `product_vision/eval/` holds the protocol, two tally sheets and a fixture proposal card. **No participant has seen any of it.** Nothing after B2 is decided by it yet |
+| U1 | The user test | **instrument built, run not done — the gate was waived, not closed** | — | 2026-08-25 | `product_vision/eval/` holds the protocol, two tally sheets and a fixture proposal card. **No participant has seen any of it.** On 2026-08-31 the operator waived the gate and C2 onward proceeds without it — see *Decisions*. Nothing after B2 is decided by it, and now nothing will be unless it is re-run |
 | C1 | Deployment: headers and the model channel | done | — | 2026-08-25 | Five headers, a `/models/` channel, `make models-fetch`; verified in four engines. **No `src/` or `backend/` file changed** |
-| C2 | Capture and the inference boundary | not started | | | |
-| C3 | Web Light-tier transcription + the Vault copy | not started | | | |
-| C4 | Android: microphone, plugin skeleton, tiers | not started | | | |
-| D1 | The proposal contract, offline | not started | | | |
-| D2 | The proposal card | not started | | | |
-| D3 | Real runtimes + the full Vault copy | not started | | | |
-| D4 | The golden suite and the model gate | not started | | | |
+| C2 | Capture and the inference boundary | done | — | 2026-08-31 | The recorder state machine and the injected-runtime seam. **Nothing user-visible; the bundle is byte-identical.** Ran under the U1 waiver |
+| C3 | Web Light-tier transcription + the Vault copy | done | — | 2026-08-31 | Whisper tiny on the device, the download manager, the microphone button, and the Vault copy in the same change. **Verified end to end against the deployed stack**; two deployment defects found and fixed |
+| C4 | Android: microphone, plugin skeleton, tiers | done — **code complete, nothing run on a phone** | — | 2026-09-02 | `RECORD_AUDIO` (CHANGE 5), a narrow native plugin in `plugins/alq-journal/`, the same Whisper tiny through ONNX Runtime natively, the weight store, the tier report; the Java core verified on a desktop JVM word-for-word against the web path; APK built (119.7 MB, see *Measured*). **No device and no `adb` on this machine** — the whole device checklist is deferred to the operator. Platform recogniser deliberately not offered |
+| D1 | The proposal contract, offline | done | — | 2026-09-02 | Schema, prompt, filter, sixty golden transcripts and the adversarial set; the filter is wired into `propose`. **No model** — nothing loads weights, and the prompt has no caller until D3 |
+| D2 | The proposal card | done | — | 2026-09-02 | `ProposalCard.jsx` as the composer's second body, the controls shared through `CheckinControls.jsx`, the *Show suggestions* setting; 44 tests on the request body, the §4.7 payload as a literal. **No facts, by S0's decision; no model, until D3** |
+| D3 | Real runtimes + the full Vault copy | done — **code complete and driven off-device; nothing run on a phone, and the web model not run at all** | — | 2026-09-02 | Gemma 4 E2B behind both platforms, the Light tier as two models in sequence, the two downloads, the tiers, §3.7 in one breath, and the Vault's full *voice on* copy in three variants. The audio path and the JSON-Schema grammar were exercised against the real bundle on a JVM; the web bundle was fetched and verified from a browser. **Three of the six required measurements need a phone** |
+| D4 | The golden suite and the model gate | done — **the instrument, not the run**: the suite doubled, the harness and the gate work, and no model has been through them | — | 2026-09-03 | 120 golden cases in 60 English/German pairs, the 240-clip recording plan with its consent gate, `make journal-eval` and `make journal-audio-check`, and §5.7's four criteria in code. **Scope narrowed by the operator at the start of the session: build everything around the audio; the recordings themselves are theirs.** The three §12.5 questions stay open, with what would close each |
 | E1 | Encryption alignment | not started | | | **Conditional** — docs/13 is unconfirmed (2026-08-22). May never run. |
-| F1 | The outbox | not started | | | |
-| F2 | Android depth | not started | | | |
-| G1 | The embedding index and trigger normalisation | not started | | | |
-| G2 | Retrieval: past entries, search, and the Vault line | not started | | | |
-| Z | Phase closeout | not started | | | |
+| F1 | The outbox | done — **code complete, nothing run on a phone** | — | 2026-09-04 | §9.5's one exception to *no offline writes*: the queue, its three flush signals, the *not yet synced* mark, and the `client_id` argument that makes a blind retry safe. **The outbox is native-only by design, so no browser can stand in for a device** — the whole manual QA is the operator's. The ciphertext test is E1's and E1 has not started |
+| F2 | Android depth | done — **code complete, nothing run on a phone** | — | 2026-09-04 | The nightly reminder, the launcher shortcut, and the verification that A8's haptics and C4/D3's tier detection were already right. **One real defect found:** the cadence channel's `cancelAll` cancelled every pending notification and would have silently unscheduled the ritual's on every dashboard visit. **Slice 6-F is now implemented in code**; every one of its device checks is still unrun |
+| G1 | The embedding index and trigger normalisation | done — **built under the waived U1 gate, and web-only** | — | 2026-09-04 | EmbeddingGemma behind the injected boundary at 256 dimensions, the device-local IndexedDB index with §5.8's three rules, and trigger normalisation on the card and in the Triggers view. **The gate this session opens with was waived, not closed** — the operator instructed on 2026-09-04 that it be built without U1's evidence. **No native runtime**: the plugin's `embed()` still rejects `unavailable`, so the toggle is refused inside the Android shell with a sentence saying why. The retrieval golden set §5.8 asks for is G2's |
+| G2 | Retrieval: past entries, search, and the Vault line | done — **code complete, and the real model still never loaded** | — | 2026-09-04 | Five of §5.8's six uses shipped: the past-entry chips with `from: "retrieval"` provenance, `/journal/search`, the namesake ordering, and the proposal prompt's retrieval context behind its guard. **`already known?` did not ship** — S0 deferred `person_fact`, so there is no proposed fact for it to sit beside; the pure function and its tests exist and are wired to nothing. The **retrieval golden set** exists with its report in `product_vision/eval/`: 18 lexical cases pass in both languages with no model, 8 semantic cases are reported **skipped** because no embedder exists here and are never graded against a stand-in |
+| Z | Phase closeout | done — **the phase is closed** | — | 2026-09-04 | The document sweep, the invariant sweep, the Vault audit, `/security-review`, `/code-review high`, `/simplify`, the final verification run with numbers, and the phase summary at the foot of this file. **Nothing new was built.** Three code-review findings and eleven simplification findings were recorded; nine small fixes were applied and the rest were rejected with reasons |
 
 ## Decisions
 
 | Date | Decision | Reasoning | Who |
 | :--- | :------- | :-------- | :-- |
+| 2026-09-04 | **6-G is built. G1 ships without U1's evidence, and the ledger records that it is an instruction rather than a finding.** | The G1 prompt opens by telling the session to check U1's report and stop if people do not reuse triggers. There is no report: U1 was waived on 2026-08-31 and never run, and the waiver's own text named this exact decision as one of the four it was skipping — *“whether 6-G is built falls to G1 with no evidence about trigger reuse or search”*. The operator confirmed the build. So the slice exists, and **§5.8's *“the single biggest win”* remains an argument**: nobody has watched a person write *my job* after months of *work*. The design was implemented as written, including the two rules whose whole purpose is to be conservative when the evidence is thin — rule 3's gate and rule 2's silence about numbers — and the manual QA that would have been the first contact with a user is still unrun. | User (management) |
+| 2026-08-31 | **The U1 gate is waived. The user test will not be run, and 6-C onward is built without it.** This reverses the 2026-08-25 decision directly below. | Management decided to forgo the user test and to implement the remaining sections. C2 began under this waiver rather than stopping at the gate check its own prompt opens with. **The waiver is recorded rather than argued, and so is its price**, because the four decisions U1 was positioned to make are not made — they are skipped, and a skipped decision looks exactly like a made one six sessions later. Concretely: the 21-entry feeling vocabulary ships as authored and no row of it has been seen by a user (§5.3); the ritual keeps its nine cards on a *driven* 17.2 s floor rather than an observed timing; **the proposal card is built** (6-D) without the acceptance-rate evidence that §12.4 question 2 exists to produce, which was the one number that could have said *the chips path is the whole feature*; and whether 6-G is built falls to G1 with no evidence about trigger reuse or search. The instrument stays in `eval/` and stays runnable — a later run corrects rows rather than starting over. | User (management) |
 | 2026-08-25 | **The full user test is scheduled and run by the operator; the gate stays open until it is.** Not a self-run at n=1, not a reduced variant, and **C2 does not start early.** | U1 built the instrument and could not run it — five or six participants, four of them German-first, over eight days, with two facilitated sessions. Of the alternatives, n=1 cannot answer question 2 at all (a person cannot Wizard-of-Oz themselves) and cannot retire any feeling id under §10.1's n ≥ 5 rule, so it would close one of four decisions and leave the vocabulary exactly where it is; and starting C2 on an unrun gate spends the phase's expensive half on four unmade decisions, two of which are decisions to *not build* something large. | User |
 | 2026-08-22 | **docs/13 does not gate 6-A. The journal ships plaintext.** | Zero-knowledge encryption was *explored as an option and is not confirmed as a future feature.* It is therefore not "close" in the sense §12.3 means, and 6-A does not wait on it. The Vault page states the plaintext position in the journal's own words; the operator explicitly authorised adapting Vault sentences as needed. | User |
 | 2026-08-22 | **`person_fact` waits for 6-E — and 6-E is conditional.** | It is the one payload that is verbatim text *about a named third party* (§12.5, docs/13 §0). A1–A4 still build the `kind` and the server still accepts it; **no UI writes one** until the envelope lands. Because encryption is unconfirmed, the honest reading is that `person_fact` is deferred indefinitely, not merely by one slice. | User |
@@ -79,6 +81,52 @@ Everything the design document marked `(verify)`, as it gets measured. Device, b
 
 | Date | What | Value | Where measured | Design doc updated? |
 | :--- | :--- | :---- | :------------- | :------------------ |
+| 2026-09-04 | **The closeout verification run, in full** | `npm test` **55 files / 1,493 tests green, 36.6 s** (1,486 at G2; the seven are the Vault audit's). `cd backend && go test ./...` **green** — `auth`, `database`, `domain` cached, `handlers` 10.8 s; `cmd/*` and `models` have no test files. `gofmt -l .` lists **19** files and always will (CRLF); the line-ending-insensitive walk over tracked *and* untracked `.go` files printed **empty**. `go vet ./...` **clean**. `npx vite build` **succeeds in 10.2 s** | This machine, at the closeout | n/a — the run, not a `(verify)` |
+| 2026-09-04 | **The bundle at closeout, and therefore the cost of the whole of Phase 6** | **1,055.27 kB raw / 323.89 kB gzip** main chunk; CSS 42.73 / 7.54, unchanged. Against S0's pre-journal baseline of 813.17 / 250.38 that is **+242.10 kB raw / +73.51 kB gzip for the entire phase** — six slices, three model runtimes, a proposal card, a day graph, a search screen and an embedding index. **0.41 kB raw / 0.06 kB gzip smaller than G2's 1,055.68 / 323.95**, which is the whole visible effect of the nine `/simplify` fixes: a deleted identity wrapper, a duplicated embed call folded into one, and a `useRef` the search screen no longer needs. A closeout that changed no feature should move the bundle by about that much, in that direction. **transformers.js is still its own chunk** at 560.27 / 162.77 and is not in the main one, and **no weight file is in any chunk**: the 3.4 GB, the 45 MB and the 219 MB are all fetched from `/models/` at runtime | `npx vite build`, this machine | Yes |
+| 2026-09-04 | **The debug APK at closeout** | **168,262,109 B**, against G1's 168,256,737 B — **+5,372 bytes**, which is G2's and the closeout's JavaScript inside `dist/`. Built twice: 168,262,177 B before the nine `/simplify` fixes and 68 bytes smaller after them, which is the same 0.41 kB of source arriving compressed. Against C4's 119.7 MB the phase's whole native growth is D3's LiteRT-LM. `make build-android` succeeded and the disk did not fill: 92 GB free before, and the recipe was run once | `make build-android`, this machine | No — §5.5's APK note already carries the D3 breakdown |
+| 2026-09-04 | **Phase-5 → Phase-6 migration, re-run at the closeout against a freshly seeded database** | A Phase-5 worktree at `ba045c9` (the S0 baseline commit — **not `main`, which already carries the journal models**), migrated, then seeded with 1 user, 2 relationships and 3 snapshots. Against Phase-6 code, `make migrate-check-local` reported **exactly** `missing table "journal_entries"` and `missing table "journal_mentions"` and **no column drift on any existing table**; after `make migrate-local`, *schema is up to date*. Read back out of the file: both tables, thirteen columns on `journal_entries` with the declared defaults (`client_id ''`, `kind 'checkin'`, `day ''`, `schema_version 1`), ten indexes including the unique `idx_journal_user_client`, and **all six Phase-5 rows intact**. The database file was deleted again, as A1 did, so the working tree is as it was found | `make migrate-check-local`, this machine | Yes — it is the evidence behind the roadmap's *"additive… **outside** Phase 4"* |
+| 2026-09-04 | **The retrieval golden set, first run** | **18/18 lexical cases pass**, 9 German and 9 English, with no model anywhere; **8 semantic cases skipped** because this machine has no embedder, and reported as skipped rather than graded against a stand-in. 26 documents. Report: `product_vision/eval/retrieval-eval-2026-09-04.md` | `make journal-eval`, this machine | Yes — §5.8's *retrieval golden set* is no longer outstanding |
+| 2026-09-04 | **The two lexical floors, chosen by the golden set rather than guessed** | `LEXICAL_FLOOR = 0.25`, `RELATIVE_FLOOR = 0.3`. Without them `de.sem.einsam` failed: *haben* contains *habe*, so a question of seven words put the walk by the river above the quiet evening. The absolute floor drops a document that accounts for too little of a query to be a find; the relative floor drops the two thirds of the journal that *"the move"* otherwise returns. Each catches what the other does not | the golden set, this machine | n/a — new constants, stated in `recall.js` |
+| 2026-09-04 | **Main chunk after G2** | **1,055.68 kB raw / 323.95 kB gzip** (**+18.64 kB raw / +4.97 kB gzip** over G1's 1,037.04 / 318.98) for a search screen, the pure retrieval module, the golden set and four card behaviours. CSS 42.73 / 7.54, up 0.04 / 0.01. No weight file is in any chunk | `npx vite build`, this machine | n/a |
+| 2026-09-04 | **EmbeddingGemma's download size** — §5.8's *“~200–300 MB (verify)”* | **218,739,216 B, 219 MB**, over eight files at revision `5090578d`: `model_q4.onnx` + `.onnx_data` (197 MB), the tokeniser (20 MB), three small configs, and the Gemma terms. Inside the estimate. **`q4`, not `q8`**, and that is what makes §5.8's *“under 200 MB of RAM quantised”* true — the q8 export is 309 MB of weights. `fp16` is not an option: the upstream card says EmbeddingGemma's activations do not support it | The upstream repository's file sizes and LFS SHA-256s, read on 2026-09-04; the four non-LFS configs downloaded and hashed here. **Not yet fetched end to end by `make models-fetch`** | Yes — §5.8's `(verify)` is now the measurement |
+| 2026-09-04 | **The brute-force cosine scan** — §5.8's *“milliseconds”* | **2.4 ms median over seven runs**, ten thousand synthetic 256-dimension unit vectors, full cosine (three multiplies per element, not a dot product). First run 4.2 ms, then flat. `similar.test.js` asserts a deliberately loose **1 s**, so a change that made the scan quadratic fails by minutes rather than by a hair | Node 22 on this machine | Yes — §5.8 now carries the number beside its claim |
+| 2026-09-04 | **The Gemma Terms of Use page is not byte-stable** | Two fetches of `https://ai.google.dev/gemma/terms` **seconds apart** hashed differently (`44de3981…` and `3bf7f646…`, 143,790 B). It therefore **cannot** be pinned by URL and SHA-256 the way every weight row is | `curl` from this machine | Yes — §5.6's requirement is met by shipping the text in `licences/` and installing it from there, and the Makefile says why |
+| 2026-09-04 | **What the index cost the bundle** | **+8.19 kB raw, +2.35 kB gzip.** The main chunk went from F2's 1,028.85 kB raw / 316.63 kB gzip to **1,037.04 / 318.98**; CSS unchanged at 42.69 / 7.53. The 219 MB of weights are not in it and never touch it — the transformers.js import on this path is dynamic, like the two runtimes' | `npx vite build` on this machine | n/a |
+| 2026-09-04 | **What the reminder, the shortcut and the deep link cost the bundle** | **+2.48 kB raw, +1.03 kB gzip.** The main chunk went from F1's 1,017.19 kB raw / 312.05 kB gzip to **1,019.67 / 313.08**; CSS unchanged at 42.69 / 7.53. Two modules, one effect on the day view, one line in Profile and three constants | `npx vite build` on this machine | n/a — the design document names no bundle budget |
+| 2026-09-04 | **The debug APK after F2** | **168,249,401 B**, against F1's 168,246,778 B — **+2,623 bytes**: the compiled `shortcuts.xml` (936 B), its two strings, the manifest's meta-data, and F2's JavaScript inside `dist/`. **Nothing native was added**, because nothing native was needed — a static shortcut is a resource and a local notification is the plugin the app already ships | `make build-android`, Docker Desktop | n/a |
+| 2026-09-04 | **Battery after a day of normal use, against the previous build** — the §11 6-F manual-QA row | **Not measured. Needs a phone, and there was none**, as in C4, D3 and F1. Recorded as unrun rather than estimated | — | No |
+| 2026-09-04 | **What the outbox costs the bundle** | **+5.16 kB raw, +1.71 kB gzip.** The main chunk went from D4's 1,012.03 kB raw / 310.34 kB gzip to **1,017.19 / 312.05**; CSS unchanged at 42.69 / 7.53. That is the whole feature: the store, the queue, the mark, pull-to-refresh on the day view, and the Vault paragraph | `npx vite build` on this machine | n/a — the design document names no bundle target for 6-F |
+| 2026-09-04 | **The debug APK, first build since D3** | **168,246,778 B = 160.4 MB**, against C4's 119.7 MB. **None of the growth is F1's** — it is D3's runtimes; recorded because C4's number was the last in this ledger and a reader would otherwise attribute the jump to this session | `make build-android`, Docker Desktop | n/a |
+| 2026-09-02 | **The web ONNX bundle — §5.5's "expect 2–3 GB", measured** | **3,401,460,010 B = 3.4 GB** over 16 files at revision `9f4bef8`: embed_tokens 1.59 GB, decoder 1.52 GB, audio encoder 171 MB, vision encoder 99 MB, 19 MB of tokeniser and configs. **The estimate was low and the download promise changed with it** — the operator was asked before it did. The Light tier's text-only subset is **3,130,562,888 B = 3.1 GB** over 12 of the same files | `make models-fetch MODELS="gemma-4-e2b-onnx"` | Yes — §5.5 now states the measurement |
+| 2026-09-02 | **The LiteRT-LM bundle** | **2,588,159,070 B = 2.6 GB** with the licence beside it, which is §5.5's published 2,583 MB to the byte | `make models-fetch MODELS="gemma-4-e2b-litertlm"` | Yes |
+| 2026-09-02 | **All 16 web files, re-verified from a browser on the deployed stack** | **16/16, 3,401,460,010 bytes, zero mismatches, 22.3 s.** The 1.59 GB file alone: 9.4 s to `arrayBuffer`, **1.17 s to SHA-256**. The only host in `performance.getEntriesByType('resource')` for the whole run was **`localhost:8082`** — the evidence behind `docs/06` §3c's *"suggestions run on the device"* row | Chromium 148 on `localhost:8082` | n/a — confirms C1 and the Makefile from the other end of the wire |
+| 2026-09-02 | **Does LiteRT-LM's audio path work for Gemma 4** — §12.1's medium-risk row | **Yes, off-device.** A 6.8 s WAV through `Content.AudioBytes` came back **transcribed word-for-word** with feelings, people and facts in the same pass, **11.2 s total**; the §3.7 ritual task on a 5.8 s clip took **6.6 s** and answered four of five questions, leaving the fifth correctly **absent**. Same API, same version, same `.litertlm` bundle the Android artifact carries. **Not run on a phone**, so llama.cpp stays unneeded rather than ruled out | `litertlm-jvm` 0.16.1, x86-64 Linux, JDK 21, in a container | Yes — §5.5 replaces *"stated for Gemma 4 (verify on a device)"* |
+| 2026-09-02 | **Peak RAM with the audio encoder loaded** — §5.5's *"plan for 2–2.5 GB"* | **3,291 MB with the encoder, 3,122 MB without — a marginal cost of 169 MB**, at a 4,096-token context; opening the engine costs 0.3–0.5 s and 470 MB. **This is a desktop x86-64 figure and not the phone number §5.5 asked for** (the model card's own tables put Windows/Intel at 3,505 MB against Android's 1,733 MB for the same bundle, so desktop peaks roughly double). What it does answer is the question the tier boundary turns on: **the audio encoder is not what sets it** — against the published 1,733 MB text-only, a Full-tier pass on a phone is ~1.9 GB, the bottom of the planning range | `/proc/self/status` `VmHWM` around each stage | Yes — §5.5 states both the number and what it is not |
+| 2026-09-02 | **Does transformers.js support grammars now** — §5.2's open `(verify)` | **No.** 4.2.0 ships fourteen logits processors — forced and suppressed tokens, n-gram and repetition penalties, temperature, top-k, top-p — and no way to constrain generation to a schema; `logits_processor` takes a custom list, which is an extension point and not a feature. **Web enforcement is validator-only**, as §5.5 predicted | Reading the shipped API surface of the pinned package | Yes — §5.2 and §5.5 both close it |
+| 2026-09-02 | **LLGuidance cannot bind an enum member containing a space** — the finding the prompt did not anticipate | Handed §5.2's schema, generation **died mid-answer** on `"routine period"`, a real `CONTEXT_TAGS` member: *`token "▁period" doesn't satisfy the grammar; forced bytes: got ' '`* … `Stop: ParserTooComplex`. Gemma's tokeniser carries the space inside the token. **Three of the seven context tags contain one.** Reproduced three times; the first two theories (the `oneOf`, then parser complexity) were both wrong — the `oneOf` variant failed at the identical token. `PROPOSAL_GRAMMAR_SCHEMA` relaxes **`tag` only**, and `validateProposal` enforces the membership above | The JVM spike, against the real bundle | Yes — §5.5 and `schema.js` carry the error text |
+| 2026-09-02 | **`navigator.gpu` existing is not WebGPU working** — a defect found by measurement | On Chromium 148 with an **RTX 3080** behind it: `navigator.gpu` present, `crossOriginIsolated` true, WebGL2 naming the card — and `requestAdapter()` returning **`null`** for every option including `forceFallbackAdapter`. `detectTier` would have put that browser on the Full tier, downloaded 3.4 GB and thrown at the first check-in. Fixed: `probeWebGpu()` asks for an **adapter** and is primed like the Android memory report; unasked reads as Light | The in-app Chromium, on the deployed stack | Yes — §5.5's tier table and the C4 paragraph |
+| 2026-09-02 | **Latency per tier — partly** | Off-device, desktop CPU: **11.2 s** for audio + proposal over a 6.8 s clip, **6.6 s** for the ritual over 5.8 s, **13.7 s** in text mode. **Time to first token was not measured**: `Conversation.getBenchmarkInfo()` throws *"Benchmark is not enabled. Please make sure the BenchmarkParams is set in the EngineSettings"* and the Kotlin `EngineConfig` exposes no way to set them, so the plugin times the call itself | JVM spike | Partly — §5.5 records the API limitation |
+| 2026-09-02 | **Thermal and battery after ten consecutive check-ins** | **Not measured. Needs a phone, and there was none** — as in C4. Recorded as unrun rather than estimated | — | No |
+| 2026-09-02 | **The APK after D3: 168.2 MB** (119.7 MB at C4) | **LiteRT-LM adds 47.2 MB of native library** — arm64-v8a 21,529,648 B and x86_64 25,649,544 B — and ships **no `armeabi-v7a` and no 32-bit x86**, while ONNX Runtime's 106.5 MB covers all four. That absence is where the Full tier's 64-bit condition comes from, and it is checked in the built APK rather than inferred from the AAR. Uncompressed contents 196,241,034 B over 471 files | `unzip -l` on `dist-android/app-debug.apk` | Yes — `docs/12` §6.6 |
+| 2026-09-02 | **Main chunk after D3** | **1,012.03 kB raw / 310.34 kB gzip** (**+27.51 kB raw / +7.98 kB gzip** over D2's 984.52 / 302.36); CSS 42.69 / 7.53. transformers.js remains its own chunk at 560.27 / 162.77. **No weight file is in any chunk**, and `weights.test.js` now fails if a suite imports the library that could fetch one | `npx vite build`, this machine | n/a — not a `(verify)` |
+| 2026-09-02 | **The six D3 rules, mutation-checked** | Making a missing ritual answer `false` in the validator failed **1** test; making the confirm card save every row failed **3**; letting the Light tier trust the proposer's words over the transcriber's failed **1**; letting a proposer failure lose the transcript failed **2**; handing LLGuidance the strict tag enum failed **2**; taking `navigator.gpu` as the WebGPU answer failed **2**. One run also caught an unrelated flake in `VaultKnob.test.jsx` (*"only swallows the wheel…"*), which passed ten times out of ten when run alone afterwards — recorded here rather than chased, because it is not D3's and pretending it did not happen would be worse. **The seventh mutation is the interesting one: emptying `weights.test.js`'s forbidden list failed nothing**, because a tripwire cannot be mutation-tested by disarming it on a clean tree. It was proved the other way instead — a scratch test importing `@capacitor/core` made it fail, naming the file, and was deleted. **The run itself cost an hour of confusion first** — see *Warnings* | `npx vitest run` per mutation | n/a |
+| 2026-09-02 | **Main chunk after D2** | **984.52 kB raw / 302.36 kB gzip** (**+23.04 kB raw / +5.28 kB gzip** over D1's 961.48 / 297.08); CSS 42.47 / 7.46, unchanged. The card and its pure helpers, the setting's reader, the Profile toggle and `PROPOSAL_MODEL`; the controls' move out of the composer costs nothing of its own. `voiceKit.fake.js` is in no chunk | `npx vite build`, this machine | n/a — not a `(verify)` |
+| 2026-09-02 | **The card's five rules, mutation-checked** | Writing proposed feelings as well as kept ones failed **4** tests (the invariant-15 case first); writing an unconfirmed person **3**; forgetting `replaced` **3** (the §4.7 literal among them); showing the card whatever the setting says **1**; letting a transcript edit skip the re-run **1**. Nothing else moved in any run; restored, 44/44 | `npx vitest run ProposalCard.test.jsx`, five times with one line changed each | n/a — Appendix B item 2 |
+| 2026-09-02 | **Main chunk after D1** | **961.48 kB raw / 297.08 kB gzip** (**+9.45 kB raw / +5.37 kB gzip** over C4's 952.03 / 291.71); CSS 42.47 / 7.46, unchanged. The whole of it is `validate.js`, `schema.js` and `constants/forbiddenWords.js`, which `index.js` now imports. **`prompt.js`, `golden/` and `adversarial.js` are in no chunk** — `dist/assets/*.js` grepped for *Describe, never evaluate*, *lucie.en* and *Schwimmbad*: absent; for *orphan_fact* and *additionalProperties*: the main chunk only | `npx vite build`, this machine | n/a — not a `(verify)` |
+| 2026-09-02 | **The four D1 rules, mutation-checked** | Dropping the orphan-fact rule failed **3** tests; dropping the zero-feelings-means-`feeling` rule failed **5**; word-filtering the transcript failed **6** (three of them golden references); dropping the text-mode echo failed **2**. Nothing else moved in any run, and the restored suite was green at 183/183 for the two files | `npx vitest run validate.test.js index.test.js`, four times with one line changed each | n/a — Appendix B item 2 |
+| 2026-09-02 | **The plugin's Java transcriber against the pinned files — the same words as the web path** | Three sentences synthesised with Windows TTS at 16 kHz (*"Lucie called this afternoon and I felt lighter afterwards, though work is still on my mind."* and two others) came out of `WhisperTranscriber.java` **word-for-word as transformers.js 4.2.0 on onnxruntime-node 1.24.3 transcribes the same audio** (`Lucy` in both, the model's own spelling), language detected `en` on all three, a pinned `de` honoured. **456–624 ms per clip** with four threads on this desktop; the 30 s log-mel window costs **166 ms**; the spectrogram matches a NumPy port of `torch.stft`'s Whisper arithmetic to **1.18 × 10⁻⁵**. The Python prototype that preceded it produced looping garbage until its cache handling was fixed — see *Warnings* — which is why "matches transformers.js" rather than "looks right" is the bar | A desktop JVM (Adoptium JDK 21, `onnxruntime-1.24.3.jar`), the pinned files copied out of the `love-metrics-models` volume, this machine. **Not a phone** | Yes — §5.5's Android table says what shipped and that it has not run on a device |
+| 2026-09-02 | **The weight store's cancel, resume and tamper cases** | Against a local Range-capable server: a cold fetch of 13 files in 380 ms over loopback; a warm fetch made **no request**; cancel mid-file left a 4,063,232-byte `.part`; the resume sent `Range: bytes=4063232-`, got **`206`** and verified; a tampered file of the **same length** was refused as `checksum` with nothing kept; HTML standing in for a weight was refused as `length`; a 404 as `network` naming the file; `..` and absolute paths refused | `ModelStore.java` on the JVM harness, this machine | n/a — mirrors C3's download manager, whose rules §5.6 already carries |
+| 2026-09-02 | **APK after C4: 119.7 MB** (July's Phase-5 debug APK was 4.5 MB) | **106.8 MB is ONNX Runtime's native library, stored uncompressed for four ABIs** — x86_64 31.4, x86 31.1, arm64-v8a 25.9, armeabi-v7a 18.4 — of which the two x86 halves (**62.5 MB**) run only in an emulator. `dist/` is 28.8 MB and compresses to 8.5 MB in the zip (27.2 of it is C3's ONNX Runtime WebAssembly, which never runs on Android); dex 9 MB. Inside the APK: `capacitor.plugins.json` lists `com.thinkmusic.alexithymia.journal.JournalPlugin`, the binary manifest carries `RECORD_AUDIO` and `POST_NOTIFICATIONS` and **no** `FOREGROUND_SERVICE*` | `make build-android` (Docker, 37 s of Gradle once cached), `unzip -l` on the artefact | n/a — recorded in *Deferred*, with the fix path |
+| 2026-09-02 | **Main chunk after C4** | **952.03 kB raw / 291.71 kB gzip** (**+5.16 kB raw / +0.31 kB gzip** over C3's 946.87 / 291.40); CSS 42.47 / 7.40. The plugin's JavaScript side, the native runtime and the Android tier table cost a third of a kilobyte gzipped; `dist/` is still 28.8 MB | `npx vite build`, this machine | n/a — not a `(verify)` |
+| 2026-08-31 | **Whisper tiny transcribing, on a device, end to end** | Model **loads in 2.2 s** from `/models/` and transcribes a **30 s clip in 2.2 s** — WASM backend, single-threaded, `dtype: q8`. A 10 s clip costs the same 1.4–1.6 s, because Whisper pads every input to its fixed 30 s window. **§5.5's “slow but functional” was pessimistic**: this is comfortably inside a check-in's patience. The words themselves are meaningless — the audio was synthetic, so this is a **latency and path** measurement and **not** a WER one; D4's golden suite is where accuracy gets a number | Chromium, the deployed Docker stack on `localhost:8082` under the real C1 headers, this machine | Yes — §5.5's desktop table |
+| 2026-08-31 | **WebGPU does not run this model, and WASM does** | The WebGPU backend loads the pipeline (1.2 s) and then **fails at inference**: `OrtRun` → `GetReducedShape` in the WebGPU execution provider. Same model, same runtime, WASM backend: works. So C3 ships `device: 'wasm'` unconditionally and §5.5's *“WebGPU when present, WASM otherwise”* is **inverted for the Light tier** — a backend that loads and then throws is worse than one never offered | Chromium 151 with WebGPU present (`navigator.gpu` defined, `crossOriginIsolated === true`), the deployed stack | Yes — §5.5's desktop table |
+| 2026-08-31 | **The pinned Whisper export does not load on the ONNX Runtime transformers.js 4.2.0 ships** | *“Can’t create a session … `qdq_actions.cc:137` `TransposeDQWeightsForMatMulNBits` Missing required scale: `model.decoder.embed_tokens.weight_merged_0_scale`”* — on **every** quantisation the model repo offers. Pinning `onnxruntime-web` to stable **1.24.3** (the version transformers.js itself trusts for Node) fixes it outright. transformers.js pins the web build to a **dev** snapshot, `1.26.0-dev.20260416`, and pins the Node build to 1.24.3 | Chromium, the deployed stack; the failure reproduced on `q8`, `int8` **and** `uint8`, and with graph optimisation disabled | Yes — §5.5 carries the finding as a block quote |
+| 2026-08-31 | **`_quantized` is not a third file — it is the uint8 encoder and the int8 decoder** | `encoder_model_uint8.onnx` is byte-identical to `encoder_model_quantized.onnx` (`2af4a414…`) and `decoder_model_merged_int8.onnx` to `decoder_model_merged_quantized.onnx` (`25e807a9…`). Worth knowing before anyone “tries a different quantisation” as a fix: two of the three names are the same bytes | SHA-256 of all four, fetched into the models volume and compared | n/a — not a `(verify)` |
+| 2026-08-31 | **The 13 pinned files, re-verified in a browser rather than in the fetcher** | **13/13, 45,245,009 bytes, zero mismatches, 403 ms** over loopback — fetched from `/models/` and hashed with `crypto.subtle` on the page itself, which is the code path the download manager actually uses. Confirms C1's figure from the other end of the wire | Chromium on the deployed stack | n/a — confirms an existing measurement |
+| 2026-08-31 | **The trust claim, demonstrated rather than asserted** | A full model load and a 30 s transcription produced **zero off-origin requests**: every entry in `performance.getEntriesByType('resource')` had host `localhost:8082`, and the only distinct host in the whole page was that one. This is the evidence behind the new *“Transcription runs on the device”* row in `docs/06` §3c | Chromium on the deployed stack | n/a — not a `(verify)` |
+| 2026-08-31 | **Main-chunk size after C3, and what the model machinery actually costs** | **946.87 kB raw / 291.40 kB gzip** (**+33.90 kB raw / +11.58 kB gzip** over C2's 912.97 / 279.82). CSS 42.47 / 7.46. **transformers.js is a separate 550.21 kB / 159.81 kB gzip chunk** — the dynamic import worked, and a user who never turns voice on never fetches it. **`dist/` is now 28 MB**, against roughly 1 MB before, and 27.19 MB of that is ONNX Runtime's WebAssembly binary | `npx vite build`, this machine | n/a — not a `(verify)`, and the yardstick D3 is measured against |
+| 2026-08-31 | **Pointing at the smaller ONNX binary made the build bigger, not smaller** | The plain `ort-wasm-simd-threaded.wasm` is 12.36 MB against `asyncify`'s 27.19 MB, so C3 aliased it — and `dist/` went from 28 MB to **40 MB**. ONNX Runtime's own bundle carries a `new URL(…)` reference to the asyncify binary, so Vite emits it whatever the alias says, and naming a second one only added 12 MB beside it. Reverted | Two clean `npx vite build` runs with `dist/` removed between them | n/a — recorded so it is not re-attempted |
+| 2026-08-31 | **Main-chunk size after C2 — and the proof that C2 costs nothing** | **912.97 kB raw / 279.82 kB gzip**, CSS 42.34 / 7.44. Built twice: once with `src/journal/` present and once with the directory moved aside, and **both builds emitted the identical filenames** `index-pai-vGJ5.js` and `index-Ch1SY4Jo.css` — so the three new modules cost exactly zero bytes, as `journal.js` did between A5 and A6 and `dayGraph.js` did at B1. Nothing imports them yet. **Note that the yardstick itself moved since C1 recorded 914.65 / 279.98**: the only `src/` changes between the two measurements are the `auth-session-fix` merge (`aff6f28`, 2026-08-29), so the −1.68 kB is that work, not this session. C3 and D3 are measured against **912.97 / 279.82** | `npx vite build`, this machine | n/a — not a `(verify)` |
 | 2026-08-25 | **Whisper tiny, the Light-tier transcriber — the §5.5 `(verify)` on its size** | **41 MB.** The two files transformers.js loads for `automatic-speech-recognition` are `encoder_model_quantized.onnx` (10,124,990 B) and `decoder_model_merged_quantized.onnx` (30,719,241 B) = **40.8 MB**; the tokeniser, the four configs, `vocab.json`, `merges.txt` and `normalizer.json` add 4.4 MB. With the Apache licence text the whole set is **45,245,009 B over 13 files**. Comfortably inside §5.5's guessed 40–75 MB, and small enough that the Light tier is a real floor rather than a second big download | `make models-fetch`, against `onnx-community/whisper-tiny` rev `ff41770` | Yes — §5.5 carries the measurement in both places it guessed |
 | 2026-08-25 | **That `Cross-Origin-Resource-Policy` on `/uploads/` is what keeps avatars loading under COEP — a matched pair, not an assertion** | Two responses from the same Nginx, requested cross-origin by the same document, differing only in one header: `/uploads/<avatar>.jpg` (**CORP present**) **loaded**; `/vite.svg`, served by `location /` which sets no CORP, was **blocked** with `net::ERR_BLOCKED_BY_RESPONSE.NotSameOriginAfterDefaultedToSameOriginByCoep`. The negative control is what makes this evidence rather than a green tick | A throwaway `nginx:alpine` on :8099 sending COOP/COEP and **no CSP of its own**, loading images from `127.0.0.1:8082` | Yes — §5.6 now says what does and does not reproduce |
 | 2026-08-25 | **Cross-origin isolation and WASM, in four engines** | `crossOriginIsolated === true`, `SharedArrayBuffer` defined, an 8-byte module compiled, a real module instantiated and called (`f() = 42`), and `new WebAssembly.Memory({shared:true})` returning a `SharedArrayBuffer` — **all four engines, 10 pass / 0 fail each** | Chrome 151, Edge 151, Firefox (Gecko), and Chromium 148 in the Electron pane, against the real stack | n/a — not a `(verify)`, but the evidence C3's runtime choice rests on |
@@ -108,10 +156,67 @@ Everything the design document marked `(verify)`, as it gets measured. Device, b
 
 | From | Item | Where it should land |
 | :--- | :--- | :------------------- |
+| Z | **`payload.retrieval` loses the record of an accepted trigger suggestion** — the one interaction the block exists to count. `offered.triggers` is read from the live `similar` map at save time, but accepting an offer confirms the trigger, which shrinks `unresolved`, which empties that key out of `similar`. So `accepted.triggers` names a `client_id` that `offered.triggers` never lists — and when a trigger offer is the *only* retrieval interaction, `buildRetrievalProvenance` returns `null` and **the whole block is omitted**. The feelings path solves exactly this with the `offeredEver` ref, whose own comment states the reason; the triggers path has no equivalent, and `retrieval.test.jsx` covers only the feelings path. **Not fixed at the closeout**, because it is a correctness change in a provenance shape and the closeout's rule was to change no behaviour. | **Phase 7**, and it is the cheapest of the items there: one ref covering both kinds, and a test on the trigger path |
+| Z | **The retrieval golden set embeds documents the shipped index never holds.** `runRetrievalSuite` calls `embed(docs.map(d => d.text))` over everything `suiteDocuments` returns, snapshot notes included; `EmbeddingProvider` builds `wanted` with `doc.kind !== 'snapshot'`, and `recall.js` says outright that a snapshot is findable by its words and never by similarity. On the first machine that supplies `--embedder`, a snapshot can take a top-3 slot in the harness that it cannot take in the app — so a semantic case can fail (or pass) for a reason that does not exist in the product. This is the suite whose job is to move `SIMILARITY_FLOOR`. `suiteTexts` has the same defect and has no caller. | **The session that first runs the semantic half** — it has to be fixed before the number it produces means anything |
+| Z | **Turning the index toggle off leaves the vectors on disk.** `writeEmbeddings(false)` writes a flag and the provider drops its in-memory map; deletion is bound to the *session* branch in `JournalContext`, not to the *setting*. **No copy is false** — the Vault and the settings row both bind deletion to signing out, and `Vault.test.jsx` asserts that wording — but embeddings are invertible, which is the entire reason rule 1 exists, and a user who switches the feature off has reason to expect the numbers to go with it. | **Phase 7**, item 6 in `product_vision/README.md` |
+| Z | **Eleven `/simplify` findings were rejected rather than applied**, and the reason is one reason: every one of them is a refactor of code no person has ever run. The list and the argument are in the Z entry below. | **The session that first runs this code on a device** — a refactor is cheap once there is a way to see it work |
+| Z | **The Android WebView has no CSP.** `index.html` carries no `<meta http-equiv="Content-Security-Policy">`, so Nginx's policy — which §5.6 leans on for *"the weights come from this origin"* — is doing no work on the phone. Harmless today: `/security-review` confirmed there is no HTML injection sink anywhere in `src/`, and the weight fetch is SHA-256-pinned, which is what actually makes the cleartext-LAN channel safe. It is a defence-in-depth gap, and Phase 6 is the first release that runs a model inside that WebView. Found by `/security-review` and classified by it as **pre-existing, not introduced here**. | **A hardening pass** — a meta CSP mirroring `nginx.conf` would make the policy platform-independent |
+| G1 | **The whole of G1's manual QA is unrun**, and unlike F1's and F2's it needs no phone — only a browser, the 219 MB downloaded, and a few months of *work* in the vocabulary. Name *my job*, see the offer, decline it and confirm a new trigger exists, accept it and confirm nothing was merged, sign out and confirm the index is gone. Every one of those is covered by a test against a **fake** embedder; none has been seen with real weights. | **The operator, or the next session on a machine with disk space.** The tests prove the wiring; only a real model can say whether *work* and *my job* actually land close enough to clear `SIMILARITY_FLOOR` |
+| G1 | **The real model has never run.** `createWebEmbedder` has no test that loads it, by design, and this session could not run one either: `make build-android` filled the disk before there was a chance. So the `sentence_embedding` output shape, the q4 export's behaviour under transformers.js, and the actual similarity of near-synonyms are all **taken from the upstream model card** rather than observed. | **The first machine with 219 MB free and a browser.** Load it, embed *work* and *my job* with the document prefix, and print the cosine — if it is under 0.65, `SIMILARITY_FLOOR` is wrong and the feature is silent |
+| G1 | **`SIMILARITY_FLOOR = 0.65` is a guess with a reason, not a measurement.** Rule 3's gate is what makes the guess safe: a wrong floor makes the feature quiet or noisy, never wrong. **G2 built the instrument** — the retrieval golden set — and could not read it: scoring the floor means running the eight *semantic* cases, and those need an embedder this machine has not got. | **The first machine with the weights.** `node scripts/journal-eval/retrieval.mjs --embedder <module>`: the eight skips become measurements, and the right floor falls out of them |
+| G2 | ***Already known?* did not ship** — the one use of §5.8's six that G2 refused. It is **blocked, not skipped**: S0 deferred `person_fact` until the encryption envelope lands (§12.5) and named the proposal card as the place that must not offer one, so there is no proposed fact anywhere for an existing one to be shown beside. `alreadyKnown` in `recall.js` exists, is tested, and is wired to nothing. | **Whoever reverses S0's decision** — 6-E, or a later change of mind about `person_fact`. One line on the card, and the function is already there |
+| G2 | **The whole of G2's manual QA is unrun**, and like G1's it needs no phone: search for a German phrase and get the right day; accept a retrieved label and confirm `from: "retrieval"` in the provenance; sign out and confirm search stops working. | **The operator, or the next session on a machine with disk space.** Ten minutes, in the same sitting as G1's |
+| G2 | **The eight semantic golden cases have never been scored.** They are the half of recall that needs the model, and they are reported *skipped* rather than passed — deliberately, because grading them against a hashed-n-gram stand-in would put a number about the stand-in into a report beside numbers about a model. | **A machine with the weights.** `scripts/journal-eval/retrieval.mjs --embedder <module>` is the documented seam; the module is transformers.js under node, which nobody has written |
+| G2 | **The item-3 guard is structural, and only structural.** `retrievalPrompt.test.js` proves a retrieval-influenced prompt cannot lose a needed word, add an unconfirmed one, name a feeling, or change a rule — over all 120 proposal cases in both languages. It cannot prove no model is ever swayed by an **ordering**. | **A differential run of the proposal suite with and without retrieval context**, on a machine with weights. The retrieval report names this in its own last section |
+| G2 | **`make build-android` was not run.** G2 touched no native file and no manifest, but Appendix B asks for it on Android sessions and this was not one — the ledger's own warning is that the recipe filled this disk on 2026-09-04. | Any Android session, or the next one that reclaims disk space |
+| G1 | **There is no native embedding runtime.** The plugin's `embed()` still rejects `unavailable`, so `embeddingsAvailable()` refuses the setting inside the Android shell and the phone shows a disabled toggle with a sentence. It is written as a missing runtime rather than a platform rule, so the session that adds one deletes a condition. | Whoever adds EmbeddingGemma to `plugins/alq-journal` through ONNX Runtime, beside Whisper. A Kotlin change with a Gradle build behind it |
+| G1 | **`make models-fetch MODELS=embeddinggemma` has never been run.** The eight pins are read from the upstream repository's API (LFS SHA-256s) plus four small files downloaded and hashed here; the fetch script has not pulled the 197 MB of weights, and `models-install-terms` has not put the terms in a volume. | **The operator, on the first deployment that turns the index on.** A mismatch would fail loudly, which is the design |
+| F2 | **The whole of F2's manual QA is unrun**, and it is the operator's: the notification arriving at the chosen hour, it opening the ritual **behind a real lock screen**, the launcher offering *Check in* on a long-press and opening recording-armed, killing the app mid-recording, and the two battery numbers. No phone, no emulator, no `adb`. | **The operator with a device.** Ten minutes, and it can be done in the same sitting as F1's four |
+| F2 | **The reminder does not survive a reboot on its own.** The plugin ships a `BOOT_COMPLETED` receiver and the manifest deliberately does not grant `RECEIVE_BOOT_COMPLETED`; `useNativeShell` re-syncs at every launch instead, so one opened app puts it back and a user who reboots without opening the app misses that night. | Whoever has a device to measure it on. One permission and one `<receiver>` — a wider grant than a bedtime reminder obviously deserves, which is why it was not taken blind |
+| F2 | **`cadenceReminders.js` still has no test file of its own.** F2's cross-channel case is the first test it has ever had; its 10:00 schedule, its `nudgeSentence` body and its per-relationship id are covered by nothing. | Any session touching the cadence channel. The store-shaped fake in `ritualReminder.test.js` is the thing to copy |
+| F2 | **The lock ordering is verified structurally, not on hardware.** The test renders the listener inside `AppLock` and asserts nothing registers or navigates until the passphrase is accepted; what it *models* rather than exercises is Capacitor's event retention, read out of `Plugin.java` and `@capacitor/core`. | The device QA above. If the ritual ever fails to open after an unlock, that assumption is the first thing to check |
+| F1 | **The outbox's manual QA is entirely unrun.** The airplane-mode check-in, the *not yet synced* mark on a real screen, the network coming back, and the kill-and-relaunch with an item queued. No phone, no emulator, no `adb` — and because the outbox is **native-only by design**, no browser can stand in for one either. Everything is covered by tests behind a mocked `isNative`; nothing has been seen. | **The operator with a device.** Four minutes: save a check-in in airplane mode, confirm the mark, kill the app, relaunch, confirm the mark survives, restore the network, confirm one row on the server |
+| F1 | **No UI can produce a correction of an unsynced entry.** The provider replaces an outbox item keyed by `client_id` and a test drives it, which is §9.5's sentence honoured at the seam — but `buildCheckinRequest` mints a fresh `client_id` on every save, so nothing on a screen reaches it. It is a guarantee waiting for a caller. | Whoever adds an edit affordance to a queued entry — which §9.5 does not ask for. Until then it is protection against a retried save, not a feature |
+| F1 | **The day graph does not draw a queued check-in.** Pending rows are kept out of `entries` because half the app reads that list through a row id they have not got, and `DayGraph` opens a branch by `ID`. The day's list shows the entry immediately with its mark; the drawing gains it when the post lands. | Whoever decides the gap is worth a synthetic key. It is a real inconsistency and it was the narrow choice on purpose |
+| F1 | **The ciphertext test the F1 prompt lists was not written**, because it is conditional on E1 and E1 has not started. The seam is in place instead: the outbox stores what it is handed and never inspects `payload`, so the envelope goes in at `createEntry`. `docs/13` §2.5 and both of its checklists now name the outbox beside the cache, with an entry 7b saying that `clearOutbox()` is the **wrong** tool on enrolment — unlike the cache, those rows exist nowhere else. | **E1**, if it ever runs |
+| D4 | **The 240 golden recordings do not exist.** 120 cases × clean and noisy, in German and English, read by consented speakers. Everything around them is built: the sentences, the per-clip WER ceilings, the naming, the consent register and its refusal, the format check, the ffmpeg converter and the noise recipe, and the printable scripts. Until they exist, every audio-mode candidate has nothing to run and §5.7's German-versus-English criterion cannot be measured at all. | **The operator, with a few speakers.** `product_vision/eval/recording-script-{en,de}.md` is what they read; `src/journal/inference/golden/audio/README.md` says where the files go |
+| D4 | **No model has been through the gate, so no model is a tier default.** `full-web` and `light-web` need a llama.cpp build and a GGUF; `full-android` needs LiteRT-LM's CLI or D3's JVM route; both Android Light candidates need a handset and a capture file. | **The next session with weights.** D3's JVM recipe in *Warnings* is the cheapest first run |
+| D4 | **The two CLI argument templates have never met a binary.** `DEFAULT_ARGS` in `scripts/journal-eval/runners.mjs` is taken from llama.cpp's and LiteRT-LM's documented interfaces; neither is installed here, and D4 would rather say so than invent a verification. Both are overridable in one environment variable and the report prints the command that ran. | **The first real run**, which should expect to correct a flag name and nothing more |
+| D3 | **Nothing has run on a phone, and the list is now longer than C4's.** Everything C4 deferred, plus: a Full-tier pass end to end, the idle unload actually releasing 2.6 GB, ten consecutive check-ins with latency and warmth, German and English recordings, a noisy café take and the hint it produces, *This isn't it* from every state including the spoken correction, a misheard name corrected in the transcript resolving to the right relationship, the tier override both ways, removing the downloaded files, and airplane mode end to end. No phone, no emulator, no `adb`. | **The operator, with a device.** The off-device spike answered the design questions; it cannot answer any of these |
+| D3 | **The web model has never run.** The browser available to this session exposes `navigator.gpu` and returns `null` from `requestAdapter()`, so `createWebProposer` could not be exercised at all. The download half *was* driven end to end, 16/16 verified. | **The first machine with a real WebGPU adapter.** Load the model, run one clip, and record load time and first-token time — the two numbers the settings copy promises |
+| D3 | **The download manager reads a whole file into memory before hashing it.** Measured fine for a **1.59 GB** file on a 32 GB desktop (9.4 s to `arrayBuffer`, 1.17 s to hash) and it is what C3 shipped for 45 MB files. On a 6 GB phone it is a 1.59 GB `ArrayBuffer` plus a cache write, and it is **unmeasured**. | Whoever sees the first out-of-memory on a phone, or **F2**. The fix is a streaming digest over the response body; nothing is broken today, and guessing at the threshold would be worse than measuring it |
+| D3 | **Time to first token is unmeasured**, because `getBenchmarkInfo()` needs benchmark parameters the Kotlin `EngineConfig` cannot set. Total latency is measured; the settings screen promises a wait and not a first word, so nothing on screen depends on it today. | **D4**, if the eval report wants it — or whenever the copy starts promising a first word |
+| D3 | **The typed path still has no *Suggest* button.** D2 deferred it here on the grounds that it was pointless until a runtime took text. Both runtimes take text now, so it is one button on the note field and one `propose` call, and it did not fit this session. | **D4 or later.** The card, the request and the provenance are all already in place |
+| D3 | **The idle unload has never been observed.** Both halves exist — a JavaScript `setTimeout` tested with fake timers, and a Java `ScheduledExecutorService` that no test can reach without an Android runtime. Whether it really releases 2.6 GB is a device check. | The device checklist above |
+| D2 | **The card offers no facts.** The D2 prompt's item 5 and its test asked for opt-in fact chips; S0's operator decision (*Decisions*, 2026-08-22) says no UI writes a `person_fact` until the 6-E envelope lands and names this card. The ledger beats the prompt: the card shows nothing and writes nothing for a proposal's `facts`, a test asserts it, and the prompt is annotated. The validator still filters them, so the data is clean for the day the decision is reversed. | **6-E**, if it runs — the chip is §4.4 item 5 as written, off by default, one `person_fact` row per tap with `from_entry_client_id`; the card's state already keys people by name, so it is an afternoon |
+| D2 | **The typed path has no model behind it.** §4.1 says a typed sentence gets the card too *if the model is on*; the composer's note field goes straight to the chips, and nothing offers a *Suggest* on it. Not asked for by the prompt, and pointless until a runtime takes text. | **D3**, with the Light tier's text-mode pass — one button on the note, the same `propose` in text mode, the same card |
+| D2 | **The card has never been on a real screen.** Every assertion is jsdom; with no proposal model the only path a person could see today is the `feeling` one, which is C3's screen plus a sentence. Layout at 360 dp, the change-grid under a chip, the exits row and the people list with three candidates are unmeasured. | **D3's manual QA**, which is the first time a proposal exists to look at |
+| D2 | **`VoiceCheckin.test.jsx` keeps its own recorder and downloader fakes**, now duplicated by `voiceKit.fake.js`. Left alone rather than touching a 465-line suite for a refactor. | Whoever next edits that suite imports the fake module and deletes the copies |
+| D1 | **`unclear` is not exclusive in the validator.** A7 decided *can't tell* cannot share a check-in with a named feeling, and the composer's chips enforce it on tap; `validateProposal` lets a proposal carrying `unclear` **and** `joy` through as it came, because the contract has no rule about it and the design document does not say which one the model meant. The card is where the rule already lives. | **Closed by D2**: both arrive dashed and the first tap decides — keeping one puts the other down, the composer's rule — and two tests say so |
+| D1 | **The forbidden filter matches substrings, and German compounds pay for it.** *Schwimmbad* contains *bad*; *badge* does too. The choice is deliberate — it is the copy walk's predicate, so "forbidden-word-free" means one thing in both readers — and its cost is unmeasured until a model produces labels. `dropped_by_filter` carries a reason per drop for exactly this question. | **D4** — read `forbidden_word` drops in the eval report; if legitimate labels are being dropped, move the *filter* to word-boundary matching with `diagnos` and `!` kept as substrings, and leave the copy walk as it is |
+| D1 | **The prompt has never met a model.** `buildPrompt` is tested for what it contains, not for what it does; its wording, its example, and the English-prompt-for-a-German-note decision are all untested until a runtime calls it. `PROMPT_VERSION` is 1 and will not survive first contact unchanged. | **D3** wires it into both runtimes and writes `prompt_version` on the entry; **D4** is the first evidence |
+| D1 | **Only transcripts are golden; there are no recordings.** §5.7's recordings table — consented and synthesised clips, German and English, clean and noisy, with a WER ceiling per clip — is D4's, as the prompt says. `golden/README.md` has the slot for it. | **D4** |
+| D1 | **§5.2's `(verify)` on transformers.js grammar support is still open.** The validator runs regardless, so nothing here depends on the answer; D3 does. | **D3** |
+| C4 | **The whole device checklist is unrun — there was no phone, no emulator and no `adb` on this machine.** The APK exists, the plugin is registered in it, the Java core matches the web path on a JVM and the JavaScript half is tested behind a fake; what nobody has done is install it. The C4 prompt's six items, verbatim, with the device model and Android version to be written into this ledger: (1) the permission prompt appears at the **first microphone tap** and not at launch; (2) a denied permission shows the typed path; (3) record → transcribe → save works, and **killing the app mid-recording leaves nothing** (no file is ever written, so this should be trivially true — confirm it); (4) the weight download shows its size, can be cancelled, resumes with a `Range` request, and **fails loudly on a checksum mismatch** (corrupt one byte in the volume with the recipe in `docs/09` §2); (5) **airplane mode**: record, transcribe, confirm `make android-logs` shows no line under `AlqJournal` naming a URL; (6) battery and warmth after ten consecutive transcriptions. Two numbers to write down while there: transcription time per 30 s clip and peak RSS of the app process during it | **The operator with a phone, or the first Android session with a device** (F2 or D3). Until then §5.5's Android row says "not yet run on a phone" and nothing in this ledger claims otherwise |
+| C4 | **The APK is 119.7 MB, and 62.5 MB of it is emulator-only.** ONNX Runtime's `.so` ships for four ABIs and a debug APK carries all of them uncompressed. The two x86 halves serve nothing but `make dev-android` on an emulator; a phone installed from a browser download carries them for no reason. The fix is a `packaging { jniLibs { excludes } }` (or `ndk.abiFilters`) on the **app** module for the release path, and the app module is generated — so it is either a Gradle init script passed from `Dockerfile.android` or the first overlay of `app/build.gradle`, and it must stay conditional so the emulator path keeps its x86_64 | **`bundle-android` / release work, or F2.** Not this session: the prompt's fence is the plugin, and an overlay of a generated Gradle file is a decision to take with the numbers in hand, which are now here |
+| C4 | **C3's 27 MB of ONNX Runtime WebAssembly is inside the APK and never runs on Android** (8.5 MB after zip compression). The web build needs it; the Android build carries it because `dist/` is copied whole. Excluding it needs the Vite build to know its target, or `cap sync`'s `webDir` to point at a trimmed copy | **D3**, with C3's own follow-up on moving the runtime beside the weights in `/models/` — one decision covers both |
+| C4 | **The loop guard exists only on Android.** `WhisperTranscriber.java` stops a tail that repeats itself three times and keeps one copy; transformers.js on the web runs a bare greedy loop and would emit the loop. Same audio, possibly different words on the two platforms. transformers.js supports `no_repeat_ngram_size` and `repetition_penalty` as generation options, so aligning the web path is a one-line change once D4's golden suite says which behaviour is right | **D4**, with real recordings; not before, because the guard was designed against synthetic audio |
+| C4 | **The platform `SpeechRecognizer` is not offered**, and that is a decision rather than a gap (§5.5 option D, docs/12 §6.7). If a user ever asks for it, it is one more `engine` on the plugin's `transcribe`, a named row in Settings, and a **third Vault variant** describing an OEM model the app cannot name a licence for — the last is the real cost | Nowhere, unless asked. D3 may revisit alongside the Full tier |
+| C4 | **The two `(verify)` marks in §5.5's tier table are still open** — whether a 4 GB device carries Gemma's audio encoder and whether text-mode Gemma fits in 4 GB. Both need Gemma on a device. C4 kept the boundaries exactly where the design put them (Light at 4 GB even though Whisper alone would run on less) so that no phone loses voice when D3 arrives | **D3**, on a device |
+| C4 | **The native level meter's scale has not been checked against the web's on a device.** Both are RMS on the raw stream, but the native window is 1,024 samples at 16 kHz (64 ms) against the web's 1,024 at 48 kHz (21 ms), and `SPEECH_LEVEL` / `SILENCE_LEVEL` were tuned on neither. If the silence stop never fires or fires early on a phone, the constants are the first suspect | The device checklist above, item 3 |
+| C4 | **`journalSettings.js` has mixed line endings** (117 CRLF, 63 LF) — C3's additions landed as LF in a CRLF file. C4 did not touch the file and did not fix it, because a fix is a whole-file diff that belongs in its own change | Whoever next edits that file, in a separate commit |
+| C3 | **The microphone itself was never exercised by a human.** Everything downstream of it was: the recorder is unit-tested against a fake `MediaRecorder` (C2), and the model path was driven end to end in a real browser with a synthetic 30 s buffer. What has **not** happened is a person tapping the button, granting the permission, speaking, and reading the words back — the browser available to this session cannot be launched with a fake capture device, and no automation can answer a permission prompt. The airplane-mode acceptance test is therefore also unrun. | **The operator, in ten minutes, against the running stack**, or C4 on a device. The three things to watch: the permission prompt appears on the *first tap* and not at launch; a denied permission shows the typed path and no error dialog; and navigating away mid-recording leaves nothing behind |
+| C3 | **Firefox and Safari are untested.** The engine used was Chromium. Firefox matters because it has no `deviceMemory` (the tier code reads its absence as “no reason to think this device is small”, deliberately) and because its WASM performance is the one most likely to differ; Safari matters because transformers.js picks a *different* ONNX binary for it and this build ships only the one. | **C4 or D3.** If Safari needs its own binary that is a second 12 MB in `dist/`, and the trade should be made with a number in hand |
+| C3 | **`dist/` is 28 MB, and 27.19 MB of it is ONNX Runtime.** It ships to every deployment whether or not anyone turns voice on. §5.6 keeps *weights* out of the image for exactly this reason — the runtime was treated differently because it is code, it is version-locked to the JavaScript that drives it, and a mismatched pair fails subtly. That reasoning is defensible and it is not free. | **D3**, which adds Gemma through `/models/` and will already have the operator step. Moving the runtime beside the weights then costs one more manifest row and saves 27 MB per deployment |
+| C3 | **`env.useWasmCache = false` is what keeps the ONNX loader out of a `blob:` URL, and that resolves C1's deferred CSP question — but by reading the runtime's source, not by watching it fail.** The policy was never widened and the transcriber runs, so nothing is blocked in practice; what was not done is *deliberately turning the flag back on to watch `script-src` refuse the blob*. A check with no negative control is a check that cannot fail, which is C1's own warning turned on this session. | **D3**, in ten minutes: flip `useWasmCache`, load the model, and read the console. Then delete C1's `worker-src` row for good or widen the directive with a stated reason |
+| C2 | **`propose` resolves to a result envelope, not to a bare `Proposal`.** §5.7 sketches the signature as `propose(input, context, runtime) → Promise<Proposal>`; what resolves is `{ ok: true, proposal, runtime, mode, durationMs }` or `{ ok: false, failure: { kind, message, cause } }`. The reason is that a runtime failure is something the card **renders** — §4.6 already gives it copy — rather than something every caller has to remember to catch, and a caller that forgets a `try` would show a stack trace to someone recording a feeling. Stated here because it is a documented deviation, not an accident, and reversing it is a one-file change. | **D2**, if the card wants it the other way. §5.7 was not rewritten — it is a one-line sketch and the module header carries the full reasoning |
+| C2 | **`createStreamMeter` and `decodeToMono16k` have never run against a real microphone.** Both are covered by tests with stub constructors, which proves the wiring and the shape (two contexts at 16 kHz, one channel, a copied buffer) and proves nothing about a device. The manual check the C2 prompt asks for — `getUserMedia` prompts, a recording produces a buffer, navigating away discards it — **was not run**; see *Deferred* in the session entry. | **C3**, which puts the first button on this and cannot avoid exercising both. Its airplane-mode QA is the natural place |
+| C2 | **The web build asks for `noiseSuppression: false` and `autoGainControl: false`, which is a judgement call the design document does not make.** The meter reads the same stream the recorder writes, so processing in the path would make the noisy-take flag describe a recording nobody transcribes, and a moving gain would drift the absolute thresholds. The trade is real in the other direction too: browser noise suppression genuinely helps a transcriber. | **C3**, with a real Whisper run in a real noisy room. If suppression measurably improves WER more than the flag is worth, flip `CAPTURE_CONSTRAINTS` and say so in the ledger |
+| U1 | **The gate is waived (2026-08-31), so the four decisions are now skipped rather than pending.** The instrument still exists and is still runnable. **All four are now spent:** the vocabulary shipped as authored, the ritual kept its driven floor, the proposal card was built in D2 — and on 2026-09-04 the fourth was spent too, when 6-G was built in G1 with no evidence about trigger reuse either way. | **Nowhere, unless the operator re-opens it.** A later run corrects `FEELINGS` rows and `RITUAL_QUESTIONS` in place, and could still say the index was not worth building — which would now be a removal rather than a decision not to start |
 | C1 | **`worker-src 'self'` refuses a Worker built from a `blob:` URL** — measured, in Chromium: *"Creating a worker from 'blob:...' violates the following Content Security Policy directive: worker-src 'self'"*. Several WASM runtimes, onnxruntime-web among them, spawn their worker from an object URL. C1 did **not** widen the directive: the prompt said `worker-src 'self'`, and widening a policy for a runtime nobody has chosen yet is guessing. | **C3**, which picks the runtime and will find out in ten minutes whether it needs this. Two options, and the first is better: configure the bundler to emit real worker files (Vite does this natively), or widen to `worker-src 'self' blob:` — a real widening that wants a stated reason in the commit |
 | C1 | **A model URL carries no content hash, so `Cache-Control: max-age=31536000` outlives a re-pin.** If an operator changes `WHISPER_TINY_REV` in the Makefile, the bytes at `/models/onnx-community/whisper-tiny/config.json` change while the path does not, and a client holding a year-long cache entry keeps the old file. C1 left `immutable` **off** for exactly this reason, so a reload can still revalidate and the ETag makes that a 304 — but a client that never reloads never asks. | **C3 or D3**, whichever first re-pins a revision. The clean fix is to put the revision in the served path; the cheap one is a `?v=` the loader appends. Not worth building before a second revision exists |
 | C1 | **`docs/02-architecture.md` and `src/mobile/serverUrl.js` both say the Go service ships no CORS middleware. It does** — `backend/internal/handlers/cors.go`, and every `/uploads/` response carries `Access-Control-Allow-Origin: *`, visible in the `curl -I` output C1 captured. Out of C1's scope fence (it touches neither file and changes no CORS behaviour), so it is recorded rather than fixed. | Any session that touches the CORS path or `docs/02`. It is a two-line doc correction, but check *why* the middleware is there before writing the sentence |
-| C1 | **Preamble §2.4 says `npm test` is 22 files / 511 tests; it is 24 files / 609** as of B2. Not corrected here, because `06-implementation-prompts.md` already carries uncommitted edits from U1 and entangling a second session's change with them helps nobody. | Whichever session next edits that file deliberately, or Z at closeout |
+| C1 | **Closed by C2.** Preamble §2.4 now reads **26 files / 684 tests in ~25 s**, which is what this machine does at C2. C2 was editing `06-implementation-prompts.md` deliberately anyway, to record the U1 waiver. | — |
 | C1 | **`make models-fetch` before the first `make up` makes Compose warn on every subsequent `up`**: *volume "love-metrics-models" already exists but was not created by Docker Compose*. The volume is used and served correctly either way. Not fixed: `external: true` would make the volume a hard prerequisite of `up` and break the documented bare-`docker compose up` path, which is a worse trade than a warning line. | Nowhere, unless it becomes annoying. Documented in `docs/09-deployment.md` §2 so it is not rediscovered as a fault |
 | U1 | **The user test itself has not been run.** The instrument exists — `eval/user-test-protocol.md`, two tally sheets, `eval/proposal-card.html` — and running it needs five or six people, four of them German-first, over eight days, with two facilitated sessions. That is not something a session at a keyboard can produce, and inventing numbers for it would be worse than leaving the gate open. **Four decisions are unmade: the feeling vocabulary's membership and its valence/energy constants, the ritual's length, whether the proposal card is built at all, and whether 6-G is built at all.** | **U1, re-run by the operator with real participants.** Then a dated `eval/user-test-report-YYYY-MM-DD.md`, the constant changes it justifies, §5.3 and §12.5 rewritten from draft to result, and the C/D/G prompts updated. C2 does not start before that |
 | S0 | **Closed by A10.** Preamble §2.4 and Appendix B item 9 now say six, and add that `backend/**/uploads/` is gitignored so the untracked leftovers need no attention at all — while a stray `backend/alexithymia.db` **does**, because it is untracked *and* un-ignored. | — |
@@ -150,6 +255,142 @@ Everything the design document marked `(verify)`, as it gets measured. Device, b
 ## Warnings for later sessions
 
 Things a future session would otherwise rediscover the hard way.
+
+- **G2: an entry's searchable text is not its transcript.** `journalDocument` joins the
+  transcript with the *current* names of the people mentioned — `personName` prefers the
+  relationship's name over the label stored on the mention, so a rename shows everywhere —
+  and the *resolved* labels of the triggers it is filed under, each once however many
+  feelings name it. So what gets embedded is `"Lucie · Der Tag im Büro war lang. · Arbeit"`,
+  not the sentence. A test fixture keyed on the transcript alone silently gets an unrelated
+  vector, and the only symptom is that the feature makes no offer. It cost this session two
+  rounds of debugging and it is now trap 22 in `docs/10`.
+
+- **G2: `useJournal().entries` is the loaded *range*, not the journal.** The day view narrows
+  it to one month, so an id being absent means *not loaded* far more often than *deleted*.
+  G1's index pruned on absence, which was right when the only ids were a vocabulary the two
+  views load whole; with entries in the index it would re-embed the whole journal every time
+  the user walked to another month, and would look exactly like a slow device. A vector is
+  now dropped only when the vocabulary can say the id is dead.
+
+- **`node -e` with backticks in it is a bash command substitution, and on 2026-09-04 one of
+  them started `make build-android`.** The Bash tool here is Git Bash: a backtick inside a
+  `node -e '...'` argument is *not* protected by the single quotes when the string also has to
+  survive the tool's own quoting, and the fragments that escaped ran as commands. Nothing was
+  lost — the ledger edit simply did not apply, and the accidental Docker build was interrupted
+  with 94 GB still free — but it burned two minutes and could have burned the disk. Write a
+  `.mjs` file in the scratchpad and `node` it. The same rule the heredoc warning already gives
+  for backslashes applies to backticks, and for a different reason.
+
+- **`make build-android` can fill the disk, and on 2026-09-04 it did.** G1 ran it on a machine with a few gigabytes free and came back to `C:` at **931 G of 931 G, zero available**; the next `grep` died with *No space left on device* mid-edit and the session had to stop and ask. Docker held **53.5 GB of build cache and 18.1 GB of images**. `docker builder prune -f` reclaimed 20.56 GB **inside the Docker VM and not on the host** — Docker Desktop's disk image does not shrink on its own, so the host stayed at zero and the space has to be reclaimed by compacting that image by hand. **Check `df` before you build, not after**, and expect a full disk to look like a tool bug rather than a disk problem: the first symptom was a `grep | head` failing, not an error about space.
+- **The Gemma terms cannot be pinned like a weight, and finding that out costs two `curl`s.** `https://ai.google.dev/gemma/terms` is a rendered page whose bytes change between requests seconds apart. Every other licence in `MODEL_MANIFEST` is a URL and a SHA-256; this one is a file in `licences/` installed by its own target, hashed by `models.test.js` against the app's pin. A later session that "tidies" it into a manifest row will make `make models-fetch` fail the next time Google edits the page.
+- **Hugging Face is reachable from this machine roughly one attempt in three**, resetting the connection otherwise, and `www.apache.org` was refused outright on 2026-09-04 — which means the Apache licence URL already pinned in the Makefile could not be fetched here either. A retry loop of 20–30 attempts gets through; a single `curl` reads as "no network" and is wrong. `huggingface.co/api/models/<id>?blobs=true` gives every LFS file's real SHA-256 in `lfs.sha256`, so the large weights can be pinned without downloading a byte; only the small non-LFS files (configs, tokenizer_config) have to be fetched and hashed.
+- **`vi.mock` on `./store` is how the logout wiring is tested, and `clearVectorIndex` is the seam.** The store's own suite proves the function empties an index; `logout.test.jsx` proves `JournalContext` calls it. Both halves are needed — a refactor that drops the call leaves the first suite green and §10.2's *"deleted when you sign out"* false.
+- **`LocalNotifications.getPending()` is the whole app's pending list, and there are two channels in it now.** A cancel-then-reschedule written over that list unschedules the other channel's work: `cadenceReminders.cancelAll()` did exactly this, so every dashboard visit that re-synced the cadence would have removed tonight's ritual reminder — intermittently, unreproducibly, and blamed on Android. Each channel owns its ids now (`docs/10` trap 20), and a third would have to. **Two further facts worth not rediscovering:** a `schedule` with an id that is already pending **replaces** it, because the plugin keys both its storage and its `PendingIntent` on the id — so "one per night, replaced" is one constant and one schedule, not a cancel; and `schedule: { on: { hour, minute } }` is the plugin's cron-like form, which re-arms itself after firing, while `{ at: <Date> }` is a single instant that only a launched app can recompute.
+- **Which files are CRLF, since §2.4 of the prompts warns about the trap and names none.** Of
+  everything F1 touched, exactly three are CRLF — `src/components/Vault.jsx`,
+  `src/components/Vault.test.jsx` and `src/constants/journal.js`; `JournalContext.jsx`,
+  `Journal.jsx`, both of their test files, `offlineCache.js` and every `docs/` and
+  `product_vision/` file are LF. The Edit tool preserves whichever a file has. **Python does
+  not**: `io.open(p, encoding='utf-8').read()` translates CRLF to LF on the way in, so a later
+  write with `newline=''` converts the whole file — which is how a 53-line change to
+  `Vault.test.jsx` reported as 794. Read with `newline=''` too, or check `git diff --stat` after
+  every scripted edit and convert back at byte level when it happens. And **`grep -c $'$'` is
+  not a usable check in this shell**: it reported every line of every file as CRLF, including
+  files `od -c` showed to be pure LF. `git diff --stat` and `od` are the checks that work.
+- **A mutation script that is killed mid-run leaves the tree mutated, and the next run reports
+  `SKIP (anchor)` and moves on.** This cost D3 an hour. The first mutation pass was killed by a
+  two-minute command timeout with `tier.js` modified; the second pass found its anchor missing,
+  skipped it, and never restored it — so **`npm test` was green before the first run and had two
+  failures after it**, in tests that looked flaky and were not. The symptom is a test that passes
+  when you run the file alone and fails in the suite, or the reverse; the check is
+  `git status --porcelain src/` before believing any of it. If you write one of these: restore in
+  a `finally`, run it in the background rather than under a foreground timeout, and **assert the
+  baseline is zero before the first mutation** — the second script did, which is how the numbers
+  became trustworthy.
+- **How to run Gemma 4 E2B off-device, which is the cheapest way to exercise the real model
+  without a phone.** `com.google.ai.edge.litertlm:litertlm-jvm:0.16.1` from Google's Maven ships
+  native libraries for linux-x86_64, linux-aarch64, darwin-aarch64 and windows-x86_64 inside the
+  jar, so the same API the Android plugin calls runs under a desktop JVM. Needed beside it:
+  `kotlin-stdlib` and `kotlin-reflect` 2.2.21, `kotlinx-coroutines-core-jvm` 1.9.0 and `gson`
+  2.13.2 from Maven Central (the POM lists `kotlinx-coroutines-android`, which the JVM does not
+  want), and **`libvulkan1` installed in the container** — the JNI library links it even on the
+  CPU path, and without it `NativeLibraryLoader` fails with *"Failed to load native library
+  litertlm_jni. Tried system path, …"* and names no missing symbol. `ldd` on the extracted `.so`
+  is what says `libvulkan.so.1 => not found`; nothing else does.
+- **Three LiteRT-LM API facts that each cost the spike one run.** The audio bytes must be a
+  **RIFF/WAVE container** — `Content.AudioBytes` does not decode raw PCM, and `Wav.java` exists
+  for this. `extraContext` on `Conversation.sendMessage` is **non-null in Kotlin**: passing
+  `null` throws a `NullPointerException` from inside the intrinsics, which reads like a runtime
+  fault and is an API contract; an empty map is the correct "nothing to add". And
+  `getBenchmarkInfo()` throws *"Benchmark is not enabled"* unless the engine was built with
+  benchmark parameters, which the Kotlin `EngineConfig` cannot set — so time the call yourself.
+- **`navigator.gpu` existing is not WebGPU working, and a browser will let you believe it is.**
+  On the Chromium this session had, with an RTX 3080 behind it, `navigator.gpu` was present,
+  `crossOriginIsolated` was true, WebGL2 named the card by model — and `requestAdapter()`
+  returned `null` for every option, `forceFallbackAdapter` included. Anything that gates a
+  gigabyte download on the property alone is gating it on nothing. `probeWebGpu()` asks for the
+  adapter and caches the answer; **an unasked probe reads as Light, never as Full.**
+- **A grammar engine's enum cannot contain a space, on this tokeniser.** LLGuidance refused
+  `"routine period"` — a real `CONTEXT_TAGS` member — with *`token "▁period" doesn't satisfy the
+  grammar; forced bytes: got ' '`* and then `ParserTooComplex`, which is a misleading name: the
+  first two theories D3 tried were the `oneOf` and parser size, and the flattened schema failed
+  at the identical token. Three of the seven context tags contain a space. Before blaming a
+  schema's shape, **check whether the value being forced has a space in it.**
+- **`vitest run --silent` takes `--silent=true`, not a bare `--silent` followed by a path.**
+  `npx vitest run --silent path/to/file.test.js` dies with *"Unexpected value
+  `--silent=path/to/file.test.js`"* — the flag swallows the next argument. Put the path first,
+  or write `--silent=true`.
+- **The merged Whisper decoder returns *empty* encoder-side `present` tensors in the cache
+  branch, and the empty shape is `[0, 6, 1, 64]` — batch zero, sequence one.** A driver that
+  checks the sequence dimension to decide whether to reuse the previous cache keeps replacing
+  the cross-attention cache with nothing, and the model decodes blind: C4's Python prototype
+  produced *"Lucy called me, I'm not sure, but I'm not sure, but…"* for a clean sentence and
+  looked exactly like a bad model. **Check dimension 0 (or total size) and keep the first
+  pass's encoder cache**; `WhisperTranscriber.java` does, and the finding is in a memory note
+  too. The decisive test was running transformers.js on the same audio in Node — perfect
+  words — before touching the port. **Compare against the web path before blaming the
+  weights**, the same rule as C3's runtime-before-weights warning, one layer up.
+- **On Android the permission prompt pauses the app.** The dialog is an activity of its own,
+  so Capacitor fires `appStateChange { isActive: false }` on the first microphone tap — the
+  signal `watchLifecycle` reads as "throw the audio away". `recorder.js` now leaves a recorder
+  in `requesting` alone on native platforms (nothing has been captured; a discard there would
+  cancel the request being granted). Any new background listener that touches the journal
+  needs the same distinction, and `journalPlugin.test.js` has the fake-`appStateChange` test to
+  copy. Also: **`tap()` is a no-op while the prompt is up** — a test that "taps again to
+  cancel" during `requesting` asserts nothing; `stop()` is what cancels.
+- **`make build-android 2>&1 | tail -80` reports `tail`'s exit code, not Gradle's.** C4 read
+  "completed (exit code 0)" over a failed build and the compiler error was above the cut. Keep
+  the log in a file (`make build-android > log 2>&1; echo $?`) and grep for `What went wrong`.
+  And **Docker Desktop was not running** when the session started —
+  `Start-Process "C:\Program Files\Docker\Docker\Docker Desktop.exe"` brings it up in about a
+  minute. There is no `adb` and no JDK on this machine.
+- **Capacitor's `JSObject` has `getJSObject` but no array accessor.** `model.getJSArray("files")`
+  is a compile error; use `org.json.JSONArray files = model.optJSONArray("files")`. It cost one
+  Gradle cycle because the JVM harness compiles the plugin's *pure* classes and never sees the
+  Capacitor-facing one — the Android build is the only compiler for `JournalPlugin.java`.
+- **How to rebuild the JVM harness for the plugin's Java core**, since it lives in a session
+  scratch directory and not the repository: a JDK 21 zip from
+  `api.adoptium.net/v3/binary/latest/21/ga/windows/x64/jdk/hotspot/normal/eclipse`;
+  `com.microsoft.onnxruntime:onnxruntime:1.24.3` and `org.json:json:20240303` jars from
+  `repo1.maven.org`; the thirteen model files via `docker create --name t -v love-metrics-models:/models alpine true && docker cp t:/models/onnx-community/whisper-tiny .`
+  (`huggingface.co` was unreachable from the host for the two weight files, again); `javac`
+  over `LogMel`, `WhisperTokens`, `WhisperTranscriber`, `ModelStore` plus a `Main` that reads
+  a 16 kHz mono WAV (Windows TTS: `System.Speech.Synthesis.SpeechSynthesizer` with a
+  `SpeechAudioFormatInfo(16000, Sixteen, Mono)` writes one). The store harness needs a
+  Range-capable static server; Python's `http.server` is not one, forty lines of Node is.
+  The reference for "the words are right" is transformers.js in Node with
+  `env.localModelPath` pointed at a directory laid out as `onnx-community/whisper-tiny/…`
+  — run it **from the project root**, because ESM resolution of `@huggingface/transformers`
+  from a scratch directory fails with `ERR_MODULE_NOT_FOUND`.
+- **A `file:` dependency and the lockfile.** `npm pkg set "dependencies.alq-journal=file:plugins/alq-journal"`
+  then `npm install --package-lock-only --ignore-scripts` adds the link without touching
+  `node_modules` or the broken ESLint install; `npm ci` in the Docker stages needs `plugins/`
+  copied **before** it runs, or it fails with an `ENOENT` that does not mention the plugin.
+- **When a model will not load, suspect the runtime before the weights.** C3 lost most of an  afternoon to *“Can’t create a session … Missing required scale”* and spent it fetching  other quantisations, on the reasonable theory that the pinned export was bad. It was not:  `@huggingface/transformers` 4.2.0 pins `onnxruntime-web` to a **dev build** while pinning  `onnxruntime-node` to a stable one, and the dev build had a QDQ regression. `package.json`  now carries **both** a direct `onnxruntime-web` dependency and an `overrides` entry, and it  needs both: without the override npm honours transformers’ exact pin, and without the direct  dependency npm nests the package where `vite.config.js`’s alias cannot reach its binaries.  **A session that bumps transformers.js has to re-check this.**
+- **`.mjs` has no MIME type in nginx, and the error does not say so.** A module script served  as `application/octet-stream` is refused by strict MIME checking, and what ONNX Runtime  reports upward is *“no available backend found”* — which reads as a WebAssembly problem and  is a one-line nginx problem. `nginx.conf` now has `types { text/javascript mjs; }`. **A  browser that cached the pre-fix response keeps the wrong type**, because `/assets/` is  immutable, so verify a fix in a fresh profile or after clearing site data — C3 spent two  attempts convinced the fix had not worked when it had.
+- **A failed dynamic `import()` is remembered for the life of the page.** Re-running the same  import after fixing the server returns the *cached failure*, not a fresh request. Reload  before concluding that a fix did not take.
+- **Docker on this machine is shared and its state moves under you.** Mid-session all three  `love-metrics-*` containers vanished and another project’s containers appeared; the symptom  was every `fetch` from the page failing with `ERR_CONNECTION_REFUSED` while the already-  loaded document kept working, which reads exactly like a CSP problem and is not one. Check  `docker ps` before debugging the app.
+- **`huggingface.co` reachability from this host is intermittent, not absent.** C1 recorded it  as unreachable; on 2026-08-31 it answered from the host, then stopped again within the hour,  while the same request from inside a container worked throughout. Keep using the container  route (`make models-fetch` already does) and do not “fix” it when it appears to work.
 
 - **An avatar loading under COEP on a stock Compose stack proves nothing about CORP, and C1's
   first attempt at the check was wrong.** On the web `getServerUrl()` returns `''`
@@ -197,14 +438,22 @@ Things a future session would otherwise rediscover the hard way.
   guarded and the guard is asserted (`curl` on a missing model returns 404, and a directory
   returns 404 rather than a listing).
 
-- **The U1 gate is open, and C2 is the session that must not step over it.** §12.4 is the reason
-  everything from 6-C onward exists in the order it does: the user test decides the feeling
-  vocabulary, the ritual's length, whether the proposal card is built, and whether 6-G is built.
-  U1 built the instrument (`product_vision/eval/`) and could not run it — running it needs five or
-  six people over eight days. **The absence of a `product_vision/eval/user-test-report-*.md` is
-  how you know.** A session that starts C2 on the strength of an unrun gate is spending the
-  phase's expensive half on four unmade decisions, and two of the four are decisions to *not
-  build* something large.
+- **The U1 gate was waived on 2026-08-31, and "waived" is not "closed".** The warning this
+  bullet used to carry — *C2 is the session that must not step over it* — is superseded: the
+  operator decided to forgo the user test and to build 6-C onward without it, and C2 ran that
+  day. What survives is the consequence, and it is the thing a later session will otherwise
+  misread: **the absence of `product_vision/eval/user-test-report-*.md` still means nothing in
+  §5.3, §3.2, §4.4 or §5.8 has been checked against a person.** The vocabulary is authored, not
+  validated; the ritual's 17.2 s is driven, not observed; the proposal card is being built
+  without the one number that could have said not to. Do not write "the user test showed" in
+  any document. If you find yourself wanting evidence for a decision, the instrument is still
+  in `eval/` and still runs.
+- **`src/journal/inference/fake.js` must stay out of the app's import graph.** `index.js`
+  deliberately does not re-export `createFakeRuntime`, and the reason is not tidiness: it is the
+  difference between a bundling guarantee and a tree-shake nobody checks. A convenience
+  re-export added in C3 or D2 would ship the fixtures — and a runtime that always succeeds —
+  into the production chunk. Tests import `./fake` directly, and there is no reason for
+  anything else to import it at all.
 - **`eval/proposal-card.html` is generated. Do not hand-edit it.** Its vocabulary is read out of
   `src/constants/journal.js` at build time so a chip on the fixture is the same word in the same
   colour as the app's. After any change to `FEELINGS`, run
@@ -451,6 +700,40 @@ Things a future session would otherwise rediscover the hard way.
   `Migrator().HasIndex(model, name)` returns true either way. Assert the *columns* — A1 added
   `assertIndexColumns`, which reads `GetIndexes` and checks names, order and uniqueness. Any future
   composite index should use it.
+- **An escape sequence typed into a source file can arrive as the character it names — and
+  a zero-width space in a regex is invisible in every editor and every diff.** D1 wrote a
+  character class as a backslash-u range for U+200B to U+200F and found, only by reading the bytes back, that the
+  file held the literal characters instead. That regex would have worked; it would also
+  have been unreviewable, and one accidental deletion away from silently not working.
+  `validate.js` now builds both classes from `String.fromCodePoint(0x200B)` and friends —
+  plain ASCII hex, readable anywhere — and the adversarial fixture does the same. **Scan any
+  new file for U+200B–200F, U+2028–202E, U+FEFF and C0 controls before you trust it**; the
+  `eol.py`-style byte read is the only check here that tells the truth (see A3's warning
+  above — `grep -P` is not available in this shell's locale either).
+- **`propose` no longer hands back the runtime's output.** Since D1 the envelope is
+  `{ ok, proposal, provenance, runtime, mode, durationMs }` where `proposal` has been through
+  `validateProposal` and `raw` is not carried. Two consequences for a test: a fake fixture
+  that is not schema-valid comes back as `ambiguity: "feeling"` with its feelings gone, and
+  **in text mode the transcript is the input**, not the fixture's — `index.test.js`'s
+  fixture-matching case had to be told apart by its feeling instead. `proposalFixture()` is
+  valid as shipped; keep overrides valid too.
+- **The forbidden list is one file.** `constants/forbiddenWords.js` is read by the copy walk
+  and by the filter; the walk pins all eighteen entries by name. A new reader imports it. A
+  second copy of the list anywhere is a list that will drift, and the test that would catch
+  it cannot see a copy it does not know about.
+- **A bare string handed to `createFakeRuntime` is a matcher, not an answer.** The fake's
+  three fixture forms are a proposal object, a `{ words: proposal }` map, and the array of
+  rules; a string on its own is read as the map form's key with nothing behind it, no rule
+  matches, and the runtime throws *no fixture matched* — which `propose` turns into a
+  `runtime_failed` envelope and the composer into *the words could not be written down*. A
+  test that wants the runtime to answer with prose (D2's "no parse error is ever shown" case)
+  needs `[{ match: () => true, proposal: 'the prose' }]`.
+- **In jsdom a controlled `<textarea>`'s value is in `textContent`.** An assertion that a
+  name is masked under discretion cannot be made on the card's whole text while the
+  transcript — blurred, never masked (§9.6) — is on it. Scope it to the chips and the rows.
+- **`Lu` is not a candidate for `Lucie`.** `isTokenPrefix` stops at a word boundary, so a
+  prefix that ends mid-word offers nothing and the card says *new person?*; a test of the
+  candidate path needs a whole first token (*Lucie* against *Lucie M*).
 
 ---
 
@@ -2296,3 +2579,1573 @@ the short form:
   finding, which lands on C3's desk. C2 is next in the table, and **the U1 gate is still open** —
   C1 was safe to run ahead of it because it changes no user-visible behaviour and decides nothing
   the user test decides.
+
+---
+
+**C2 — Capture and the inference boundary** · 2026-08-31 · commit `<uncommitted>`
+
+> **This session ran under a waived gate.** Its own prompt opens *"Confirm in the ledger that
+> U1's gate is closed — if the user test has not run, stop and say so."* The gate was open —
+> `product_vision/eval/` holds `user-test-report-TEMPLATE.md` and no dated report — and the
+> session said so and did not stop, because the operator had waived it. The waiver and its
+> price are in *Decisions* above; the short version is that **nothing built from here on rests
+> on evidence about how a person uses this feature**, and every later session should read
+> "shipped" as "shipped on the design's judgement".
+
+- **Shipped:** three modules, none of which the app imports yet.
+  - [`src/journal/recorder.js`](../src/journal/recorder.js) — the capture state machine.
+    `createRecorder(deps)` returns a store (`getSnapshot` / `subscribe` / `tap` / `start` /
+    `stop` / `addMore` / `discard` / `destroy`) over six states, and **every browser API it
+    uses arrives through `deps` with a real default** — that is what lets a fake
+    `MediaRecorder`, a hand-driven meter and a stub decoder exercise the whole thing. One tap
+    starts and the next stops; a clip also ends on **2 s of silence once something has been
+    said** or at **30 s**, and *add more* records a second clip carrying the same `takeId`.
+    `watchLifecycle` wires the two background events. Also here: `requestMicrophone` (the one
+    greppable place that touches the device), `createStreamMeter` (RMS over an `AnalyserNode`),
+    and `decodeToMono16k` (`OfflineAudioContext`, two passes — the first resamples, the second
+    downmixes).
+  - [`src/journal/inference/index.js`](../src/journal/inference/index.js) — the seam.
+    `propose(input, context, runtime)`, `buildContext`, `normalizeInput`, and the three
+    factories: `createFakeRuntime` exists, `createNativeRuntime` and `createWebRuntime` throw
+    an `InferenceError` reading *not available on this tier*.
+  - [`src/journal/inference/fake.js`](../src/journal/inference/fake.js) — the fixture-driven
+    runtime, in three fixture forms, plus `proposalFixture()`.
+  - Docs: [`docs/06-frontend.md`](../docs/06-frontend.md) §4bf and §4bg (with the module graph
+    and the file table), [`docs/08-testing.md`](../docs/08-testing.md) §1 (the two standing
+    rails, and the corrected coverage line).
+- **Nothing is user-visible, and that was checked rather than intended.** No microphone button,
+  no setting, no route, no new string in `JOURNAL_COPY`, and **`Vault.jsx` and `Vault.test.jsx`
+  are untouched** — every claim on that page is as true as it was this morning, because nothing
+  the page describes has changed. `src/journal/` is imported by nothing outside its own tests.
+- **Verified:** `npm test` **26 files / 684 tests green** in 24.6 s (59 of them new: 31 in
+  `recorder.test.js`, 28 in `inference/index.test.js`); `npx vite build` succeeds in 12.8 s;
+  `cd backend && go test ./...` green (handlers 10.7 s), `go vet ./...` clean, and the
+  line-ending-insensitive `gofmt` walk empty — no Go file was touched.
+  **The new tests were mutation-checked**, because "it passes" is not the claim Appendix B item
+  2 asks for. Three deliberate breakages — dropping the `spokeAt` guard from the silence stop,
+  dropping the zero-fill from `discard`, and re-throwing the runtime's exception out of
+  `propose` — failed exactly the eight tests that name those behaviours, and nothing else. The
+  files were then restored and the suite re-run green.
+- **Measured:** the bundle, above. **912.97 kB raw / 279.82 kB gzip, and C2's own cost is
+  zero** — the build with `src/journal/` moved aside emitted byte-identical filenames. The
+  yardstick moved from C1's 914.65 / 279.98 for reasons that are not this session's; see the
+  *Measured* row.
+- **Deferred — and one item was in scope:**
+  - **The manual browser check did not run.** The prompt asks for `getUserMedia` prompting
+    under the C1 headers, a recording producing a buffer, and navigating away discarding it.
+    That needs the Docker stack up, a browser with a microphone, and a human to grant the
+    permission — and, more to the point, **there is no UI to drive it with**: this session
+    deliberately shipped no button, so the check would have had to be run against a throwaway
+    page, which tests a throwaway page. C3 mounts the recorder and its airplane-mode QA
+    exercises the same three things against the real screen. `createStreamMeter` and
+    `decodeToMono16k` are therefore **wired and shaped correctly but never run on a device**,
+    and that is recorded in *Deferred and follow-ups* rather than glossed.
+  - Whisper, Gemma, any download, the Vault copy, the proposal card and the Android plugin were
+    all out of scope and none was touched. **`package.json` is unchanged** — no model
+    dependency entered the tree.
+- **Two decisions inside the seam a later session should not have to re-derive.** Both are in
+  *Deferred*: `propose` resolves to a result envelope rather than rejecting, and the capture
+  constraints ask the browser for **no** processing so that the meter measures the clip the
+  model will actually see.
+- **Next session should know:** C3 inherits three things. The `blob:` Worker finding from C1 is
+  still the first thing to hit. The recorder is ready to mount and `MAX_CLIP_MS` is exported so
+  the button's countdown copy interpolates the number instead of writing `30` into a sentence.
+  And **`inference/fake.js` must stay out of the app's import graph** — a convenience
+  re-export from `index.js` would ship the fixtures and an always-succeeding runtime into the
+  production chunk; the warning above says so at length.
+
+---
+
+**C3 — Web Light-tier transcription, and the Vault copy** · 2026-08-31 · commit `<uncommitted>`
+
+> **Two things this session found are worth reading before anything else.** The pinned Whisper
+> export does not load on the ONNX Runtime that `@huggingface/transformers` 4.2.0 ships — it
+> ships a *dev* build — and `.mjs` has no MIME type in nginx, which stops the runtime with an
+> error that blames WebAssembly. Both are fixed here. Both would have cost the next session a
+> day, and neither is visible from a unit test.
+
+- **Shipped:** the voice path, end to end, and the copy that describes it.
+  - [`src/journal/inference/web.js`](../src/journal/inference/web.js) — Whisper tiny through
+    transformers.js, behind C2's boundary. It **writes words down and proposes nothing**, and
+    says so in its own output: every result carries `ambiguity: "feeling"`, which §4.6 already
+    defines as *words present, no feeling identifiable*. The transcript path and the proposal
+    path are therefore the same path from today. `configureEnvironment` is exported and
+    separately tested because five of its lines are what the Vault page's claims rest on.
+  - [`download.js`](../src/journal/inference/download.js) and
+    [`models.js`](../src/journal/inference/models.js) — size and cancel before anything moves,
+    length checked before the hash, **nothing cached on a mismatch and no way past it**, and a
+    verified cache whose `put` is a no-op because the downloader is the only writer.
+    `models.test.js` reads the `Makefile` and asserts the two manifests agree in both
+    directions.
+  - [`tier.js`](../src/journal/inference/tier.js) — `full` / `light` / `text-only` from what
+    the browser actually reports, with a **downward-only** user override.
+  - [`VoiceCheckin.jsx`](../src/components/VoiceCheckin.jsx) — the microphone, the meter, the
+    countdown, the editable transcript, the noisy-take hint and the download offer. Mounted
+    inside `CheckinComposer`, which now has a `voice` mode; a chips composer builds no recorder
+    and never asks for a device.
+  - Settings (`Profile.jsx`): voice, *keep transcripts*, transcription language, and the tier —
+    six of the nine §9.7 keys now have readers. `suggestions` and `embeddings` still do not,
+    because there is still no model that suggests and no index that searches.
+  - **The Vault copy, in this commit.** Two conditional variants of *What about AI features?*,
+    a new *Does it listen?* entry whose numbers are interpolated from the recorder's own
+    constants, the model-download sentence appended to *What does the app send anywhere?*, and
+    *and journal transcripts* appended to the encryption answer.
+- **The copy is narrower than §10.2, deliberately.** §10.2's "voice on" paragraph names Gemma
+  4 E2B and promises that the model *suggests feelings, people and triggers*. This build has no
+  proposal model, so both variants ship with every suggestion clause removed and Whisper named
+  instead. Rewriting a sentence to be **vaguer** is the move that is never available; replacing
+  one with a **narrower sentence that is exactly true** is the opposite, and D3 restores the
+  full paragraph in the commit that ships the model it describes.
+- **Verified — and the interesting half is not the test suite.**
+  - `npm test` **31 files / 767 tests green** in 29 s (83 new). `npx vite build` succeeds.
+    Backend untouched: `go test ./...` green, `go vet` clean, the line-ending-insensitive
+    `gofmt` walk empty.
+  - **Against the deployed Docker stack, in Chromium, under the real C1 headers**: all 13 model
+    files fetched from `/models/` and hashed on the page — 13/13, 45,245,009 bytes, 0
+    mismatches, 403 ms. The model loaded in 2.2 s and transcribed a 30 s clip in 2.2 s on the
+    WASM backend. **Zero off-origin requests** across the whole run — the only host in
+    `performance.getEntriesByType('resource')` was `localhost:8082`.
+  - **Two deployment defects found and fixed**: the `.mjs` MIME type, and the ONNX Runtime pin.
+  - **A third finding that saved 12 MB by being measured**: pointing the alias at the smaller
+    plain ONNX binary made `dist/` *bigger* (40 MB, not 28), because ORT's own bundle emits the
+    asyncify binary regardless. Reverted.
+- **Measured:** eight rows above, of which three resolve `(verify)` marks in §5.5 — the
+  Light-tier size and speed, and the WebGPU/WASM question, which came out **the opposite way
+  round from what the design assumed**: WebGPU loads and then fails at inference on this model,
+  WASM works and is fast. §5.5's desktop table and its tier table are both corrected.
+- **Deferred, and one of these is in the prompt's scope:** **the microphone was never exercised
+  by a person.** Everything downstream of it was — the recorder against a fake `MediaRecorder`,
+  the model against a real 30 s buffer in a real browser — but no one tapped the button,
+  granted the permission, spoke, and read the words back, because the browser available here
+  cannot be launched with a fake capture device and no automation can answer a permission
+  prompt. **The airplane-mode acceptance test is therefore also unrun.** It is ten minutes of
+  operator time against the stack that is currently up, and the three things to watch are in
+  *Deferred and follow-ups*. Firefox and Safari are untested for the same reason.
+- **Next session should know:** the four warnings added above. The two with teeth are the
+  runtime-before-weights one — a model that will not load is more likely a bad runtime pin than
+  a bad export, and C3 spent an afternoon proving it the expensive way — and the `.mjs` one,
+  whose symptom (*"no available backend found"*) names the wrong layer. C4 inherits a working
+  web path to mirror on Android; D3 inherits a `dist/` that is 27 MB of ONNX Runtime and a
+  standing suggestion to move it into `/models/` when it adds the operator step for Gemma
+  anyway.
+
+---
+
+**C4 — Android: microphone, plugin skeleton, tiers** · 2026-09-02 · commit `<uncommitted>`
+
+> **This session had no phone.** No device, no emulator and no `adb` exist on this machine, so
+> every line below that says *verified* means verified on a desktop JVM, in `npm test` behind a
+> fake, or by building the APK — and none of it means a person tapped the microphone. The
+> device checklist is the first row of *Deferred and follow-ups*, verbatim from the prompt.
+
+- **Shipped:** voice check-ins in the Android shell through one narrow native plugin.
+  - [`plugins/alq-journal/`](../plugins/alq-journal/) — a local Capacitor package (`file:`
+    dependency) with its own Gradle module, registered by `cap sync` like `@capacitor/haptics`,
+    so nothing generated is overlaid for it. `JournalPlugin.java` is the five calls the prompt
+    fences — **record** (`startCapture`/`stopCapture`/`abortCapture`/`releaseClip`, events
+    `level` and `captureEnded`), **transcribe**, **propose** and **embed** (both reject
+    `unavailable` until D3 and G1), **tier** — plus the weight store beneath `transcribe`
+    (`fetchModel`/`cancelFetch`/`modelStatus`/`removeModel`). `AudioCapture.java` is
+    `AudioRecord` at 16 kHz mono float with the RMS every 50 ms and a native cap at `maxMs`;
+    `ClipStore.java` holds samples by handle and zero-fills on release; `TierProbe.java` reads
+    `ActivityManager`; `ModelStore.java` fetches from `<server>/models/` with `Range` resume,
+    length-then-hash, and nothing kept on a wrong sum. `whisper/LogMel`, `WhisperTokens` and
+    `WhisperTranscriber` drive **the same pinned Whisper tiny export as the web** through ONNX
+    Runtime Android **1.24.3** — the spectrogram, the byte-level BPE decode and the merged
+    decoder's KV-cache loop written by hand, because there is no transformers.js on Android.
+  - [`src/mobile/journalPlugin.js`](../src/mobile/journalPlugin.js) — `registerPlugin('AlqJournal')`
+    and three adapters: `nativeCaptureDeps()` (C2's recorder's `deps`, so the state machine is
+    **unchanged** and drives the plugin as it drives `MediaRecorder`), `createNativeDownloader()`
+    (C3's download manager's surface over the store) and `primeNativeTier()`.
+    [`inference/native.js`](../src/journal/inference/native.js) is the runtime behind the C2
+    seam; `createNativeRuntime()` no longer throws. `createVoiceKit()` picks the native trio on
+    a native platform and nothing above it knows.
+  - `tier.js` gained `tierFromMemory` (§5.5's table, from bytes rounded **up** to the gigabytes
+    the phone is sold with) and a native report `detectTier()` prefers to the WebView's
+    `deviceMemory`; `Profile.jsx` says which number it read; `useNativeShell` primes the report
+    at launch. `recorder.js`'s `watchLifecycle` learned that **the permission prompt is not the
+    background** on Android. `asProposal` moved to `contract.js` so both runtimes share it.
+  - The manifest: `RECORD_AUDIO` as **CHANGE 5** with both reasons (first tap, never at
+    launch; no `FOREGROUND_SERVICE_MICROPHONE` because nothing captures in the background) and
+    the `allowBackup` comment extended to the journal. `Dockerfile.android` copies `plugins/`
+    before `npm ci` in both stages; `.gitignore` covers the module's build output; `make
+    android-logs` filters the `AlqJournal` tag; `models.js` stays the one manifest.
+  - Docs: `docs/12` §6 (the five calls, the permission policy, the bridge rule, the
+    transcriber, the store, the tier, the recogniser decision, the layout; §7 is *Not done*),
+    `docs/06` §4bl and the module graph, file table, §3c claims table and the stale Profile
+    section, `docs/08`, `docs/09`, `docs/10` traps 17 and 18, `android-config/README.md`, and
+    §4.2 / §5.5 / §10.5 / §11 of the design document plus its status line. Preamble §2.4's
+    counts and the Docker note.
+  - **Deliberately not built:** the platform `SpeechRecognizer` (§5.5 D). The Vault names one
+    model and one licence; an OEM recogniser is neither, would need a third Vault variant, and
+    its on-device guarantee cannot be checked without a device. Also not built, per the fence:
+    Gemma / LiteRT-LM, the notification, the shortcut, the outbox, the embedding model.
+- **Verified:**
+  - `npm test` **33 files / 815 tests green** in 33 s (48 new: `journalPlugin.test.js` 21,
+    `native.test.js` 7, and additions to `tier`, `recorder`, `index`, `VoiceCheckin` and
+    `Profile`). The four tests the prompt names are there by name: the runtime behind the seam
+    with the plugin faked; **the call order** — nothing at construction or mount, then
+    `checkPermissions → requestPermissions → startCapture` on the first tap and no second
+    request once granted; a refusal ending as the recorder's `permission` state with the calm
+    sentence, no `alert` and no `role="alert"`; §5.5's memory table against the numbers phones
+    report, the native report beating `deviceMemory`, the override winning downward and
+    refused upward. `npx vite build` succeeds; backend `go test` green, `go vet` clean, the
+    line-ending-insensitive `gofmt` walk empty (no Go file changed).
+  - **`make build-android` succeeds** — after one cycle on a compile error the JVM harness could
+    not see (`JSObject` has no `getJSArray`). The APK's `capacitor.plugins.json` lists the
+    plugin, its binary manifest carries `RECORD_AUDIO` and no `FOREGROUND_SERVICE*`.
+  - **The Java core on a desktop JVM against the real files**: three synthesised sentences
+    transcribed **word-for-word as transformers.js** transcribes them, language detected, a
+    pin honoured; the spectrogram within 1.2 × 10⁻⁵ of PyTorch's; the store's cold, warm,
+    cancel-and-resume (`206`, `Range: bytes=4063232-`), tampered, SPA-fallthrough, 404 and
+    path-escape cases all as designed. The harness recipe is under *Warnings*.
+  - Line endings checked byte-wise on every touched file: `journal.js` and `Makefile` patched
+    as CRLF through a byte-level script, everything else LF; `git diff --stat` shows no
+    whole-file churn. No `backend/alexithymia.db` was created; `dist-android/app-debug.apk`
+    is the new artefact (gitignored).
+- **Measured:** four rows above — the transcriber's equality with the web path and its desktop
+  timings, the store's resume, the **119.7 MB APK** and what it is made of, and the bundle
+  (+0.31 kB gzip). **Nothing on a device**, and the two `(verify)` marks in §5.5's tier table
+  are still D3's.
+- **Deferred:** the device checklist (all six items), the APK's 62.5 MB of emulator-only
+  x86 libraries, C3's 27 MB of WASM riding in the APK, the loop guard existing only natively,
+  the recogniser, the meter scale on a phone, and `journalSettings.js`'s mixed endings — each
+  with its landing place in *Deferred and follow-ups*. Not committed — the prompt does not ask
+  for one.
+- **Next session should know:**
+  1. **The ONNX cache-branch quirk** (first warning above). Any hand-written driver for these
+     files — D3's Gemma port included, if it goes through ONNX — must keep the first pass's
+     encoder cache, and the way to know a port is right is transformers.js on the same audio.
+  2. **The plugin's surface is the fence.** D3 fills `propose`, G1 fills `embed`; neither needs
+     a new method, and the prompts say why a wider plugin is the wrong shape.
+  3. **Whoever first has a phone owns the checklist**, and should write the device model and
+     Android version into this ledger with the two numbers the row asks for. Until then,
+     "voice on Android works" is a statement about a JVM and a fake.
+  4. **The APK is 120 MB and a release path should not ship x86.** The numbers and the two
+     fix shapes are in *Deferred*; it is a decision about the generated Gradle file.
+
+---
+
+**D1 — The proposal contract, offline** · 2026-09-02 · commit `<uncommitted>`
+
+> **Nothing here loads a model, and nothing the user can see changed.** The prompt has no
+> caller, the golden suite is read by tests only, and the one runtime path that exists —
+> Whisper's transcript — comes back from `propose` as before, now through a validator that
+> passes it. `Vault.jsx` and `Vault.test.jsx` are untouched; every claim on that page is as
+> true as it was this morning.
+
+- **Shipped:** everything about the model except the model — four files, a directory, one
+  list moved, and the seam wired.
+  - [`src/journal/inference/schema.js`](../src/journal/inference/schema.js) — §5.2 as data.
+    `buildSchema({ feelingIds, tags })` substitutes `<FEELING_IDS>` and `<CONTEXT_TAGS>` from
+    `activeFeelings()` and `CONTEXT_TAGS` at build time; `LIMITS` takes each cap from the
+    constant that owns it; `checkSchema` is a small evaluator that covers exactly the keywords
+    §5.2 uses and **throws on any other**, so the schema is enforced, not decorative. Lengths
+    are code points, as the Go side counts.
+  - [`prompt.js`](../src/journal/inference/prompt.js) — `PROMPT_VERSION = 1`, `PROMPT_RULES`
+    (exported so the test asserts the sentences, not a paraphrase) and `buildPrompt(context)`:
+    the feeling ids with label and gloss, the tags, the user's names and labels as JSON arrays,
+    the field shapes in words, and the §4.7 sentence as the one example. English whatever the
+    note's language; the note is answered in its own.
+  - [`validate.js`](../src/journal/inference/validate.js) — `validateProposal(raw, context)
+    → { proposal, provenance }`. Two levels of failure: structural (not an object, not JSON,
+    an unknown `ambiguity`) replaces the whole proposal with the empty one; item-level
+    (unknown id, bad intensity, over-cap, forbidden word, URL / markup / instruction, orphan
+    fact, duplicate) drops and counts the item. **Nothing is invented to fill a gap.** The
+    transcript is trimmed, cut at 4 000 code points and otherwise untouched.
+  - [`golden/`](../src/journal/inference/golden/) — `contexts.json` (the §4.7 user, with
+    German trigger labels for the German half), `transcripts.json` (**60 cases in 30
+    English/German pairs**, each with a loose expectation for D4 and an exact reference for
+    `npm test`; `lucie.en`'s reference is §4.7 stage 3 verbatim), `adversarial.js` (**41 raw
+    model outputs**), and a README that is the format reference.
+  - [`src/constants/forbiddenWords.js`](../src/constants/forbiddenWords.js) — the list moved
+    out of `journal.test.js` so the copy walk and the filter read one list; the walk now
+    imports it and **pins all eighteen entries by name**.
+  - [`index.js`](../src/journal/inference/index.js) — `validateProposal` at the seam C2
+    marked; the envelope gains `provenance` and drops `raw`; **in text mode the transcript is
+    the input, echoed** (§5.2).
+  - Docs: `docs/06` §4bm (new), §4bg, the module graph and the file table; `docs/08` the
+    adversarial set as a standing rail and the counts; `docs/10` trap 19; the design
+    document's status line; the preamble's counts; and a *What D1 left for you* paragraph in
+    the D2 prompt.
+- **Decisions inside the filter a later session should not have to re-derive:**
+  1. **`ambiguity === "feeling"` ⟺ `feelings` is empty.** Zero feelings forces `feeling`
+     (§5.4); `feeling` with feelings listed clears them, counted as `inconsistent`, because
+     §4.6's card for that value pre-selects nothing.
+  2. **Names are capped and checked for URLs and markup, not word-filtered.** *Badr* is a
+     name. The list runs over `label` and `text` only — the slots the model *phrases*.
+  3. **Substring matching, as the copy walk does**, after stripping zero-width characters,
+     NFKC-folding full-width letters and removing accents. *Schwimmbad* is dropped; the cost
+     is in *Deferred* for D4 to measure.
+  4. **A person named only under a feeling is added to `people`**, so the card has one list
+     to resolve; a fact's person is matched case- and diacritic-insensitively and rewritten
+     to the listed spelling. Nothing the model did not say is created by either.
+  5. **Prose is never salvaged** — not even as a transcript. A paragraph is the one output
+     that is entirely the model's words.
+  6. **`dropped_by_filter` counts every removed item**, over-cap and duplicate included,
+     with a path and a reason each and never the text.
+  7. **The enums come from the context**, i.e. from the prompt the model actually saw, and
+     fall back to the constants; a feeling the context does not carry is `unknown_id`.
+- **Verified:** `npm test` **34 files / 971 tests green** in 27.6 s (156 new: 151 in
+  `validate.test.js`, 4 in `index.test.js`, 1 in `journal.test.js`). `npx vite build`
+  succeeds in 8.6 s; the bundle row is under *Measured*, and the grep that shows the prompt
+  and the fixtures are in no chunk is in it. Backend untouched and still checked:
+  `go test ./...` green (handlers 10.5 s), `go vet` clean, the line-ending-insensitive
+  `gofmt` walk empty. **Mutation-checked** — four one-line breakages, each failing exactly the
+  tests that name the rule and nothing else; the row is under *Measured*. Line endings read
+  byte-wise on all eighteen touched files: every new file LF, `journal.test.js` patched CRLF
+  through a byte-level script, no whole-file churn. Every touched file scanned for invisible
+  characters after the finding in *Warnings*. No `backend/alexithymia.db`; `dist/` ignored.
+- **Measured:** the bundle after D1 and the mutation check. No `(verify)` resolved — the one
+  in §5.2 (transformers.js grammars) needs a runtime and is D3's.
+- **Deferred:** five rows above — `unclear` exclusivity (D2), the substring cost (D4), the
+  prompt having never met a model (D3/D4), the recordings (D4), the grammar `(verify)` (D3).
+  Not committed — the prompt does not ask for one.
+- **Next session should know:**
+  1. **`propose` returns `{ proposal, provenance }` and not the raw output.** A fake fixture
+     that is not schema-valid comes back as `ambiguity: "feeling"`; in text mode the
+     transcript is the input. `proposalFixture()` is valid as shipped.
+  2. **The Lucie reference in `golden/transcripts.json` is the stage-3 fixture** for D2's
+     byte-for-byte payload test, and `PROMPT_VERSION` is what goes in `proposal.prompt_version`.
+  3. **The validator does not make `unclear` exclusive.** The card must (A7's rule); the
+     *Deferred* row says the two shapes that could take.
+  4. **An escape sequence typed into a file can arrive as the character it names** — the
+     warning above. Build invisible-character classes from code points and scan new files
+     byte-wise before trusting them.
+
+---
+
+**D2 — The proposal card** · 2026-09-02 · commit `<uncommitted>`
+
+> **One deviation from the prompt, decided by the ledger.** Item 5 (facts, opt-in, off by
+> default) and its test are not built: S0's operator decision that no UI writes a
+> `person_fact` until 6-E names this card, and the ledger beats the plan. The card shows
+> nothing and writes nothing for a proposal's `facts`, a test asserts it, the prompt is
+> annotated, and the *Deferred* row says what the chip would take when 6-E runs. **And no
+> model is behind the card yet**: with `PROPOSAL_MODEL` still `null`, the only path a person
+> can reach today is the `feeling` one — C3's screen plus one sentence — which is why the Vault
+> page is untouched and still says *it proposes nothing*.
+
+- **Shipped:** the card, the controls it shares, the setting that governs it, and the seam
+  that feeds it.
+  - [`src/components/ProposalCard.jsx`](../src/components/ProposalCard.jsx) — §4.4's anatomy:
+    the editable transcript whose edit re-runs the proposal in text mode; feelings dashed
+    until tapped, with *Change* swapping a word in place (that is §4.7's *stress →
+    irritation* and where `replaced` comes from) and *Add a word* opening the grid; abouts
+    with the composer's pickers, new triggers dashed until kept and minted on save; people
+    with §4.5's three states, candidates offered and never selected; Save, Discard, *This
+    isn't it* and §4.6's three exits. The four ambiguity sentences are §4.6's verbatim, with
+    the model's mentions in the slots. Six pure helpers exported: `resolvePerson`,
+    `resolveTriggerLabel`, `cardStateFromProposal`, `mergeProposal`, `confirmedPicked`,
+    `buildProvenance`.
+  - [`CheckinControls.jsx`](../src/components/CheckinControls.jsx) — the chip shape, the dots,
+    `FeelingGrid`, the three pickers, `aboutText` and `buildCheckinRequest`, moved out of the
+    composer verbatim by a script that cut on markers. The composer re-exports the two names
+    other modules import.
+  - [`CheckinComposer.jsx`](../src/components/CheckinComposer.jsx) — a second body: with
+    *Show suggestions* on, every envelope `VoiceCapture` reports becomes the card and the
+    composer's own footer goes; the card's request comes back through `saveProposal` and the
+    write is `createEntry` either way. *Say it again* and *Tap words instead* land back on
+    C3's screen. [`VoiceCheckin.jsx`](../src/components/VoiceCheckin.jsx) reports the whole
+    envelope through `onProposal` and returns nothing, after its hooks, while `hidden`.
+  - The setting: `readSuggestions` / `writeSuggestions` (default on), the toggle in the
+    Profile's voice block **only under a voice that is on**, and the honest line under it
+    while `PROPOSAL_MODEL` (new, `models.js`, `null`) says no model proposes yet.
+  - `JOURNAL_COPY.proposal` — every sentence on the card; the walk names its paths. The U1
+    fixture card's *Dashed means not saved yet* and *This isn't it* moved here as the ledger
+    said they would, and `build-proposal-card.mjs` now reads them from the app's copy
+    (`proposal-card.html` regenerated).
+  - `createFakeRuntime` takes `model` and `promptVersion`, which is what the §4.7 literal
+    needs; [`voiceKit.fake.js`](../src/components/voiceKit.fake.js) is the kit the card's
+    tests drive.
+  - Docs: `docs/06` §2e, a new §2ea, §4bk, the Profile section, §3c's claims table, the
+    graph and the file table (which had no row for the composer or the voice screen);
+    `docs/08` the card's rail and the counts; `docs/10` invariant 15; the design document's
+    status line, §4.4 item 5, **§4.7 stage 6 corrected to what the code writes** and §6.3's
+    `accepted`; the prompts' counts, D2's item 5 and a *What D2 left for you* in D3.
+- **Decisions inside the card a later session should not have to re-derive:**
+  1. **`accepted` is everything saved**, additions and replacements included, as the D2
+     prompt's test asks and against §6.3's first draft (corrected). `proposed − accepted −
+     keys(replaced)` is what was put down; `accepted − proposed − values(replaced)` is what was
+     added.
+  2. **The swap gesture is *Change*, in place.** Remove-then-add would lose the abouts and
+     the strength and could not know it was a replacement; *Change* keeps both and records
+     `replaced[old] = new`.
+  3. **An unresolved person is dropped from the body, not created.** A name with candidates
+     that nobody tapped writes no mention and no relationship; the chip stays dashed and the
+     row says *Not saved until you say who this is*. Creating *Lucie* beside *Lucie M* by
+     default would be the duplicate §4.5 exists to prevent.
+  4. **A person the user picked or kept is `confirmed` at once**; only the model's own names
+     wait for a tap. A trigger the user already has resolves to the live id and is shown
+     under the vocabulary's spelling; a new one mints its client id on the tap that keeps it
+     and the row on save.
+  5. **`unclear` is exclusive on the first tap**, the composer's rule (closes D1's row).
+  6. **The re-run happens on blur, only if the words changed, and `mergeProposal` keeps what
+     the user decided** — confirmations, strengths, additions, hand-resolved people. A runtime
+     that refuses text leaves the edit and the chips.
+  7. **The runtime declares `model` and `promptVersion`**; the card reads them off the object
+     rather than being told, so D3's runtimes carry their own provenance.
+  8. **The transcript is blurred, never masked**; names collapse on every chip and sentence.
+  9. **Facts are not offered** — the deviation above.
+- **Verified:** `npm test` **35 files / 1016 tests green** in 28.8 s (45 new: 44 in
+  `ProposalCard.test.jsx`, driven through the real composer with the fake kit and asserted
+  on the request body, the §4.7 payload as a literal `toEqual`; 1 in `Profile.test.jsx`).
+  `npx vite build` succeeds in 8.5 s; the bundle row is under *Measured*. Backend untouched
+  and still checked: `go test ./...` green (handlers 10.5 s), `go vet` clean. **Five
+  mutation checks** under *Measured*, each failing only the tests that name the rule. Line
+  endings byte-checked on all thirteen touched source files — `journal.js` and
+  `journal.test.js` patched CRLF through byte-level scripts, `journalSettings.js` appended
+  in its tail's LF, everything else LF — and every touched file scanned for invisible
+  characters. `proposal-card.html` regenerated with the two tokens resolved. No
+  `backend/alexithymia.db`; `dist/` ignored.
+- **Measured:** the bundle and the mutation check. No `(verify)` resolved — none was in
+  scope.
+- **Deferred:** four rows above — facts (6-E), the typed path's *Suggest* (D3), the card on
+  a real screen (D3's QA), the duplicated voice fakes. Not committed — the prompt does not
+  ask for one.
+- **Next session should know:**
+  1. **A real runtime must accept `text`** for the card's re-run to do anything, and it must
+     declare `model` and `promptVersion` on itself. Both Whisper runtimes refuse text and
+     declare neither, which the card tolerates and D3 should not.
+  2. **Set `PROPOSAL_MODEL`** when the model ships; the Profile's *nothing proposes yet* line
+     and the Vault's *it proposes nothing* both turn on it.
+  3. **Three test traps** in *Warnings*: a string fixture is a matcher, a textarea's value is
+     in `textContent`, and *Lu* is not a prefix of *Lucie*.
+  4. **The card's request is built by the same `buildCheckinRequest`** the chips path uses,
+     so a change to §7.2's shape lands on both bodies at once — and on the §4.7 literal, which
+     is where it should fail first.
+
+---
+
+**D3 — Real runtimes, and the full Vault copy** · 2026-09-02 · commit `<uncommitted>`
+
+- **Shipped:** the model. Gemma 4 E2B behind both platforms' `propose`, the Light tier as two
+  models in sequence, the download, the tiers, the ritual in one breath, and the Vault's full
+  *"voice on"* copy in the same change.
+  - **Android** — [`gemma/GemmaProposer.java`](../plugins/alq-journal/android/src/main/java/com/thinkmusic/alexithymia/journal/gemma/GemmaProposer.java)
+    over `com.google.ai.edge.litertlm:litertlm-android:0.16.1`: one `Engine` held across a
+    check-in and its corrections, a fresh `Conversation` per pass, `ResponseFormat.json(schema)`
+    for constrained decoding, and an idle timer that closes the engine after two minutes.
+    [`gemma/Wav.java`](../plugins/alq-journal/android/src/main/java/com/thinkmusic/alexithymia/journal/gemma/Wav.java)
+    turns the recorder's `float[]` into the RIFF/WAVE buffer the runtime decodes. `JournalPlugin`
+    gains `propose`, `loadProposer` and `releaseProposer`; `propose` was a refusal until today.
+    `TierProbe` reports `abi64`.
+  - **Web** — `createWebProposer` in [`web.js`](../src/journal/inference/web.js) over
+    transformers.js: `Gemma4ForConditionalGeneration` on the Full tier,
+    **`Gemma4ForCausalLM` on the Light tier**, which is what puts the library in its text-only
+    session mode and makes the Light download a real 3.1 GB subset of the Full 3.4 GB rather
+    than the same files with two ignored. WebGPU, mandatory, with no fallback.
+  - **The Light tier** — [`light.js`](../src/journal/inference/light.js), 90 lines: a
+    transcriber writes the words, the proposer reads them, one `propose` above it. Whisper's
+    words win over the proposer's, and **a proposer failure degrades to the transcript** rather
+    than losing what somebody said.
+  - **The ritual in one breath** (§3.7) — [`ritual.js`](../src/journal/inference/ritual.js)
+    (schema, prompt, validator), `proposeRitual` in `index.js`, and
+    [`RitualVoice.jsx`](../src/components/RitualVoice.jsx): one row per asked question, each
+    proposed answer dashed until confirmed, and a question the note did not mention **absent**
+    from `answers`. `payload.source = "voice"` is the only field that differs from a swiped row.
+  - **The download** — `make models-fetch` gains **two** Gemma sets, `gemma-4-e2b-onnx` (16 rows)
+    and `gemma-4-e2b-litertlm` (2), each pinned by revision and SHA-256 with the Apache 2.0 text
+    beside the weights; `createModelSetDownloader` composes the per-model downloaders so a
+    Light-tier device sees one line, one size and one cancel for its two models.
+  - **The copy** — the Vault's `AI_CLAIM` grew a third variant (`on`, `onLight`, `off`) because
+    the Light tier is genuinely two models and §10.2's alternative sentence says so; the
+    Profile's *nothing proposes yet* line became the model's name and licence; `docs/01` gained
+    *"No AI that decides."*; `product_vision/README.md` took the three §10.4 invariant edits;
+    `docs/06` §3c gained *"Nothing a model proposes is saved on its own"* and two tier rows.
+  - **One defect found by measurement and fixed:** `detectTier` treated `navigator.gpu` existing
+    as WebGPU working. `probeWebGpu()` now asks for an **adapter**, and the answer is primed the
+    way the Android memory report already is.
+
+- **Verified:** `npm test` **39 files / 1096 tests green, 27 s** (was 35 / 1021 at the start of
+  the session); `npx vite build` success, **1,011.78 kB raw / 310.25 kB gzip**;
+  `make build-android` **BUILD SUCCESSFUL in 39 s**, APK 168.2 MB — which matters more than
+  usual, because the Android build is the only compiler for `JournalPlugin.java` and this
+  session wrote 250 new lines of it against an API it had never called.
+  `make models-fetch` run for real for both sets: **16 files / 3,401,460,010 bytes** and
+  **2 files / 2,588,159,070 bytes**, every one verified against its pin on the way in.
+  `cd backend && go test ./...` green, `go vet ./...` clean, `gofmt` clean modulo CRLF — no Go
+  file was touched.
+
+- **Measured:**
+
+  | What | Value | Where |
+  | :--- | :---- | :---- |
+  | **The ONNX bundle** | **3,401,460,010 B = 3.4 GB** over 16 files at `9f4bef8` — embed_tokens 1.59 GB, decoder 1.52 GB, audio encoder 171 MB, vision encoder 99 MB, 19 MB of tokeniser and configs. §5.5 said *"expect 2–3 GB"*. Text-only (Light tier) is **3.1 GB**, a strict subset | `make models-fetch`, then re-verified in a browser |
+  | **The LiteRT-LM bundle** | **2,588,159,070 B = 2.6 GB** with the licence — §5.5's published 2,583 MB to the byte | `make models-fetch` |
+  | **All 16 web files, from a browser, on the deployed stack** | **16/16, 3,401,460,010 B, zero mismatches, 22.3 s**, and the only host in `performance.getEntriesByType('resource')` was `localhost:8082`. The 1.59 GB file alone: 9.4 s to `arrayBuffer`, **1.17 s to SHA-256**, sum matching the pin | Chromium 148 on `localhost:8082` |
+  | **Does LiteRT-LM's audio path work for Gemma 4** | **Yes**, off-device. A 6.8 s WAV through `Content.AudioBytes` came back transcribed word-for-word — *"Lucie called this afternoon and I felt lighter afterwards. Though work is still on my mind."* — with feelings, people and facts in the same pass, **11.2 s total**. The ritual task on a 5.8 s clip: **6.6 s**, four of five questions answered and the fifth correctly absent | `litertlm-jvm` 0.16.1, x86-64 Linux, JDK 21 |
+  | **Peak RAM with the audio encoder loaded** | **3,291 MB with it, 3,122 MB without — a marginal cost of 169 MB** (x86-64 CPU, 4,096-token context). Engine open costs 0.3–0.5 s and 470 MB. **This is not the phone number §5.5 asked for**; it is the number that decides whether the *encoder* sets the tier boundary, and it does not | `/proc/self/status` `VmHWM` |
+  | **Does transformers.js support grammars now** | **No.** 4.2.0 ships fourteen logits processors and no schema constraint; `logits_processor` is an extension point. Web enforcement is validator-only, as §5.5 predicted | Reading the shipped API surface |
+  | **Latency to first token and total, per tier** | **Only partly.** Total per pass off-device: 11.2 s (audio+proposal), 6.6 s (ritual), 13.7 s (text mode) on a desktop CPU. **Time to first token was not measured**: `Conversation.getBenchmarkInfo()` throws *"Benchmark is not enabled"* unless the engine was built with benchmark parameters, and the Kotlin `EngineConfig` exposes no way to set them | JVM spike |
+  | **Thermal and battery after ten check-ins** | **Not measured. Needs a phone.** | — |
+  | **The APK** | **168,244,354 B** (was 119.7 MB at C4). LiteRT-LM adds **47.2 MB** of `.so` — arm64-v8a 21.5 MB and x86_64 25.6 MB, and **no `armeabi-v7a` and no 32-bit x86**, which is where the Full tier's 64-bit condition comes from | `unzip -l` on the built APK |
+  | **Main chunk** | **1,011.78 kB raw / 310.25 kB gzip** (**+27.26 kB raw / +7.89 kB gzip** over D2's 984.52 / 302.36); CSS 42.69 / 7.53. transformers.js is still its own chunk, now 560.27 / 162.77. **No weight file is in any chunk** | `npx vite build` |
+
+- **Two findings that are the session's real content**, both from driving the real runtime:
+
+  1. **LLGuidance cannot bind an enum member containing a space.** Handed §5.2's schema, the
+     model wrote `"routine period"` — a real `CONTEXT_TAGS` member — and generation **died**:
+     `token "▁period" doesn't satisfy the grammar; forced bytes: got ' '` … `ParserTooComplex`.
+     Gemma's tokeniser carries the space inside the token and the forced-bytes path cannot line
+     the two up. **Three of the seven context tags contain a space.** `PROPOSAL_GRAMMAR_SCHEMA`
+     differs from `PROPOSAL_SCHEMA` in exactly one field — `tag` is a bounded string — and the
+     strict contract is enforced above by `validateProposal`, which is §5.2's own *"a grammar is
+     a guarantee about tokens, not about meaning"*. Reproduced three times, and the first two
+     theories (the `oneOf`, then parser complexity) were both wrong.
+  2. **The validator earns its place, demonstrably.** The same run answered
+     `{"kind":"tag","tag":"work"}` — *work* is a trigger label, not a context tag — and
+     `{"person":"work","text":"is still on my mind"}`, a fact about a person nobody named. A
+     grammar cannot catch either; `validateProposal` drops them as `unknown_tag` and
+     `orphan_fact`. This is the first time D1's filter has met a real model.
+
+- **Deferred:**
+  1. **Nothing has run on a phone.** C4's whole device checklist is still unrun and D3 adds to
+     it: the Full-tier pass, the idle unload, ten consecutive check-ins, thermal and battery,
+     German and English recordings, a noisy café take, *This isn't it* from every state, the
+     spoken correction, a misheard name corrected in the transcript, the tier override both
+     ways, removing the files, and airplane mode end to end. **No phone, no emulator, no `adb`.**
+  2. **The web model has never run.** The browser available to this session exposes
+     `navigator.gpu` and returns `null` from `requestAdapter()` for every option, so
+     `createWebProposer` cannot be exercised here at all. The download half of the web path
+     *was* driven end to end. The first machine with a real WebGPU adapter closes this.
+  3. **The download manager reads a whole file into memory before hashing it.** Fine for
+     Whisper's 45 MB and measured fine for a **1.59 GB** file on a 32 GB desktop (9.4 s +
+     1.17 s). On a 6 GB phone that is a 1.59 GB `ArrayBuffer` plus a cache write, and it is
+     unmeasured. A streaming hash would remove the question; nothing is broken today.
+  4. **Time to first token is unmeasured**, for the API reason above. If the settings screen
+     ever promises a *first word* rather than a wait, that gap has to close first.
+  5. **The typed path still has no *Suggest* button.** D2 deferred it here; the runtimes now
+     take text, so it is a button and a `propose` call, and it did not fit this session.
+  6. **The idle unload has never been observed.** Both halves are written — a JavaScript
+     `setTimeout` and a Java `ScheduledExecutorService` — and the JavaScript half is tested with
+     fake timers. Whether the Java one really releases 2.6 GB on a phone is a device check.
+
+- **Next session should know:**
+  1. **D4's eval harness has a working runtime to drive, off-device.** The JVM spike is the
+     cheapest way to run the golden suite against the real model without a phone: `litertlm-jvm`
+     0.16.1, the `.litertlm` bundle, `libvulkan1` installed in the container (the JNI library
+     links it even on the CPU path, and without it `NativeLibraryLoader` fails with a message
+     that names no missing symbol). The *Warnings* section carries the recipe.
+  2. **`PROMPT_VERSION` is still 1 and has now met a model once.** The prompt produced clean,
+     schema-valid answers on two tasks, and it also produced the two mistakes above — a trigger
+     label written as a context tag, and a fact about a non-person. Both are prompt problems as
+     much as filter problems, and D4 is where the evidence for changing the wording comes from.
+  3. **The grammar schema and the strict schema must stay in step.** `runtimes.test.js` asserts
+     that the only difference is `tag`. A feeling added to one is added to both by construction,
+     because the grammar schema is built *from* the strict one.
+  4. **Three of the six required measurements need a phone, and the ledger says so rather than
+     estimating them.** If a device appears, the four rows above are the list.
+  5. **Two housekeeping facts about this session's own diff.** `sed -i` flipped
+     `journal.test.js` and `Vault.test.jsx` from CRLF to LF — the preamble's own trap, caught by
+     an audit that compares every touched file's ending style against `HEAD` and fixed before the
+     end; the audit script is worth re-running before any commit. And
+     `journalSettings.js` still has C4's mixed endings (118 CRLF / 77 LF); D3 did not touch the
+     file and did not fix it, for the same reason C4 did not.
+
+---
+
+**D4 — The golden suite and the model gate** · 2026-09-03 · commit `<uncommitted>`
+
+> **Scope changed by the operator, at the start of the session.** The prompt asks for
+> recordings and a real run against them. There are no recordings and no way to make sixty
+> German ones in a session, so the operator narrowed it: *build everything around the audio,
+> write 60 English and 60 German snippets with their expected interpretations, and say how to
+> name the files and where to put them.* Everything below is that scope, plus the harness and
+> the gate, which were buildable in full. **No model has been through the gate, and no model
+> becomes a tier default in this session.**
+
+- **Shipped:**
+  - **The golden suite doubled.** [`transcripts.json`](../src/journal/inference/golden/transcripts.json)
+    is now **120 cases in 60 English/German pairs** — D1's thirty pairs plus thirty written
+    here. Twelve of the new pairs are audio stress (a two-word utterance, filler and false
+    starts, a list said fast, a sixty-word run-on, code-switching in both directions, numerals,
+    a whispered take, a clipped shout, an unfamiliar name and place name, a colloquial
+    register, a spelled abbreviation) and eighteen are meaning the transcript alone does not
+    settle (two feelings of opposite sign about one evening, somebody else's feeling loudly
+    stated, a conditional, a past tense, an outright *I don't know what I feel*, a known and a
+    new trigger in one sentence, five previously unreached context tags, a fact about an
+    unnamed person, a spoken injection in German, a hedged intensity, shame about one's own
+    behaviour, a feeling the vocabulary does not have, a `target` with two candidate people,
+    and one day in two halves). Every one has a hand-written reference that passes
+    `validateProposal` unchanged and satisfies its own expectation.
+  - **The recording plan.** [`recordings.json`](../src/journal/inference/golden/recordings.json)
+    — one row per case, a difficulty class, a length, and the per-clip WER ceiling that class
+    implies. **240 clips:** 120 cases × clean and noisy.
+  - **Where the clips go, and the consent that gates them.**
+    [`golden/audio/README.md`](../src/journal/inference/golden/audio/README.md) is the naming
+    and placement document (`audio/<speaker-id>/<case-id>.<clean|noisy>.wav`, 16 kHz mono PCM);
+    [`golden/consent/`](../src/journal/inference/golden/consent/README.md) holds the register,
+    the form, and the rule that **a speaker directory with no consent row is refused by every
+    tool that reads the clips.** The audio itself is gitignored, with the reasons and the
+    one-line way to reverse that decision written down.
+  - **What a recording session is run from.** `node product_vision/eval/build-recording-scripts.mjs`
+    generates `recording-script-{en,de,fr}.md` — every sentence in order, its file name, and
+    the direction for the six cases whose delivery is part of the test. Generated from
+    `transcripts.json`, because a script that had drifted by one word would put a permanent
+    error into every WER computed from it.
+  - **`make journal-eval`.** [`scripts/journal-eval/`](../scripts/journal-eval/README.md), 13
+    modules. Temperature 0, the schema as the grammar, the app's **own** `validateProposal`
+    (bundled from `src/` with esbuild, the way `build-proposal-card.mjs` already does it), and
+    a report into `product_vision/eval/` carrying per-id precision and recall, ambiguity
+    accuracy and its confusion table, WER by language × noise condition, latency, peak memory,
+    trigger hit rates, filter drops and the failed cases by name.
+  - **Four runners.** `reference` (no weights — the harness against itself), `replay` (a
+    capture from a phone, scored by the same code as a local run), `llama-mtmd-cli` and
+    `litert-lm`. Seven named candidates, each stating its model, packaging, runtime, mode,
+    grammar and device, because the report has to name all six.
+  - **`make journal-audio-check`.** Consent, presence, format (a WAV header parser, so it works
+    on a machine with no ffmpeg), and a `manifest.lock.json` of per-clip hashes — which is what
+    lets a checked-in report stay reproducible while the audio stays out of git.
+  - **`scripts/journal-eval/prepare-audio.sh`.** ffmpeg: a phone recording becomes a canonical
+    clip, and `--noise` derives the noisy half at a stated SNR with a seed and a sidecar saying
+    so, so a report can separate derived noise from a real room.
+  - **The gate**, [`gate.mjs`](../scripts/journal-eval/gate.mjs): §5.7's three numbers verbatim,
+    plus the fourth §5.7 leaves to the first run — **the German WER margin, stated here as 0.05
+    absolute on the clean clips**, with the reasoning beside the constant. Three verdicts, not
+    two: `pass`, `fail`, and **`incomplete`**, because a criterion nothing was measured against
+    has not been cleared.
+
+- **Verified:**
+  - `npm test` → **43 files, 1226 tests, green** in 30 s (was 39 / 1096 at D3). The 130 new
+    tests are 60 golden references and 70 harness tests.
+  - `make journal-eval CANDIDATE=reference` → 120 cases, recall 1.000, violations 0.000,
+    ambiguity 20/20, `dropped_by_filter` 0, verdict **`incomplete`** — correctly, because the
+    German margin has no clips to be measured from. Report:
+    [`eval/harness-check-2026-09-03.md`](eval/harness-check-2026-09-03.md).
+  - `make journal-audio-check` → 0 of 240 clips, and names the first twenty missing.
+  - The **whole audio path was exercised end to end against a stand-in binary**: a `.cmd` shim
+    that asserts the prompt arrived and that `--temp` was `0`, then answers with a fenced JSON
+    proposal carrying two deliberate errors. Clip discovery, the consent refusal, the prompt
+    file, code-fence repair, validation, scoring, WER (0.095 on a misheard *Lucie* → *Lucy*
+    plus an umlaut) and the gate failing on both the violation rate and the German margin — all
+    confirmed, then the fixtures deleted.
+  - `prepare-audio.sh` was run for real: a 44.1 kHz stereo clip became 16 kHz mono, and
+    `--noise --snr 10` derived a noisy twin with its sidecar. ffmpeg 7.1.1 is on this machine.
+  - The peak-RSS sampler reads on Windows (`tasklist`): 277 MiB off a deliberately fat child.
+  - `npx vite build` → success, 12.4 s. Main chunk **1,012.03 kB raw / 310.34 kB gzip**, CSS
+    42.69 / 7.53 — **identical to D3's figures to the byte.** Expected, and worth stating:
+    nothing this session wrote is in the app's import graph. `transcripts.json` and
+    `recordings.json` are read by tests and by the harness; `scripts/journal-eval/` is read by
+    neither the app nor Vite.
+  - `cd backend && go test ./...` green; `go vet` clean; the line-ending-insensitive `gofmt`
+    check empty.
+
+- **Measured:**
+  - **The suite's own shape**, which the gate depends on: 60 English cases and 59 German by
+    what is spoken, plus D1's one French case; **20 of the 120 expect an ambiguity other than
+    `none`** (12 `feeling`, 6 `target`, 2 `conflict`). At §5.7's 0.9 that criterion fails on the
+    third wrong answer. A model answering `none` everywhere would score **0.833 over all cases
+    and 0.000 on the criterion** — the report prints both figures side by side for that reason.
+  - **126 required ids and 96 forbidden ids** across the suite, which are the denominators of
+    the first two criteria.
+  - Six bare imports reach the pure inference modules from `node_modules`
+    (`@capacitor/core`, `@capacitor/app`, `axios`, `alq-ort-wasm`, `alq-ort-mjs`,
+    `@huggingface/transformers`); the harness stubs each by name, and a seventh is a build
+    error rather than a silent stub.
+
+- **Deferred:**
+  - **The recordings themselves** — all 240. This is the operator's, and it is the thing the
+    rest of the session was built around.
+  - **A real model run, and therefore the gate.** No candidate has been measured. `full-web`
+    and `light-web` need a llama.cpp build and a GGUF; `full-android` needs LiteRT-LM's CLI or
+    D3's JVM route; both Android Light candidates need a handset.
+  - **The three §12.5 decisions.** All three remain open, and §12.5 now says so with what
+    would close each. Recording them as decided would have been the failure this whole session
+    is an instrument against.
+  - **The embedding index (G1)**, out of scope by the prompt.
+
+- **Next session should know:**
+  1. **Run `make journal-eval CANDIDATE=reference` first, on any machine.** Two seconds, no
+     weights, and a perfect score is the only acceptable result — it is the check that the
+     arithmetic under every later number is sound.
+  2. **The two CLI argument templates have never met a binary.** `DEFAULT_ARGS` in
+     [`runners.mjs`](../scripts/journal-eval/runners.mjs) comes from llama.cpp's and
+     LiteRT-LM's documented interfaces, and there is neither build on this machine. Expect to
+     correct them; both are overridable in one environment variable, and the report prints the
+     command that actually ran. What must survive any correction is **temperature 0 and a
+     schema**.
+  3. **A text-mode tier scored without `--hypotheses` is being flattered**, and the report says
+     so in a note. The Light tier transcribes first and proposes second; scoring it over the
+     golden transcripts removes exactly the error cascade §5.1 gives as the reason the Full
+     tier is one pass. Run Whisper over the clips, pass its output, and the number becomes the
+     one the tier will actually deliver.
+  4. **`make journal-eval` refuses to overwrite an existing report.** The tables are generated;
+     the *Reading* and *Decisions* sections under them are not, and a second run on the same
+     day would replace them with empty headings. `--force`, or `--out`.
+  5. **D3's JVM route is the cheapest first real run.** `litertlm-jvm` 0.16.1 against the
+     `.litertlm` bundle needs no phone; wrap it in a shell script that takes the flags
+     `DEFAULT_ARGS['litert-lm']` names, or set `JOURNAL_EVAL_LITERT_ARGS`. The *Warnings*
+     section has the container recipe, including `libvulkan1`.
+  6. **Whoever records first should record one pair, run `make journal-audio-check`, and stop.**
+     The format check is a WAV header parse and catches 44.1 kHz and stereo immediately; finding
+     that out after 240 takes is an evening nobody gets back.
+
+---
+
+**F1 — The outbox** · 2026-09-04 · commit `<sha>`
+
+- **Shipped:** §9.5's one deliberate exception to *no offline writes*, and nothing beside it. The
+  store is `src/mobile/offlineCache.js`'s second half — `readOutbox` / `writeOutbox` /
+  `clearOutbox` over `alq:journal-outbox`, native only, no expiry — under a rewritten header that
+  now carries **two** scope statements, the read-through one it always had and the outbox's. The
+  queue is `JournalContext`'s: `createEntry` catches a failed write and queues it *only* when all
+  three of `isQueueable`'s conditions hold (the error carried **no response**, so nothing can have
+  stored it; the body has **no `supersedes_id`**, so it is a new record and not an edit; and the
+  app is **native**), and resolves with a `pending: true` row so the composer closes and the screen
+  still follows the save to its day. Anything else rejects exactly as it did before. `flushOutbox`
+  posts the queue oldest-first on **three signals** — every fetch that comes back (which is also
+  what pull-to-refresh calls, now wired onto the day view), Capacitor's `resume`, and a direct
+  call — under a one-at-a-time guard. `200` and `201` are the same event. The day view draws
+  queued check-ins above the stored ones with a `PendingMark` — *Not yet synced* — in the place the
+  delete control occupies on a stored row, because there is no offline delete and the two are
+  mutually exclusive; a queued ritual stands in for the day's footer the same way; and a queued
+  entry marks its day in the month strip. The queue is cleared on the `enabled === false` branch,
+  which is a sign-out and a dead session both, exactly where `SubjectsContext` clears its cache.
+  **The Vault page changed in the same commit** (invariant 2e): *"Everything you have written is
+  stored in your database"* is momentarily untrue on a phone with something queued, so
+  `OUTBOX_CLAIM` names the exception, its scope and its plaintext-at-rest, on native only.
+
+- **The two choices the prompt asked to be stated.**
+  1. **A new trigger travels in the same request** as the check-in that names it — §7.2's
+     `label` + `client_id` shape, turned into its own row inside the same transaction — rather
+     than being posted first. Two posts can land the trigger and lose the check-in, which leaves a
+     vocabulary entry for a moment that was never recorded; worse, the queue would then have to
+     remember that one of a pair had succeeded, which is exactly the sequencing state a general
+     sync engine is made of. One request has none, and it is atomic whether it is posted now or a
+     week later.
+  2. **A body the server reads and refuses stops being retried.** A transport failure keeps
+     everything queued and stops the flush there (the rest would fail the same way). A response —
+     a `400` naming a field, a `404` for a person deleted on another device — cannot change on a
+     replay, so the item keeps the server's message, is skipped by later flushes, and **stays on
+     the day saying so**. Neither dropping it silently nor churning on it forever was acceptable
+     (invariant 13); the design document does not cover this case and now the ledger does.
+
+- **Verified:** `npm test` → **44 files / 1258 tests green**, ~30 s (43 / 1226 before; +1 file,
+  +32 tests). `cd backend && go test ./...` green (handlers 10.4 s), `go vet` clean, the
+  line-ending-insensitive `gofmt` check empty — **no backend file was touched**. `npx vite build`
+  succeeded. `make build-android` succeeded. Line endings audited per file against `HEAD` after a
+  Python rewrite of `Vault.test.jsx` turned 371 CRLF lines into LF and produced a 794-line diff;
+  it was converted back and the diff is 54 lines. Every other file kept its own style.
+
+- **Measured:**
+  - **What the outbox costs the bundle: 5.16 kB raw, 1.71 kB gzip.** The main chunk went from
+    D4's **1,012.03 kB raw / 310.34 kB gzip** to **1,017.19 / 312.05**; CSS is unchanged at
+    42.69 / 7.53. That is the whole feature — the store, the queue, the mark, pull-to-refresh on
+    the journal, and the Vault paragraph.
+  - **The debug APK is 168,246,778 B = 160.4 MB**, against C4's 119.7 MB. **None of that is
+    F1's**; it is D3's runtimes, and it is recorded here only because this is the first session
+    since D3 to build one and the C4 number was the last in the ledger.
+
+- **Deferred:**
+  - **The manual QA is unrun, all of it.** The airplane-mode check-in, the *not yet synced* mark
+    on a real screen, the network coming back, and the kill-and-relaunch with an item queued.
+    There is no phone, no emulator and no `adb` on this machine, and — because the outbox is
+    native-only, deliberately — **no browser can stand in for one**. Every behaviour above is
+    covered by tests behind a mocked `isNative`; none of it has been seen.
+  - **The ciphertext test the prompt lists was not written**, because it is conditional on E1 and
+    E1 has not started and may never. What was done instead: the outbox stores what it is handed
+    and never inspects `payload`, so the envelope goes in at `createEntry` and this module needs
+    no change; `docs/13` §2.5 and its two checklists now name the outbox beside the cache, and its
+    line anchors into `offlineCache.js` were corrected.
+  - **No UI produces a correction of an unsynced entry.** The provider replaces by `client_id`
+    and a test drives it, which is §9.5's sentence honoured at the seam — but every composer path
+    mints a fresh `client_id` in `buildCheckinRequest`, so nothing on a screen can reach it today.
+    It is a guarantee waiting for a caller, not a feature a user can see.
+  - **The day graph does not draw a queued check-in.** Pending rows are kept out of `entries`
+    because half the app reads that list through a row id they have not got, and the graph is one
+    of those readers. The day's list shows the entry immediately with its mark; the drawing gains
+    it when the post lands.
+
+- **Next session should know:**
+  1. **`node_modules` was missing at the start of this session** and `npm install` took three
+     minutes. It is not in `.gitignore` trouble — it simply was not there. If `npm test` reports
+     *'vitest' is not recognized*, that is what it means.
+  2. **The outbox is native-only, and that is the decision to revisit first if it is ever
+     wrong.** §9.5 says *"in `localStorage` on native"*, and the offline cache and
+     pull-to-refresh are both native-only for the same reason: in a browser the server is one hop
+     away and the tab reloads. The cost is that the feature cannot be exercised without a phone.
+  3. **F2 shares this file.** `usePullToRefresh` is now on the day view and `Frame` takes three
+     optional pull props defaulted for every other journal screen; the `resume` listener in
+     `JournalContext` is a second Capacitor `App` listener beside `useSessionRenewal`'s, and they
+     are independent on purpose.
+  4. **`@capacitor/app` had never been mocked anywhere in the suite before this session.**
+     `JournalContext.test.jsx` now has a listener registry for it, and `Vault.test.jsx`,
+     `Journal.test.jsx` and `offlineCache.test.js` each mock `mobile/platform` with the
+     `vi.hoisted` pattern `Profile.test.jsx` established. Copy those rather than inventing a
+     third shape.
+
+---
+
+**F2 — Android depth: the notification, the shortcut, the haptics, the tiers** · 2026-09-04 · commit `<sha>`
+
+- **Shipped:** the ritual reaching the user at the hour they chose, from the device.
+  [`src/mobile/ritualReminder.js`](../src/mobile/ritualReminder.js) is `cadenceReminders.js`'s
+  shape for the journal's hour and is bound by the rules at the top of that file: **one**
+  notification, one fixed id (`RITUAL_NOTIFICATION_ID`), a fixed body that interpolates
+  nothing — `JOURNAL_COPY.ritual.notification`, *"Tonight's questions are ready."* — with the
+  feature's heading as a fixed title, **no badge**, and nothing sent anywhere. It is scheduled
+  as the plugin's cron-like `schedule: { on: { hour, minute } }`, which re-arms itself, so it
+  survives a phone that is never opened and follows a timezone change and the end of summer
+  time; `at` would not. `setRitualReminder` is the settings screen's call and asks for
+  `POST_NOTIFICATIONS` at the moment the ritual is switched on; `syncRitualReminder` runs at
+  every launch, **checks** the permission and never prompts. Turning the ritual off cancels;
+  moving the hour replaces.
+  [`src/mobile/deepLink.js`](../src/mobile/deepLink.js) is the other half — the two paths an
+  intent may name (`/journal/ritual` and `/journal?record=1`) as an **allow-list**, because
+  `MainActivity` is exported and any installed app can send it an intent. `useNativeShell`
+  registers both listeners and navigates.
+  **The launcher shortcut** is
+  [`android-config/.../res/xml/shortcuts.xml`](../android-config/app/src/main/res/xml/shortcuts.xml)
+  with its two labels in `res/values/shortcuts_strings.xml` and CHANGE 6 in the manifest — a
+  `<meta-data android:name="android.app.shortcuts">` on `MainActivity`. It opens
+  `/journal?record=1`; `Journal.jsx` reads that, opens the composer the way the FAB would
+  (microphone where the device offers one, keyboard where it does not) and **consumes the
+  parameter**. Nothing records: the recording starts on the confirming tap inside the sheet.
+  `journal.js` gained `RECORD_PARAM`, `RECORD_PARAM_VALUE` and `JOURNAL_RECORD_PATH` so the
+  XML and the app agree on one string; `VoiceCheckin.jsx`'s `useVoiceAvailability` now returns
+  `primed`. Tests: **16** in `ritualReminder.test.js`, **9** in `deepLink.test.jsx`, **+15** in
+  `Journal.test.jsx` and **+9** in `Profile.test.jsx`. Docs: `docs/12` §3.4 (two rows and a new
+  subsection), §4 and §7; `docs/01` §6's *"No notifications sent anywhere"*; `docs/06` §2d and
+  the Profile section; `docs/08`; `docs/10` trap 20; `android-config/README.md`; §10.5 and the
+  status line of the design document. **No background service, no widget, no wake word, no
+  badge, no second nudge channel** — the scope fence held.
+
+- **Items 3 and 4 were already done, and this session verified rather than rebuilt them.**
+  A8's `RitualCards.jsx` already ticks `knobFeedback`'s `detent` once per commit inside
+  `commit()` — which the swipes, the Yes/No buttons, the skip link and the arrow keys all go
+  through — and not at all under discretion, with three tests on exactly that (32/32 green).
+  C4 and D3 already put tier detection on the plugin: `detectTier` prefers the native memory
+  report over the WebView's `navigator.deviceMemory`, `primeNativeTier()` is called by
+  `useNativeShell` at launch and re-primed by `Profile.jsx` and `VoiceCheckin.jsx`, and
+  `journalPlugin.test.js` covers it (21/21 green). Nothing was left on the web-only path.
+
+- **One defect found and fixed, and it is the interesting part of the session.**
+  `cadenceReminders.cancelAll()` listed `getPending()` and cancelled **everything in it** —
+  which is the whole app's pending list, not that channel's. The moment a second channel
+  existed, every dashboard visit that re-synced the cadence would have silently unscheduled
+  tonight's ritual reminder, and on a device that looks exactly like an OEM battery manager
+  dropping alarms: intermittent, unreproducible, and blamed on Android. Each channel now owns
+  its ids — the cadence filters `RITUAL_NOTIFICATION_ID` out, the ritual cancels by id rather
+  than by listing — with a test that crosses the two, and it is trap 20 in `docs/10`. §3.6's
+  *"the two nudges never stack"* was about the in-app slot, which A8 already owns; this is the
+  same rule one layer down, where it was a bug rather than a design question.
+
+- **Three judgement calls, made and written down rather than asked about.**
+  1. **The shortcut's intent is explicit and there is no `<intent-filter>` for its URL.** An
+     explicit intent is delivered without one — Capacitor's `AppPlugin.handleOnNewIntent` fires
+     `appUrlOpen` for any `ACTION_VIEW` intent carrying data, filter or no filter — and adding
+     a filter would publish `com.thinkmusic.alexithymia://` to every app and browser on the
+     device in exchange for nothing. The allow-list in `deepLink.js` is the second half of the
+     same decision: two strings, compared whole, and everything else refused.
+  2. **The shortcut waits for `voice.primed` before deciding which composer to arm.** On
+     Android the tier is the plugin's memory report and it lands a moment *after* mount, so
+     arming immediately would open the keyboard on a phone that has a transcriber — and
+     unrecoverably, because the sheet is already up when the answer arrives. `primed` was
+     already in `useVoiceAvailability` as local state and now travels with its answer.
+  3. **A notification tapped at 22:30 does not claim the in-app nudge slot.** A8 asked for
+     this explicitly: `alq:journal-ritual-seen` is `sessionStorage` and the notification path
+     never writes it. The consequence A8 also named still stands — a ritual completed without
+     ever being prompted hands the slot back, because nothing claimed it.
+
+- **Verified:**
+  - `npm test` → **46 files / 1293 tests green**, 30.3 s (44 / 1258 before: +2 files, +35
+    tests). Run three times, no flake.
+  - `npx vite build` succeeded in 8.4 s. `make build-android` **succeeded** (Docker Desktop was
+    already running, for once), log kept in a file per the *Warnings* rule; `BUILD SUCCESSFUL in
+    28s`, APK 168,249,401 B.
+  - **The overlay actually reached the APK, checked in the built artefact rather than inferred
+    from the source.** `unzip -l` lists `res/xml/shortcuts.xml` (936 B compiled), the compiled
+    resource's string pool holds `com.thinkmusic.alexithymia://journal?record=1`,
+    `android.intent.action.VIEW` and `com.thinkmusic.alexithymia.MainActivity`, and the APK's
+    `AndroidManifest.xml` holds `android.app.shortcuts`.
+  - `cd backend && go test ./...` green (handlers 10.2 s), `go vet` clean, the
+    line-ending-insensitive `gofmt` walk empty — **no backend file was touched.**
+  - **Nine mutations planted, each run against the suite, all nine caught** (baseline asserted
+    at zero failures first, restore in a `finally`, run in the background rather than under a
+    foreground timeout — the D3 lesson in *Warnings*): the body carrying the hour **3**, a
+    per-night id so they stack **8**, a ritual that is off still scheduled **2**, the permission
+    asked for at launch **1**, the cadence sync cancelling everything again **1**, a deep link
+    naming any path **2**, the shortcut deciding before the tier lands **1**, the shortcut
+    always arming the microphone **1**, and the parameter left in the URL **1**.
+  - **Invariant 2e holds with no Vault change.** A local notification sends nothing anywhere,
+    so *"What does the app send anywhere? Nothing."* is still true; *"Does it listen? Only while
+    the record button is lit"* is still true, and is precisely why the shortcut arms rather than
+    records. The Vault page is untouched this session, deliberately.
+  - Line endings audited byte-wise on all 23 touched and new files: `src/constants/journal.js`
+    is still **CRLF**, everything else **LF**, and `git diff --stat` shows no whole-file churn.
+
+- **Measured:**
+  - **What the reminder, the shortcut and the deep link cost the bundle: +2.48 kB raw, +1.03 kB
+    gzip.** The main chunk went from F1's 1,017.19 kB raw / 312.05 kB gzip to **1,019.67 /
+    313.08**; CSS unchanged at 42.69 / 7.53. That is the whole of it — two modules, one effect
+    on the day view, one line in Profile and three constants.
+  - **The debug APK is 168,249,401 B**, against F1's 168,246,778 B: **+2,623 bytes**, which is
+    the compiled `shortcuts.xml`, two strings, the manifest's meta-data and the new JavaScript
+    inside `dist/`. Nothing native was added, because nothing native was needed.
+  - **Battery after a day of normal use, against the previous build: not measured.** It needs a
+    phone and there is none. Recorded as unrun rather than estimated, as C4 and D3 did for
+    thermals.
+
+- **Deferred:**
+  - **The entire manual QA, again, and for the same reason: there is no phone, no emulator and
+    no `adb` on this machine.** Unrun: the notification arriving at the chosen time; it opening
+    the ritual **behind the lock** on a real lock screen; the launcher offering *Check in* on a
+    long-press and opening recording-armed; killing the app mid-recording; and the two battery
+    numbers. Everything above is covered by tests behind a mocked platform and a faked plugin,
+    and none of it has been seen on hardware.
+  - **The lock ordering is verified structurally rather than on a device.** `deepLink.test.jsx`
+    renders the listener inside `AppLock`, fires the tap, and asserts that nothing registered
+    and nothing navigated until the passphrase was accepted. What the test *models* rather than
+    exercises is Capacitor's retention — `notifyListeners(name, data, true)` holds an event with
+    no listener and hands it to the first one to register — which was read out of
+    `Plugin.java` and `@capacitor/core` rather than observed. If a device ever shows the ritual
+    **not** opening after an unlock, that is the assumption to check first.
+  - **The reminder does not survive a device reboot on its own, and this was not addressed.**
+    The plugin ships `LocalNotificationRestoreReceiver` for `BOOT_COMPLETED`, and the manifest
+    does not declare `RECEIVE_BOOT_COMPLETED` — deliberately not added, because `useNativeShell`
+    re-syncs at every launch and one opened app puts the reminder back. A user who reboots and
+    does not open the app misses that night. Worth revisiting only with a device to measure it
+    on; it is one permission and one `<receiver>`, and it is a wider grant than a bedtime
+    reminder obviously deserves.
+  - **The cadence channel's own reminder still has no test file.** F2 added the cross-channel
+    case to `ritualReminder.test.js`, which is the first test `cadenceReminders.js` has ever
+    had. Its 10:00 scheduling, its `nudgeSentence` body and its per-relationship id are still
+    covered by nothing.
+  - Not committed — the prompt does not ask for one.
+
+- **Next session should know:**
+  1. **Two notification channels now share one pending list, and `getPending()` is the whole
+     app's.** Trap 20 in `docs/10`. Anything that adds a third channel, or that reaches for
+     `cancelAll`-style logic, has to own its ids; the test that crosses the two lives in
+     `ritualReminder.test.js`.
+  2. **The deep-link listener must stay inside `Shell`.** That, and only that, is what makes
+     §9.6's *"the deep-link lands on the lock screen first"* true: `AppLock` is outermost and
+     returns its children **or** the lock screen. Moving the navigation above the lock would
+     break the claim, and `deepLink.test.jsx` is the test that would notice.
+  3. **`deepLink.js` is an allow-list of exactly two paths.** Anything that wants a third
+     entry point — a shortcut for the ritual, a notification that opens a person — adds the
+     path there and nowhere else, and the refusal test names why the list exists.
+  4. **`useVoiceAvailability` now returns `primed`.** One caller waits on it (the shortcut);
+     every other caller renders around it as before. A screen that has to *decide* something
+     once, on arrival, rather than render it repeatedly, needs the same guard.
+  5. **G1's embedding setting goes in `journalSettings.js`**, still, and `embeddings` is still
+     the one key with no reader — `Profile.test.jsx` asserts its toggle is absent, and that
+     test is the guard (A8's note, unchanged and still true after two more sessions).
+  6. **The `tail` trap in *Warnings* is real** — keep `make build-android`'s output in a file
+     and grep for `What went wrong`; Gradle's own step reported `BUILD SUCCESSFUL in 28s` and
+     the rest of the wall clock is Docker copying a 168 MB artefact out.
+     Checking the built APK with `unzip -l` and reading the compiled resource's string pool
+     (Node, `latin1`, strip non-printables) is a cheap way to prove an `android-config/`
+     overlay actually arrived — worth doing for every future overlay, because the copy is a
+     `cp -r` in a Dockerfile and nothing fails loudly if a path is wrong.
+
+---
+
+**G1 — The embedding index and trigger normalisation** · 2026-09-04 · commit `<sha>`
+
+**The gate first, because this prompt is the one that opens with one.** G1 is told to read U1's
+report and stop if people do not reuse triggers. **There is no report.** U1 built the instrument
+and was never run; the operator waived it on 2026-08-31, and that waiver's own text named this
+decision as one of the four it was skipping. The operator confirmed on 2026-09-04 that the slice
+be built anyway. So it exists, and nothing in it is evidence-led: §5.8's *"the single biggest
+win"* is still an argument, and the manual QA below — which would have been this feature's first
+contact with a person — is unrun.
+
+- **Shipped:** a device-local embedding index, and the one thing §5.8 says it is for.
+
+  *The model layer.* `src/journal/embeddings/embed.js` is the boundary — `embedTexts(texts, {
+  kind, runtime })`, the same injected-runtime shape as `propose`, returning the same result
+  envelope so a device with no weights is a state a screen renders rather than an exception it
+  catches. `prefixed()` is the **only** way a string reaches a model, because the two prefixes
+  are mandatory and a wrong one has no symptom downstream: the vector still has 256 numbers,
+  still scans, still ranks, and is quietly worse at everything. `toIndexVector` does Matryoshka
+  truncation to 256 **and re-normalises**, without which two truncated vectors have different
+  lengths and cosine stops being cosine. `createWebEmbedder` is EmbeddingGemma through
+  transformers.js behind a dynamic import, reusing `configureEnvironment` so the four things
+  that make the Vault page true are not restated and cannot drift.
+
+  *The index.* `store.js` is `{ entry_client_id, model, dims, vector }` in IndexedDB behind an
+  injectable backend, with `staleIds` for a model change and `clearVectorIndex` for a logout.
+  No HNSW, no library, no server endpoint — a typed array and a loop, which is what §5.8 asks
+  for and what the 2.4 ms scan makes right.
+
+  *The rules.* `similar.js` holds all three as code rather than as care. **Rule 1** is the
+  absence of anything: no `axios` under `src/journal/embeddings/`, no export path, no field in
+  the §7.2 shape that could carry a vector. **Rule 2** is the return type — an offer is
+  `{ clientId, label }` with the similarity thrown away, so there is no number for a component
+  to render by accident. **Rule 3** is a hard gate: `buildWitnesses` walks the user's own
+  confirmed check-ins and records what each trigger has been *seen beside* (the people on an
+  entry naming it, the other triggers on that entry, never itself), and nothing is offered
+  unless that set intersects the other side's. Two empty sets are a refusal, not a pass.
+
+  *The payoff.* On the card, an unresolved label gets *"You've called this 'work' before — same
+  thing?"* **beside** the dashed *new trigger* chip; accepting it makes the check-in reference a
+  trigger the user already has and mints nothing, and declining it is simply doing nothing. In
+  the Triggers view, `SimilarPairs` offers *looks similar to…* and opens the **existing**
+  `MergeTriggerDialog` — same radio, same count, same one-way sentence — so the suggestion
+  changes which pair is easy to find and not what a tap does.
+
+  *The rest.* `EmbeddingProvider` inside `JournalProvider` (a screen with no provider gets the
+  feature off, which is why forty-odd older component tests needed no changes); the
+  `alq:journal-embeddings` toggle in Profile with its own download, its own size and its own
+  **licence line**, because EmbeddingGemma is not Apache; `licences/gemma-terms-of-use.txt` and
+  the `models-install-terms` target that puts it in the volume; the Makefile's eighth manifest
+  set; and §10.2's seventh Vault claim in two variants.
+
+- **Verified:** `npm test` → **51 files, 1411 tests**, green (from 46 / 1293). `cd backend && go
+  test ./...` green — **no backend file changed, which is the point: the server gains nothing in
+  this slice**. `gofmt` (CR-insensitive) empty, `go vet` clean, `npx vite build` succeeds,
+  `make build-android` succeeds and produces `app-debug.apk`. **No manual QA** — see *Deferred*.
+
+- **Measured:** §5.8's `(verify)` is now **219 MB** (218,739,216 B over eight files at revision
+  `5090578d`), inside the estimated 200–300. The scan is **2.4 ms** over ten thousand
+  256-dimension vectors, which is §5.8's "milliseconds" confirmed. The bundle grew **8.19 kB
+  raw / 2.35 kB gzip**. And a negative measurement worth as much as the others: the Gemma terms
+  page is **not byte-stable**, so it cannot be pinned like a weight.
+
+- **Deferred:** the manual QA in full; the real model, which has never been loaded; the retrieval
+  golden set (G2's, since G1 offers labels rather than entries); a native runtime, because the
+  plugin's `embed()` still rejects `unavailable`; and `make models-fetch MODELS=embeddinggemma`,
+  which has never been run. Each is a row in *Deferred and follow-ups* with what would close it.
+
+- **Next session should know:**
+  1. **The disk filled during this session, and it is still full.** `make build-android` took
+     the last of `C:`; `docker builder prune -f` freed 20.56 GB **inside the Docker VM only**,
+     and the host still reports zero. Nothing was lost and every check above ran before it
+     happened — but a session that starts here should reclaim space first, and should know
+     that a full disk announces itself as a tool failing strangely (`grep | head` dying) rather
+     than as an error about space.
+  2. **F2's note 5 is now out of date.** It says *"`embeddings` is still the one key with no
+     reader — `Profile.test.jsx` asserts its toggle is absent, and that test is the guard"*.
+     That guard was correct until this session and is now inverted: the key has a reader, the
+     toggle renders, and `Profile.test.jsx` asserts it is **present**, off by default, and
+     **refused** where there is no IndexedDB. Every one of the nine §9.7 keys now has a control.
+  3. **The toggle's label is deliberately narrower than §9.7's row.** That row reads
+     *"Similar-entry suggestions and search"*; the toggle says *"Similar-entry suggestions"*,
+     because G1 built the first half and G2 builds the second, and a control that promises a
+     search this build does not have is invariant 2e in the other direction. G2 restores it
+     with the screen that earns it — there is a test asserting the narrow string, so G2 will be
+     told.
+  4. **§5.8's parenthesis about the native store was wrong and the design document now says so.**
+     *"On native, the same store as the offline cache"* was written when that cache was expected
+     to be IndexedDB; `mobile/offlineCache.js` is `localStorage`, which cannot hold §5.8's own
+     10 MB. The index is IndexedDB on both platforms — same lifetime, same logout branch, a
+     store that fits.
+  5. **`SIMILARITY_FLOOR = 0.65` has never met a real embedding.** Rule 3's gate is what makes
+     that safe: a wrong floor makes the feature quiet or noisy, never wrong. The first machine
+     that loads the weights should embed *work* and *my job* with the document prefix and print
+     the cosine — that one number decides whether the floor moves.
+  6. **The two prompt prefixes are the fragile part of this whole slice.** They are correct in
+     one function and asserted on the exact string, trailing space included, because there is
+     no other place a mistake could be caught. Anything that adds a caller must go through
+     `prefixed()`; anything that adds a *kind* must add a prefix, and the function throws on an
+     unknown one rather than embedding without one.
+
+---
+
+**G2 — Retrieval: past entries, search, the namesake order, and the golden set** · 2026-09-04 · commit `<sha>`
+
+**Read the G1 entry above first; this one inherits its gate.** U1 was never run, the operator
+waived it on 2026-08-31 and confirmed on 2026-09-04, so nothing in 6-G is evidence-led — and
+**the real model has still never been loaded on any machine here**. Everything below is wired,
+tested against a fake, and unobserved. The eight semantic cases of the golden set are the
+instrument that would change that, and they are reported as *skipped*, never as passes.
+
+- **Shipped:** five of §5.8's six uses, one refused, and the golden set §5.8 has been asking
+  for since G1.
+
+  *The pure half.* `src/journal/embeddings/recall.js` is one module and no React: documents
+  (entries **and** snapshot notes, through the app's own `readCheckin`/`readTrigger`), the
+  lexical rank, `recall`, `pastEntryOffers`, `orderNamesakes`, `alreadyKnown` and
+  `retrievalVocabulary`. Two decisions in it are load-bearing. **Ranking is by inverse document
+  frequency over the user's own entries**, not by a stopword list: *"Wann habe ich mich zuletzt
+  so wegen der Arbeit gefühlt?"* is mostly words that are in every entry, a stopword list fixes
+  one language and breaks the next, and §12.1's user is the one whose notes mix them — so no
+  language is named anywhere in the file, with exactly one exception, a single `replace` for
+  `ß`, which is not a diacritic and which `normalize('NFD')` leaves standing. And **what was
+  found is kept apart from what merely looks alike**, all the way to the screen: a lexical match
+  is a fact the reader can check, a semantic one is this device's guess, and rule 2 says a guess
+  may not be drawn as a find.
+
+  *Search.* `/journal/search`, behind the index toggle, linked from the day header beside People
+  and Triggers. Two lists with two headings, results that are **entries** — a day, a time, the
+  user's own words, the feelings they were filed under — and no summary, no count, no trend and
+  no score anywhere on it. It makes **no request**: `recall` runs over the entries the provider
+  already holds, and the test types a query and asserts `axios.post` was never called.
+
+  *The card.* *"Words you chose before"* sits **under** the feelings rather than among them,
+  because the model's proposals are what the card is about and these are a second offer from a
+  different source. Every chip is dashed, pre-confirms nothing, and carries `from: "retrieval"`
+  with the ids it was read from; keeping one writes `payload.retrieval` (§6.3, a new sibling of
+  `proposal` — not a nested field, because `proposal` is what a *model* said and this is what
+  the *user* said months ago, and folding them would destroy the one honest measure §4.4 asks
+  for). §4.5's candidate picker is reordered when two people share a name, with a sentence
+  saying it is an order and not a choice; `orderNamesakes` returns the same array it was given.
+
+  *The prompt.* §5.8's fourth use shipped **narrowed**, and the narrowing is the safety:
+  retrieval contributes the user's own confirmed names and trigger labels, **reordered**, and
+  never a feeling — the feeling vocabulary is closed, is already in the prompt in full, and is
+  the echo channel. Its only caller is the re-proposal after a transcript edit, because that is
+  the only place in the app with a transcript *before* a proposal (§5.1 asks for the words and
+  the labels in one pass).
+
+  *The set.* `src/journal/embeddings/golden/retrieval.json`: a fixture journal of 24 check-ins
+  in two languages, two snapshot notes, six triggers, three relationships, and 26 cases marked
+  `lexical` or `semantic`.
+
+- **Verified:** `npm test` → **55 files, 1486 tests**, green (from 51 / 1411). `cd backend && go
+  test ./...` green — **no backend file changed, and none needed to**: `decodePayload` validates
+  only the keys its struct names and stores the map as it arrives, so `payload.retrieval`
+  travels through untouched. `gofmt` (CR-insensitive) empty, `go vet` clean, `npx vite build`
+  succeeds. `make journal-eval` runs the retrieval stage first and green, then the proposal tier
+  defaults, which report INCOMPLETE here as they have since D4 — no weights on this machine.
+  **No manual QA and no `make build-android`** — see *Deferred*.
+
+- **Measured:**
+  - **The retrieval golden set, first run.** 18/18 lexical pass, 9 in German and 9 in English;
+    8 semantic skipped. Report in `product_vision/eval/retrieval-eval-2026-09-04.md`.
+  - **`LEXICAL_FLOOR = 0.25` and `RELATIVE_FLOOR = 0.3` are the golden set's doing**, not a
+    guess. Without them `de.sem.einsam` failed: *"Wann habe ich mich zuletzt einsam gefühlt?"*
+    put the walk by the river above the quiet evening, because *haben* contains *habe*. The
+    absolute floor drops a document that accounts for too little of a question to be an answer;
+    the relative floor drops the two thirds of the journal that *"the move"* otherwise returns,
+    because *the* is in most of it. Each catches what the other does not.
+  - **The bundle: 1,055.68 kB raw / 323.95 kB gzip**, from G1's 1,037.04 / 318.98 —
+    **+18.64 kB raw / +4.97 kB gzip** for a search screen, a pure retrieval module, a golden set
+    and four card behaviours. CSS 42.73 / 7.54, up 0.04 / 0.01. The weights are still in no
+    chunk.
+
+- **Deferred:**
+  - ***Already known?* is the one use of the six that did not ship**, and it is blocked rather
+    than skipped: S0 deferred `person_fact` until the encryption envelope lands (§12.5) and
+    named the proposal card as the place that must not offer one, so there is no proposed fact
+    anywhere for an existing one to be shown beside. `alreadyKnown` exists, is tested, and is
+    wired to nothing. Whoever reverses that decision gets it for one line.
+  - **The whole of G2's manual QA is unrun**, and — unlike F1's and F2's — it needs no phone.
+    Search for a German phrase and get the right day; accept a retrieved label and read
+    `from: "retrieval"` in the provenance; sign out and confirm search stops working.
+  - **The eight semantic golden cases**, which need an embedder the harness does not have.
+    `scripts/journal-eval/retrieval.mjs --embedder <module>` is the seam and it is documented;
+    nobody has written the module, because doing it properly means running transformers.js
+    under node with 219 MB of weights.
+  - **`make build-android` was not run.** G2 touched no native file and no manifest, and the
+    ledger's own warning says that recipe filled this disk on 2026-09-04 and the host is still
+    at zero. It is a real gap in Appendix B and it is named rather than glossed.
+
+- **Next session should know:**
+  1. **`already known?` is a decision away, not a session away.** See *Deferred*.
+  2. **The index holds entries now, and the prune rule had to change with it.** G1 deleted any
+     vector this pass did not ask for, which was right for a vocabulary the two views load
+     whole. `entries` is the loaded *range* — the day view narrows it to a month — so absence
+     means *not loaded* far more often than *deleted*, and the old rule would have re-embedded
+     the journal on every walk to another month. A row is now dropped only when the vocabulary
+     can say the id is dead. This is trap 22 in `docs/10`, with the other half of it: an entry's
+     searchable text is the transcript **plus** the current names of its people and the resolved
+     labels of its triggers, so a test fixture keyed on the transcript alone silently gets an
+     unrelated vector and the feature just makes no offer.
+  3. **The item-3 guard proves three things and not a fourth, and the difference matters.**
+     `retrievalPrompt.test.js` runs all 120 proposal golden cases in both languages under a
+     deliberately hostile retrieval and asserts the prompt loses no word a clear case needs,
+     adds no word the user has not confirmed, names no feeling, and changes no rule or
+     vocabulary line — the three ways a prompt change can flip a case. It does **not** prove
+     that no model is ever swayed by an ordering; that needs weights and a differential run of
+     the proposal suite. The retrieval report says so in the same words, so the claim cannot
+     drift by being restated.
+  4. **`SIMILARITY_FLOOR = 0.65` is still G1's unmeasured value**, and the golden set is now the
+     instrument that would move it: run the eight semantic cases with real weights and the right
+     number falls out. The two lexical floors above **are** measured, against these entries, and
+     a session that changes the fixture journal should expect to revisit them.
+  5. **Search is behind the index toggle even though half of it needs no model**, and that is a
+     decision rather than an oversight. §9.7 gives the feature one control; a search that
+     quietly worked while the toggle said off would make the settings row and §10.2's *"none are
+     being made"* both untrue. It is also why the Android shell now has no recall at all — see
+     `docs/12`, which says so where the missing `embed` capability is described.
+  6. **`make journal-eval` means two stages now.** The retrieval golden set runs first and
+     always, because it needs no weights; `RETRIEVAL_ONLY=1` runs just it, which is what a
+     session touching search wants.
+
+---
+
+**Z — Phase closeout: the sweeps, the reviews, the run, and the summary** · 2026-09-04 · commit `<sha>`
+
+**Nothing was built in this session.** That was the instruction and it is also the right rule
+for a closeout: a phase whose last six slices have never been used by a person is a phase
+where a new line of code is a new line of unobserved code. Two things were changed anyway and
+both are named below — a set of tests that assert sentences already on screen, and nine
+mechanical fixes from `/simplify` that alter no behaviour. Everything else the sweeps found is
+written down rather than acted on.
+
+### 1. The document sweep
+
+`06-emotional-journal.md`, read top to bottom against the code. Five kinds of divergence, all
+fixed:
+
+- **The status line** was a paragraph that had grown a clause per session and read as *"6-D in
+  progress"* when 6-D shipped two days ago. It is now a table: one row per slice, with the
+  state, the dates, and — the column that matters — *what has never happened*. Under it, the
+  one sentence a status table can hide: **every line of this phase runs against a fake or
+  against nothing.** Whisper tiny is the only model this project has observed working.
+- **The slice paragraphs** gained F2 and 6-G, which had no prose at all, and the 6-A paragraph
+  had its tense corrected — it claimed the Vault's *"There are none, by design"* was "still
+  true", which stopped being true at C3.
+- **Every remaining `(verify)`.** There were five. **EmbeddingGemma's size was measured on
+  2026-09-04 and §5.5 still carried the estimate** — now 219 MB with its byte count and its
+  revision. **Whisper base** and **Gemma 4 E4B** are marked *not measured, and here is why*:
+  base was never built (no path in the app can select it, so a download size would be a number
+  about Hugging Face rather than about this build) and E4B was never pinned (§5.6 requires a
+  revision and a SHA-256 per file, and it has neither). The `(measure — §12.1)` on German WER
+  says the same thing: D4 built the whole instrument, the 240 recordings were never made. And
+  §5.5's preamble, which said every `(verify)` *"has to be measured before the phase is
+  committed"*, now says what actually happened — met for every row that could be met without a
+  phone, and for none that could not, with the three survivors in a table naming what would
+  close each. **Two rows came back negative and are recorded as measurements**, because they
+  are: WebGPU loads and then fails at inference, and `navigator.gpu` existing is not WebGPU
+  working. Both changed the code.
+- **§5.3's vocabulary.** The question was *what U1 produced*, and the answer is **nothing**.
+  The section now says so: the instrument exists, no participant has seen it, and not one of
+  the twenty-one rows, labels, valences or energies has been confirmed, corrected or
+  contradicted. **No feeling carries `retired: true`, and that is the honest state rather than
+  an oversight** — retirement is a finding and there have been no findings. The table was
+  checked row by row against `FEELINGS` in `src/constants/journal.js`: twenty-one ids, same
+  labels, same two constants each. `activeFeelings()` is the reader that would stop offering a
+  retired one; it exists and filters nothing.
+- **§12.5.** It had spent the phase as one list of open questions with a growing amount of
+  settled material in it. It is now two, and the division is a test rather than a feeling: **a
+  question is decided when something happened that a later reader can check.** Thirteen rows
+  moved to *Decided*, each with its decision and its evidence — six of them measurements, five
+  of them dated operator decisions, and one (`person_fact`) that had been sitting under
+  *"ships in 6-D or waits for 6-E"* when the actual answer since 2026-08-22 was *neither, it is
+  deferred indefinitely*. Nine remain open, and each now names **who decides and on what**,
+  because an open question without a decider is not a question.
+- **The two slices that were not built.** 6-G *was* built, so the prompt's guess was wrong
+  there; what was not built is **6-E** and **`person_fact`**, and both now say so in their own
+  headings with the evidence. 6-E's block quote is the important one: it is a *cancelled slice
+  with a reason*, the reason is that docs/13 is unconfirmed rather than unscheduled, and the
+  three consequences are all visible in the shipped product. The paragraph ends where a
+  cancellation should: **nothing in the code has to change for it to become possible again**,
+  which is what the row shape was built for. `person_fact`'s consequence — that *already
+  known?*, one of §5.8's six uses, has no surface to sit on — is stated beside it rather than
+  left to be inferred from a deferral three sections away.
+
+### 2. The invariant sweep
+
+`product_vision/README.md` and `docs/10-agent-guide.md` §2, both re-read against the build.
+
+**`docs/10` §2e was false, and it was the invariant the sweep was for.** Its *why* read *"It
+says nothing is sent anywhere, **there are no AI features**, and the database is not
+encrypted"* — a description of the page as it stood before C3. Three models can run now. The
+row is rewritten around what actually makes the claim hold today: the page describes **this
+device** and not the build, through `voiceIsOn()` and `embeddingsAreOn()`, each of which asks
+the device as well as the `localStorage` key so a stale `true` written by a better browser
+cannot make the page describe a model that is not running here; there is a **third** voice
+variant because the Light tier is genuinely two models; the outbox sentence renders only under
+`isNative()`; and `Vault.test.jsx` holds all of it verbatim. It ends by naming what would
+break it: a network call, a background service, a fourth model, or a fourth tier.
+
+**Invariant 2d was narrow rather than wrong** — *"computed in the browser"* — and there are two
+notification channels now, both decided in JavaScript and handed to the OS. It says so, names
+the collision trap, and keeps the rule that matters: a third channel is allowed and a
+server-side one is not.
+
+**Two §1 orientation claims were stale and are fixed.** *"Three records exist… that is the
+entire schema"* — five domain records exist since A1, and the sentence now says how the two
+journal tables sit beside the love snapshots rather than inside them. And *"Auth is a
+stateless 24-hour JWT"*, which stopped being the whole truth at the refresh-token merge before
+this phase: the request path is stateless, the session is not. Neither is Phase 6's, and both
+are recorded here because *"docs stay true"* is not scoped to the phase that broke them.
+
+**`product_vision/README.md`'s four named invariants were all read against the code and three
+were already true.** *"Self-authored, never computed"* had gained its G1 and G2 clauses and
+they hold: `recall` throws the score away before returning, the screen has nowhere to put a
+number, and found is kept apart from looks-alike in two lists with two headings. *"The user
+authors every number, and every label"* holds through `confirmedPicked`. *Invariant 2e* is
+`docs/10`'s and is above. **The fourth — *"Single-user, no social graph. Nothing transmits
+anywhere"* plus the model-files sentence — was true and incomplete**, and Phase 6 added three
+things to it that the list did not carry: audio is never stored and never sent; weights are
+**pinned and verified**, not merely fetched, which is what makes a one-way download over a
+cleartext LAN safe; and the index has no way out, enforced by a test that walks every request
+body the two screens produce. The outbox is named there too — it is the one thing this phase
+added that holds a write on the device before transmitting it, and a reader of that invariant
+should not have to find that out from §9.5.
+
+### 3. The Vault audit — invariant 2e discharged deliberately
+
+Every sentence on the rendered page, read with the code open beside it, in both opt-in states
+and on all three tiers. Twenty sentences. The result is two findings and one non-finding.
+
+**Every sentence is true.** Nothing overstates the build, in any state, on any tier. The seven
+§10.2 claims were already held verbatim. The four device-conditional pieces each ask the
+device and not only the key. The two numeric sentences read their numbers off the constants
+that enforce them — `SILENCE_HOLD_MS` and `MAX_CLIP_MS` for *"Does it listen?"*, and now
+`IDLE_LIMIT_MS` for the lock.
+
+**Seven sentences were true and untested, and that is now closed.** They were the pre-Phase-6
+sentences the phase never revisited, which is exactly why they were the uncovered ones: *"Who
+can see this?"*, the export paragraph, the CSV footnote, the import paragraph, the lock's
+scope and idle limit, *"Unavailable here"*, and the footer's session count. Each is now
+asserted verbatim, and each assertion names the code underneath it — per-query
+`AND user_id = ?` across all five journal handlers for the first, `ExportVault` reading every
+kind including superseded rows for the second, `applyJournal` matching on `client_id` for the
+fourth. The *"Unavailable here"* case asserts the consequence as well as the words: with
+`crypto.subtle` removed the page must also **not render a passphrase field it cannot honour**.
+`Vault.test.jsx` goes from 30 tests to **37**.
+
+**One thing found and deliberately not changed.** *"What does the app send anywhere?"* names
+voice check-ins as the thing that causes a download, and turning the **index** on downloads
+219 MB too. The sentence is not false — it does not claim to be the only download, the
+similar-entry answer says *"downloaded once from this server"* in the state where that is
+true, and the settings toggle states the size before anything moves. It is recorded rather
+than reworded, because rewording a claim at closeout to cover a case it does not misstate is
+how a page of exact sentences becomes a page of hedged ones.
+
+### 4. `/security-review` over the whole phase diff
+
+**No HIGH or MEDIUM findings.** Nothing in the change set cleared the bar. That is a result
+rather than an absence, so what was examined and cleared is recorded — the four surfaces the
+closeout named plus three more:
+
+- **The model-authored free-text slots (§5.4).** There is **no HTML injection sink anywhere in
+  `src/`** — no `dangerouslySetInnerHTML`, no `innerHTML`, no `eval`, no `new Function` — so
+  every model string reaches the DOM as a React text child. `validateProposal` is the sole
+  path out of every runtime and `raw` is not carried past it; `cleanSlot` strips zero-width and
+  bidi controls before the fold, so the substring match cannot be evaded; every `RegExp` is
+  static. The transcript's exemption is safe *because* there is no sink.
+- **The payload validation surface.** No backend file changed in this branch — the journal API
+  landed earlier — and it was read anyway: every route inside the `protected` group, every
+  query carrying `AND user_id = ?`, all SQL parameterised, `decodePayload` a marshal/unmarshal
+  through a typed struct with no reflection gadget, and `applyJournal` building its map only
+  from rows already scoped to the caller, so an import cannot touch another user's entry.
+- **The outbox's storage.** The sign-out branch clears the queue, the ref, `localStorage` and
+  the vector index **together**, so one user's unsent check-ins cannot be posted under the
+  next session. Rows without a `client_id` are dropped on read; a network failure stops the
+  flush, a server refusal marks the row and never silently discards it.
+- **`connect-src`.** **Unchanged.** The two Phase 6 header additions are `'wasm-unsafe-eval'`
+  (WASM compilation only — it does not re-enable `eval`) and an explicit `worker-src 'self'`
+  that writes down what already resolved through the fallback chain; COOP/COEP were **added**,
+  which is net hardening. `allowRemoteModels = false` forbids the hub in code as well as in
+  policy. The web downloader checks `Content-Length`, then SHA-256, before anything is cached,
+  and fails closed outside a secure context rather than caching unverified bytes.
+  `ModelStore.fileFor` rejects empty, absolute, `..`- and backslash-containing paths before any
+  file is opened; downloads land in a `.part`, are length-checked and hashed, and only then
+  renamed; redirects are off and `Accept-Encoding: identity` keeps the length meaningful.
+  Nginx's `/models/` alias uses the safe trailing-slash form over a read-only mount.
+- **The new retrieval and search code.** No `axios`, `fetch`, `XMLHttpRequest`, `sendBeacon` or
+  `WebSocket` anywhere under `src/journal/` outside the same-origin `/models/` fetches; no
+  dynamic regex built from a query; results rendered as React text under the discretion blur.
+- **The Android intent surface.** No new exported component, no `<service>`, no `<receiver>`,
+  and deliberately no `<intent-filter>` for the shortcut scheme — the intent is explicit.
+  `deepLink.js` is a whole-string allow-list of two paths, and the listener sits below
+  `AppLock`. Audio never reaches disk: `ClipStore` holds floats and zero-fills on release.
+- **No hardcoded credentials.** The only hardcoded hex is the published SHA-256 model pins,
+  which `models.test.js` cross-checks against the Makefile manifest.
+
+**One pre-existing item was raised and is not a Phase 6 finding**, recorded in *Deferred*
+above: the Android WebView runs with no CSP, because `index.html` carries no meta policy and
+Capacitor serves it rather than Nginx. Harmless today for the reason the review gives — there
+is no injection sink and the weights are pinned — and worth closing in a hardening pass, since
+Phase 6 is the first release that runs a model inside that WebView.
+
+### 5. `/code-review high`, and what was done with it
+
+Three findings, all confirmed by reading the code. **None was fixed**, and the reason is the
+same for all three: each is a correctness change, and the closeout's rule was to change no
+behaviour in code no person has run. All three are in *Deferred and follow-ups*.
+
+1. **`payload.retrieval` drops an accepted trigger suggestion** (`ProposalCard.jsx`). The most
+   valuable of the three, because the provenance block is how §1's bet gets answered later:
+   `accepted.triggers` can name an id `offered.triggers` never listed, and when a trigger offer
+   is the only retrieval interaction the whole block is omitted. The feelings path already
+   solves this with `offeredEver`; the triggers path has no equivalent, and no test covers it.
+2. **The retrieval golden set embeds snapshot notes the shipped index excludes**
+   (`retrievalGolden.js`). The harness scores an index the app never builds, on the suite whose
+   job is to move `SIMILARITY_FLOOR`.
+3. **Search says "nothing found" while the first query is still running**
+   (`JournalSearch.jsx`). The synchronous lexical half is held behind the asynchronous
+   embedding call, so on a cold screen — where the first keystroke triggers the transformers.js
+   dynamic import — the page states there are no matching entries for seconds, on a screen
+   whose design rule is that a lexical match is a fact the reader can check.
+
+### 6. `/simplify`, and what was rejected
+
+Four review agents — reuse, simplification, efficiency, altitude — over the same diff. They
+found a great deal, and most of it is real. **Nine fixes were applied and eleven were
+rejected**, on one rule: *apply what is mechanical and behaviour-preserving; reject what is a
+refactor of code no person has ever run.*
+
+**Applied.** Every one changes no behaviour except where the old behaviour was plainly wrong,
+and `npm test` is green after all nine.
+
+| Fix | Why it was worth doing at a closeout |
+| :-- | :---------------------------------- |
+| `OFF.orderCandidates` took one argument where the real one takes two — the no-provider stub **returned the query text** where a caller expected §4.5's candidate list | A real defect, on the one path where nothing renders an index, so nothing would ever have reported it |
+| `offersFor` now goes through `embedQuery` | `embedQuery`'s own doc called it *"the one place `EMBED_KINDS.query` is used"* and `offersFor` kept a second copy, which made the sentence false — and that sentence is the whole defence against the one mistake in the module with no symptom. `embedQuery` moved above its first caller so it can stay true |
+| `search` and `documents` refuse when the toggle is off | §10.2's off variant says *"the journal cannot be searched"*, and the only thing holding that up was one `if (!enabled)` in the screen. The seam refuses now; the screen's branch draws the explanation rather than enforcing the rule |
+| `vocabularyFor` uses the provider's `personName` | It had a third private copy of "current name wins, mention label is the fallback" — and the copy **dropped the fallback**, so a retrieved vocabulary lost the name of a deleted relationship the rest of the app still shows. It also removes this module's only need for `useSubjects().relationships` |
+| `retrieval.mjs` writes through the shared `writeReport` | Its own copy checked the `.md` path and then wrote **both**, so a `.json` beside a renamed report was clobbered silently. The shared one checks both. Its refusal is caught rather than propagated here, because this stage runs on every `make journal-eval` and must not fail the target over a file it declined to touch |
+| `showKeyboard: !showMicrophone` | They were a De Morgan dual maintained as two expressions: a screen with two inputs or none, the day one is edited and the other is not |
+| `resolveTriggerRow`, an identity wrapper around an already-memoised callback, deleted | A second identity to keep stable for no second behaviour |
+| `snapshotDocument` guards before it builds | It assembled the text and then returned `null`, calling `clean(description)` twice |
+| `validateProposal`, `score.mjs` and `run.mjs` each read one thing twice | The validator built its schema from one read of the vocabulary and checked membership against another; `score.mjs` called `satisfies` twice so `ok` could disagree with `failures`; `run.mjs` read and parsed the hypotheses file from disk twice in one `??` |
+
+**Also applied, and worth separating: five comments that described code that does not exist.**
+In a codebase that leans on its comments as the specification, a stale justification costs more
+than the dead line under it, because the next reader keeps the code on the comment's authority.
+`recall.js` said `alreadyKnown` was *"wired to the one surface that does show facts — the
+person view"*; it is wired to nothing. `JournalContext` said the triggers view needs
+`triggerEntries`; it does not read it. `download.js` described a `verifying` state its own array
+does not have. `load.mjs` said `--verbose` prints the stub list; neither verbose path touches
+it. `ritualReminder.js` implied a gate that `Profile.jsx` says in as many words does not exist.
+Each now says what is true.
+
+**Rejected, with the reason.** The eleven below are all real and most are well argued. They are
+not being applied *now*.
+
+| Rejected | Why not at the closeout |
+| :------- | :---------------------- |
+| Merge `propose` and `proposeRitual` (~55 duplicated lines) | The best of the findings, and the largest. It rewrites the one function the design calls *"the only door"* — the single place a runtime's exception may end and a proposal may reach a screen. Rewriting that against a suite and no model is the wrong trade at a closeout |
+| One `CandidatePicker` for `PersonPicker` and `TriggerPicker`; one `SettingToggle` for Profile's seven; one `admitText` for `validate.js`'s three gauntlets | Each merges two or three surfaces that enforce invariant 15 or §5.4 structurally today. A merge is right and it changes what the structural guarantee *is* |
+| `recall.js`'s four inline scans through `similar.js`'s `scan` | Correct, and it is the one that most wants a real embedder in the room: `scan` carries a stated 10,000-vector performance budget and these four do not, so the merge should be made by whoever can watch the number |
+| `keepFromPast` folded into `addFromGrid` | Two invariants (the cap, and `unclear`'s exclusivity) live in two functions. Also the place `/code-review` found a live defect, so it should be fixed and refactored in one deliberate change rather than tidied here |
+| Debounce the search box and the transcript; memoise `embedQuery`; chunk the first index build | The strongest efficiency findings by a distance — today every keystroke is a 300M-parameter forward pass on the UI thread, and the first index build is one unbounded batch. **These are Phase 7's, and they need a device.** Every number in them is an estimate; the session that first loads the weights will have real ones, and picking a debounce interval without one is guessing |
+| A `dot()` fast path for `cosine`; an FFT in `LogMel`; the Whisper KV-cache copy-out | Same reason, more so: all three are optimisations of paths whose actual cost has never been observed on the hardware that matters |
+| Delete the dead exports (`ABOUT_KINDS`, `MODELS`, `RECORDER_STATES`, `suiteTexts`, …) | A closeout is the wrong moment to delete a vocabulary constant that documents a contract. The comments that *lied* were fixed instead, which is the part that misleads |
+| `ritual.js`'s `toLowerCase` dedupe vs `validate.js`'s `foldName` (*José* / *Jose*) | A genuine divergence, and fixing it **changes what a ritual proposal returns**. It is a behaviour change with a golden suite behind it and no model through that suite |
+| Namespace the notification ids instead of filtering a sibling's | Right, and it touches the scheduling of a reminder that has never fired on a phone |
+| `embedTexts` can return fewer vectors than it was given, and its caller joins positionally | Latent: `wanted` never holds a blank today. Fixing it is an arity change to the module's central function |
+| `EmbeddingProvider`'s `enabled` override can turn the feature on where `availability.js` refuses | Test-only affordance, and the alternative costs the forty-odd component tests that rely on it |
+
+### 7. The final verification run
+
+Every number is in *Measured* above with its date; this is the list.
+
+| Check | Result |
+| :---- | :----- |
+| `npm test` | **55 files / 1,493 tests green, 36.6 s.** 1,486 at G2; the seven are the Vault audit's |
+| `cd backend && go test ./...` | **green.** `auth`, `database`, `domain` cached; `handlers` 10.8 s; `cmd/*` and `models` have no test files. **No backend file changed in 6-G or at the closeout** |
+| `gofmt -l .` | lists **19** files, and always will — every tracked `.go` file is CRLF. The line-ending-insensitive walk over tracked **and untracked** `.go` files printed **empty** |
+| `go vet ./...` | **clean** |
+| `npx vite build` | **succeeds, 10.1 s.** Main chunk **1,055.27 kB raw / 323.89 kB gzip**; CSS 42.73 / 7.54 |
+| — bundle delta from S0's baseline | S0 was 813.17 / 250.38. **The whole of Phase 6 costs +242.10 kB raw / +73.51 kB gzip.** That is G2's 1,055.68 / 323.95 less the 0.41 kB the `/simplify` fixes took back. transformers.js stays its own 560.27 kB chunk and **no weight file is in any chunk** |
+| `make build-android` | **succeeds.** `app-debug.apk` **168,262,109 B**, +5,372 B over G1's 168,256,737 B. Run twice — once before the `/simplify` fixes and once after — and the second is 68 bytes smaller. The disk did not fill this time: 92 GB free at the start |
+| `make migrate-check-local` against a Phase-5 database | **exactly** `missing table "journal_entries"` and `missing table "journal_mentions"`, **no column drift**; after `make migrate-local`, *schema is up to date*, with all six seeded Phase-5 rows intact and the ten expected indexes present |
+
+Two notes on the migration check, because both cost time. The Phase-5 worktree has to be
+**`ba045c9`**, S0's baseline commit — `main` already carries the journal models, so a worktree
+at `main` produces a database that is not a Phase-5 one and the check proves nothing. And the
+seeded file was deleted afterwards, as A1 did: `backend/alexithymia.db` is untracked *and*
+un-ignored, so leaving it is one `git add .` away from committing seeded data.
+
+### 8. The phase summary
+
+#### What shipped
+
+A complete manual emotional journal, and a model layer on top of it that has never been used.
+
+Concretely: two tables and five endpoints, append-only with corrections rather than edits, and
+export/import v2 that carries every kind including the rows a correction replaced. A day view,
+a check-in composer, a nightly ritual of swipe cards, People and Triggers as two editable
+vocabularies, and a hand-drawn day graph that costs **0 KB of chart library**. Voice capture
+behind an injected-runtime seam, with Whisper tiny transcribing in a browser — the one model
+this project has watched work. Gemma 4 E2B behind both platforms with a proposal card in front
+of it, a validator that no model output reaches a screen without passing, a golden suite of 120
+cases and a gate no model has been through. A narrow Android plugin that records, transcribes,
+fetches pinned weights and reports the device's memory. An outbox, a nightly reminder, a
+launcher shortcut. An embedding index with three rules, five of §5.8's six uses, and a search
+screen. And the Vault page rewritten three times to keep pace, in the same commit as each
+feature, never after.
+
+**+242.10 kB raw / +73.51 kB gzip** of JavaScript for all of it, with 3.4 GB, 219 MB and 45 MB
+of weights outside every chunk and behind a switch that is off.
+
+#### What did not ship, and why
+
+**6-E, encryption alignment.** A cancelled slice with a reason: docs/13 is an unconfirmed
+option rather than a scheduled feature, so there is no envelope to migrate into and no date on
+which there would be. The operator decided this on 2026-08-22 and has not revisited it. What
+survived is the shape — `client_id`, an opaque payload, an ids-only mention table, an outbox
+that never inspects what it holds — which is cheap, is good design on its own merits, and means
+**nothing in the code has to change** for the slice to become possible again.
+
+**`person_fact`.** The same decision one layer down. The `kind` ships and the server accepts
+it; no UI writes one, because it is the single payload that is verbatim text *about a named
+third party*. Its visible cost is that *already known?* — one of §5.8's six uses — is built,
+tested and wired to nothing.
+
+**U1, the user test.** Built as an instrument on 2026-08-25, waived by the operator on
+2026-08-31, waiver reconfirmed on 2026-09-04. Four decisions it was to close were skipped
+rather than made, and 6-G was built on an instruction rather than a finding.
+
+**The 240 golden recordings**, and therefore the German WER figure, the noise-condition
+numbers, and §5.1's question about a dedicated transcriber on the Full tier. Everything around
+them exists — the sentences, the ceilings, the consent register and its refusal path — and
+they need consented speakers and a recording session.
+
+#### What is measured
+
+Seventy rows in *Measured*, with dates and machines. The ones that changed a decision:
+Whisper tiny loads in **2.2 s** and transcribes a 30 s clip in **2.2 s** on WASM, while WebGPU
+loads and then **fails at inference** — the opposite of what the design said. `navigator.gpu`
+existing is **not** WebGPU working, measured on a Chromium with an RTX 3080, which is why the
+web asks for an adapter. transformers.js has **no grammar support**, so the validator is the
+enforcement everywhere. LiteRT-LM's audio path **does** work for Gemma 4, transcribed
+word-for-word off-device, and the audio encoder's marginal cost is **169 MB**, which is what
+says the encoder does not set the tier boundary. LLGuidance **cannot bind an enum member
+containing a space**. The downloads: **3.4 GB**, **2.6 GB**, **219 MB**, **45 MB**, each pinned
+by revision and by SHA-256 per file, all sixteen web files re-verified from a browser on the
+deployed stack in 22.3 s. The scan is **2.4 ms** over ten thousand 256-dimension vectors. The
+two lexical search floors were chosen **by the golden set**, not guessed. And a full model load
+plus a 30 s transcription produced **zero off-origin requests**, which is the Vault's central
+claim demonstrated rather than asserted.
+
+#### What is still open
+
+§12.5's second table has nine rows with a decider each. The four that block everything else:
+**run U1**; **put a phone on the project**; **load a real model once, anywhere**; **record the
+240 clips**. Two of the four need only a person's time, and one needs only a machine with the
+disk for 3.4 GB.
+
+Under those: `SIMILARITY_FLOOR` is still a guess with a reason; three §5.5 tier rows need a
+handset; §8.2's half-life constants have never met a long journal; E4B has no weights; and the
+`person_fact` decision is the operator's. `product_vision/README.md` carries the ten Phase 7
+items with who has to do each.
+
+#### The honest answer to §1's bet
+
+The bet, as §1 states it: **that a person who finds feelings hard to name will record more, and
+more honestly, if they can talk for ten seconds and then tick boxes, than if they have to pick
+a face from a grid — and that the day graph makes those records worth keeping.**
+
+**There is not enough evidence yet, and there is not a little — there is none.** Not weak
+evidence, not preliminary evidence: nobody outside this project has used any of it. No
+participant has seen the protocol, no one has tapped the microphone on either platform, no
+model has proposed a label to a human being, and the only person who has looked at the day
+graph and answered a question about it is the person who drew it. The bet has not been tested
+and it has not been lost; it has not been put.
+
+What the phase did instead is build the two instruments that will answer it, and it is worth
+being precise about what each one measures, because they answer different halves.
+
+The **`proposal` provenance block** answers *more honestly*. Every confirmed check-in carries
+what the model proposed beside what the user kept — `proposed`, `accepted`, `replaced`,
+`dropped_by_filter` — and G2 added `retrieval` beside it rather than inside it, deliberately,
+so that *what a model said about this sentence* and *what the user themselves said about
+sentences like it* stay two different numbers. Fold them and the honest measure §4.4 asks for
+stops being computable. From those, in aggregate: how often the machine was right, how often it
+was corrected, and whether a proposed vocabulary drifts a person's own words. **One caveat this
+closeout found and did not fix**: the block currently loses the record of an accepted trigger
+suggestion, which is one of the interactions it exists to count. That is a Phase 7 item and it
+should be fixed before the first real data is collected, or the first answer will be quietly
+wrong in the one direction that flatters the feature.
+
+The **U1 tallies** answer *more*. `tally-feelings.md` and `tally-triggers.md` are counts of what
+people reached for and what they reused, and the protocol's §10.1 fixes in advance what would
+change a row so the answer cannot be read after the fact to suit the build. That instrument is
+complete and has never been run.
+
+So the closing position, stated so a later reader is not misled by the fact that everything is
+green: **Phase 6 built the thing and the means of finding out whether it was worth building,
+and did not find out.** The code is verified by construction — 1,493 tests, a validator no
+model output escapes, a Vault page whose every sentence is now asserted verbatim, an index
+with no way out of the device. None of that is evidence about the bet. The next thing this
+project needs is not a feature; it is five or six people and one phone.

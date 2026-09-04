@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The launcher shortcut's two labels.
+
+  A separate file rather than an edit to the generated `values/strings.xml`: Android merges
+  every file under `res/values/`, so adding one here adds the strings without replacing a file
+  Capacitor writes from `capacitor.config.json` (app_name, custom_url_scheme and the rest).
+  One fewer whole-file overlay to re-sync after a Capacitor upgrade.
+
+  These are the only two user-visible strings in this app that cannot live in
+  `src/constants/journal.js` — a launcher reads them before any JavaScript exists — so they
+  are the two the forbidden-word walk in `journal.test.js` cannot see. The short label is
+  `JOURNAL_COPY.checkin.open` word for word, deliberately: the shortcut and the button inside
+  the app open the same sheet and must not be able to call it two different things.
+-->
+<resources>
+    <string name="shortcut_checkin_short_label">Check in</string>
+    <string name="shortcut_checkin_long_label">Check in to the journal</string>
+</resources>
