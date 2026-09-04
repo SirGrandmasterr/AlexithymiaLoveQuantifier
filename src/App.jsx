@@ -10,6 +10,7 @@ import TimelineRoute, { LegacyTimelineRedirect } from './components/TimelineRout
 import Journal from './components/Journal';
 import JournalPeople, { JournalPerson } from './components/JournalPeople';
 import JournalTriggers from './components/JournalTriggers';
+import JournalSearch from './components/JournalSearch';
 import RitualCards from './components/RitualCards';
 import Vault from './components/Vault';
 import AppLock from './components/AppLock';
@@ -171,6 +172,10 @@ function Shell({ token, onLogin, onLogout }) {
                 <Route
                     path="/journal/triggers"
                     element={token ? <JournalTriggers /> : <Navigate to="/login" />}
+                />
+                <Route
+                    path="/journal/search"
+                    element={token ? <JournalSearch /> : <Navigate to="/login" />}
                 />
                 <Route
                     path="/journal/:day"

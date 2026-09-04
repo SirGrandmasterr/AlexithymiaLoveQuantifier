@@ -554,9 +554,12 @@ export function JournalProvider({ children, enabled = true, reloadKey = 0 }) {
         days,
         markedDays,
         triggers,
-        // The raw `kind: "trigger"` rows, superseded ones already filtered out by the
-        // server. The triggers view needs them and `triggers` is not enough: a correction
-        // carries `supersedes_id`, which is the **row** id, and that only exists here.
+        // The raw `kind: "trigger"` rows, superseded ones already filtered out by the server.
+        // `triggers` is not enough for a caller that has to write a correction: that carries
+        // `supersedes_id`, which is the **row** id, and the row id only exists here.
+        // **No screen reads this today** — the triggers view builds its corrections through
+        // `resolveTrigger` instead — so this is a seam rather than a dependency, and the
+        // first caller that needs a row id is what makes it one.
         triggerEntries,
         // §9.5. The raw queue, its derived entry rows, and the day reader the view uses.
         outbox,

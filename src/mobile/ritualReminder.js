@@ -59,6 +59,11 @@ export const clockParts = (time) => {
  * The ritual itself is a screen and works everywhere (`Profile.jsx` says so); what is
  * native-only is being reminded of it. On the web §3.6 gives the dashboard's one line in the
  * cadence nudge's slot instead, which A8 built and which needs nothing from this file.
+ *
+ * **No screen calls this.** Every function below already refuses on a non-native platform, so
+ * the settings block needs no gate and deliberately has none — `Profile.jsx` says that in as
+ * many words. This is the predicate stated once for a screen that ever wants to *explain* the
+ * absence rather than merely not schedule; today only the test reads it.
  */
 export const ritualReminderAvailable = () => isNative();
 

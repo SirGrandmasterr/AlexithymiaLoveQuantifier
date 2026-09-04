@@ -117,20 +117,31 @@ export const aiClaimFor = (tier) => (tier === TIERS.light ? AI_CLAIM.onLight : A
  * - **Kept only on this device, and deleted when you sign out.** The index has no server
  *   endpoint, no export path, and `JournalContext` empties it on the branch that runs with
  *   no session — the same branch that drops the outbox (§5.8 rule 1).
+ *
+ * **G2 widened both variants to name search**, because §9.7's row always read *"similar-entry
+ * suggestions **and search**"* and G1 shipped only the first half. Two clauses had to change
+ * rather than one: the off variant now says the journal *cannot be searched*, which is true —
+ * `/journal/search` is behind the same switch — and the on variant says the search happens
+ * here and asks the server nothing, which `retrieval.test.jsx` holds by asserting that typing
+ * a query makes no request. The sign-out clause gained its consequence for the same reason: a
+ * user who is told the numbers are deleted should be told what that costs them.
  */
 export const SIMILAR_CLAIM = {
-    off: 'None are being made. The journal can find the words you have used before — '
-        + '"you have called this \'work\' before" — with a second small model that runs **on '
-        + 'this device only**; it is off until you turn it on in your profile. Right now '
-        + 'nothing here is turning your entries into numbers.',
+    off: 'None are being made, and the journal cannot be searched. The journal can find the '
+        + 'words you have used before — "you have called this \'work\' before" — and look '
+        + 'through what you have written, with a second small model that runs **on this '
+        + 'device only**; it is off until you turn it on in your profile. Right now nothing '
+        + 'here is turning your entries into numbers.',
 
     on: 'A second small model — EmbeddingGemma, downloaded once from this server, open '
         + 'weights under **Google\'s Gemma Terms of Use** rather than Apache — turns your '
         + 'entries into numbers that this device uses to find entries with similar words: '
-        + '"you have called this \'work\' before". Those numbers are **kept only on this '
-        + 'device**, never sent, never exported, and **deleted when you sign out**. Nothing '
-        + 'is merged or renamed unless you tap it, and it switches off in your profile at '
-        + 'any time.'
+        + '"you have called this \'work\' before". It is also what lets you search the '
+        + 'journal, which happens here and asks the server nothing. Those numbers are '
+        + '**kept only on this device**, never sent, never exported, and **deleted when you '
+        + 'sign out** — after which search finds nothing until this device has read your '
+        + 'entries back. Nothing is merged or renamed unless you tap it, and it switches off '
+        + 'in your profile at any time.'
 };
 
 /**

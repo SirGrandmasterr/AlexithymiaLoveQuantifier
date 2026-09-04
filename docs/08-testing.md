@@ -6,7 +6,7 @@ deliberately outside it (§6). Status below was verified by running each suite
 
 | Layer | Runner | Location | Verified status |
 | :---- | :----- | :------- | :-------------- |
-| Frontend unit | Vitest + Testing Library + jsdom | `src/**/*.test.{js,jsx}`, `scripts/**/*.test.mjs` | ✅ **1411/1411 pass** |
+| Frontend unit | Vitest + Testing Library + jsdom | `src/**/*.test.{js,jsx}`, `scripts/**/*.test.mjs` | ✅ **1493/1493 pass** |
 | Backend unit / integration | `go test` + sqlmock + in-memory SQLite | `backend/internal/**/*_test.go` | ✅ **all packages pass** |
 | End-to-end | Playwright | `tests/` | ❌ **failing** — needs servers that nothing starts |
 | Model gate (§6) | `make journal-eval` | `scripts/journal-eval/` | ⚠️ **runs; no model has been through it** — the golden suite has no recordings yet |
@@ -47,9 +47,13 @@ in `tests/` and fail on `@playwright/test` imports.
 
 ### Coverage today
 
-Fifty-one files, 1411 tests, all passing (2026-09-04, session G1; it was 43 / 1226 at D4,
-44 / 1258 at F1 and 46 / 1293 at F2). **Five of the new files are the embedding index**
-(`src/journal/embeddings/`), and none of them opens a weight file — see the block below. Four of those files and 70 of those tests are the *arithmetic* under the
+Fifty-five files, 1493 tests, all passing (2026-09-04, the Phase 6 closeout; it was
+43 / 1226 at D4, 44 / 1258 at F1, 46 / 1293 at F2, 51 / 1411 at G1 and 55 / 1486 at G2).
+**The last seven are the closeout's Vault audit** — the seven sentences on that page that
+were true and that no test had ever read, now asserted verbatim beside the seven §10.2
+claims that always were (invariant 2e). **Nine of the files are the embedding
+index and retrieval** (`src/journal/embeddings/`), and none of them opens a weight file — see
+the block below. Four of those files and 70 of those tests are the *arithmetic* under the
 model gate, in `scripts/journal-eval/`; the gate itself is out of band and §6 below says why
 the line is where it is.
 
@@ -344,10 +348,10 @@ longest wait first. `nudgeSentence` is asserted against a forbidden-word list
 (`overdue`, `missed`, `streak`, `should`, `behind`, `!`) — the no-guilt rule is a product
 constraint, so it is tested like one.
 
-> **The embedding index, and the four things its suites exist to hold** (G1, §5.8).
-> `src/journal/embeddings/` adds five files and none of them loads EmbeddingGemma: every test
-> injects `createFakeEmbedder`, exactly as the inference suites inject `createFakeRuntime`, and
-> for the same reason — a suite that needs 219 MB to run is a suite that stops being run.
+> **The embedding index and retrieval** (G1 and G2, §5.8). `src/journal/embeddings/` is nine
+> files and none of them loads EmbeddingGemma: every test injects `createFakeEmbedder`, exactly
+> as the inference suites inject `createFakeRuntime`, and for the same reason — a suite that
+> needs 219 MB to run is a suite that stops being run.
 >
 > - **`embed.test.js`** asserts the two **mandatory prompt prefixes** on the exact string
 >   (`task: search result | query: ` and `title: none | text: `, trailing spaces included) and
@@ -368,9 +372,38 @@ constraint, so it is tested like one.
 >   session. `store.test.js` proves `clearVectorIndex` empties one; this proves it is called,
 >   which is the half a refactor can drop while every other test stays green.
 >
-> Rule 2 — *never show a number* — is held in two places at once: `journal.test.js` walks
-> `JOURNAL_COPY.similar` for digits, and `similar.js` returns offers with the similarity already
-> thrown away, so there is nothing for a component to interpolate by accident.
+> **G2 added four more, and the honest thing about them is what each cannot prove.**
+>
+> - **`recall.test.js`** — the pure half of search and the three smaller uses. German folding
+>   (`Fußball` = `Fussball`, which NFD does not do), compounds found by their first half, the
+>   inverse-document-frequency weighting that answers a natural-language question with its one
+>   rare word, and — the part that is a rule — that `orderNamesakes` returns **the same array**
+>   it was given, reordered: no candidate added, removed or selected.
+> - **`retrievalGolden.test.js`** — §5.8's retrieval golden set. Every **lexical** case passes
+>   here, in both languages, with no model: those are real numbers about the shipped search.
+>   Every **semantic** case is asserted to be *skipped, by name, with a reason* — a suite that
+>   quietly graded them against a stand-in would put a number about the stand-in into a report
+>   beside numbers about a model. `make journal-eval` scores them when an embedder exists.
+> - **`retrievalPrompt.test.js`** — the guard §5.8's fourth use is conditional on. Over all 120
+>   proposal golden cases in both languages, with a deliberately *hostile* retrieval, it asserts
+>   a retrieval-influenced prompt cannot lose a word a clear case needs, cannot add a word the
+>   user has not confirmed, cannot name a feeling, and changes no rule and no vocabulary line.
+>   Those are the three ways a prompt change can flip a case, and the last test in the file
+>   plants a narrowing retrieval to prove the guard is not vacuous. **What it does not prove is
+>   that no model is ever swayed by an ordering** — that needs weights, and the retrieval report
+>   in `product_vision/eval/` says so in the same words.
+> - **`retrieval.test.jsx`** — the four uses on real screens. The past-entry chips are dashed,
+>   pre-confirm nothing, carry `from: "retrieval"` and the ids they were read from, and are
+>   recorded that way in `payload.retrieval` when kept; a German phrase and an English one each
+>   find the right day and the result is an **entry** with a link to it rather than prose; the
+>   namesake order changes and the selection never does; and typing a query makes **no request
+>   at all**, which is what the Vault's *"search happens here"* rests on.
+>
+> Rule 2 — *never show a number* — is held in three places at once: `journal.test.js` walks
+> `JOURNAL_COPY.similar` for digits (search, past entries, namesakes and *already known*
+> included, since they all live in that group for exactly this reason), `similar.js` and
+> `recall.js` return offers with the similarity already thrown away, and `retrieval.test.jsx`
+> walks the rendered search screen for one.
 
 [`src/constants/journal.test.js`](../src/constants/journal.test.js) — 138 tests, all pure.
 It carries **the two rails Phase 6 adds**, and they are the reason it exists as much as the

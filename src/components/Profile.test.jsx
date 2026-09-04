@@ -140,10 +140,14 @@ describe('the Journal settings section', () => {
         vi.unstubAllGlobals();
     });
 
-    it('narrows §9.7 label to what this build does: suggestions, not search', () => {
-        // G2 builds the search and restores the other half of the row. Until then the
-        // toggle may not promise it (invariant 2e).
-        expect(JOURNAL_COPY.settings.embeddings.label).toBe('Similar-entry suggestions');
+    it('carries §9.7\'s row in full, now that both halves of it exist', () => {
+        // G1 narrowed this to *"Similar-entry suggestions"*, because a toggle may not
+        // promise a screen the build does not have (invariant 2e). G2 built that screen —
+        // `/journal/search`, behind this same switch — so the row is whole again, and this
+        // is still the guard: if search were ever removed, the label would have to shrink
+        // with it and this test is what would say so.
+        expect(JOURNAL_COPY.settings.embeddings.label).toBe('Similar-entry suggestions and search');
+        expect(JOURNAL_COPY.settings.embeddings.description).toContain('search what you have written');
     });
 
     it('starts with everything off and no time chosen', async () => {

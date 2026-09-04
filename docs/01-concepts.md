@@ -535,7 +535,10 @@ Knowing the negative space prevents wrong assumptions when extending the project
   and deleted when you sign out, so the journal can say *"you've called this 'work' before"*
   when a new label looks like an old one. It offers; it never merges, never renames, and never
   shows a number — and it only offers at all when something structural agrees, meaning the same
-  person or the same trigger. The love snapshots are untouched by any of it.
+  person or the same trigger. The same switch is what lets the journal be **searched**, on the
+  device and without asking the server anything, and what comes back is entries — a day, a
+  time, your own words — never a summary of them and never a score. The love snapshots are
+  untouched by any of it.
 - **No listening.** The microphone is open only while the record button is active. There is
   no wake word and no background capture, recording stops on a second tap, after two
   seconds of silence or at thirty, and **the audio is never stored** — it lives in memory

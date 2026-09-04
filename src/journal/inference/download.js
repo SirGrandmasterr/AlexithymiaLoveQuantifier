@@ -20,7 +20,13 @@
 
 import { MODEL_CACHE_NAME, modelFileUrl, totalBytes } from './models';
 
-/** Where a download is. `verifying` is its own state because it is the slow part of a big file. */
+/**
+ * Where a download is — the vocabulary, written down. The comment that stood here named a
+ * `verifying` state and the array does not have one: verification happens inside
+ * `downloading`, per file, between the fetch and the cache write, and the screen shows it as
+ * progress rather than as a state of its own. Nothing reads this list today; it is the
+ * register the store's `status` values are drawn from.
+ */
 export const DOWNLOAD_STATES = ['idle', 'downloading', 'ready', 'cancelled', 'error'];
 
 /** Why a download stopped. `checksum` is the one that must never be recoverable. */

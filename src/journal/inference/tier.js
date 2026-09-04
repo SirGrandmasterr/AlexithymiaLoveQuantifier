@@ -262,6 +262,11 @@ export const canTranscribe = (tier) => tier === TIERS.full || tier === TIERS.lig
 export const voiceAvailability = ({ detected, override, voiceOn, discreet = false } = {}) => {
     const { tier, refused } = effectiveTier(detected, override);
     const capable = canTranscribe(tier);
+    // Written once, because the two are one decision. The composer offers the microphone or
+    // it offers the keyboard, never both and never neither — and a De Morgan dual maintained
+    // as a second expression is a screen with two inputs or none the day one of them is
+    // edited and the other is not.
+    const showMicrophone = capable && voiceOn === true && !discreet;
 
     return {
         tier,
@@ -270,7 +275,7 @@ export const voiceAvailability = ({ detected, override, voiceOn, discreet = fals
         // The setting may only be turned on where it could do something. A toggle that
         // stores `true` on a device that cannot record is a Vault claim waiting to be false.
         offerToggle: capable,
-        showMicrophone: capable && voiceOn === true && !discreet,
-        showKeyboard: !capable || voiceOn !== true || discreet
+        showMicrophone,
+        showKeyboard: !showMicrophone
     };
 };

@@ -4,8 +4,9 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import axios from 'axios';
 import Vault, { AI_CLAIM, OUTBOX_CLAIM, SIMILAR_CLAIM, buildCSV, buildJournalCSV, describeBackend } from './Vault';
-import { JOURNAL_STORAGE_KEYS } from '../constants/journal';
+import { JOURNAL_COPY, JOURNAL_STORAGE_KEYS } from '../constants/journal';
 import { MAX_CLIP_MS, SILENCE_HOLD_MS } from '../journal/recorder';
+import { IDLE_LIMIT_MS } from './AppLock';
 import * as tier from '../journal/inference/tier';
 import { SubjectsProvider } from '../context/SubjectsContext';
 
@@ -314,6 +315,24 @@ describe('Vault page', () => {
         expect(SIMILAR_CLAIM.on).not.toContain('it is off until you turn it on');
     });
 
+    /**
+     * G2. The switch these two paragraphs describe now also opens `/journal/search`, so both
+     * of them have to say so — and each has to say the *true* half. Off: the journal cannot
+     * be searched. On: it can, here, without asking the server, and signing out costs it.
+     */
+    it('names search in both variants, because the switch now opens a search screen', () => {
+        expect(SIMILAR_CLAIM.off).toContain('cannot be searched');
+        expect(SIMILAR_CLAIM.on).toContain('search the journal');
+        expect(SIMILAR_CLAIM.on).toContain('asks the server nothing');
+        expect(SIMILAR_CLAIM.on).toContain('search finds nothing until this device');
+    });
+
+    it('keeps the settings toggle and this page saying the same thing (§9.7)', () => {
+        expect(JOURNAL_COPY.settings.embeddings.label).toContain('search');
+        expect(JOURNAL_COPY.settings.embeddings.description).toContain('kept only on this device');
+        expect(JOURNAL_COPY.settings.embeddings.description).toContain('deleted when you sign out');
+    });
+
     it('states the Full tier "voice on" paragraph verbatim — one model, named, with its licence', async () => {
         window.localStorage.setItem(JOURNAL_STORAGE_KEYS.voice, 'true');
         // The page asks the device as well as the key: a `true` alone is not enough, because
@@ -467,5 +486,134 @@ describe('what the page says about the journal outbox', () => {
         // And that it is not encrypted here either, which the section below says of the
         // database and which would otherwise be silently untrue of the device.
         expect(OUTBOX_CLAIM).toContain('plain text');
+    });
+});
+
+/* ------------------------------------------------------------------------------------ */
+/* Z — the closeout audit of invariant 2e                                                 */
+/* ------------------------------------------------------------------------------------ */
+
+/**
+ * §10.2 gave this page seven *claims* and the suite above holds all seven verbatim, in both
+ * opt-in states and on every tier. But invariant 2e is not about seven claims — it is about
+ * **every sentence on the page**, and the Phase 6 closeout walked the rendered page line by
+ * line against the code beside it and found seven sentences that no test had ever read.
+ *
+ * None of them was false. Each is asserted here anyway, because the difference between
+ * "true" and "held true" is a test, and a sentence nothing reads is a sentence the next
+ * change is free to falsify. They are the sentences that predate Phase 6 and were never
+ * revisited by it — which is exactly why they were the ones left uncovered.
+ *
+ * Each assertion below names the code that makes its sentence true.
+ */
+describe('every other sentence on the Vault page (invariant 2e, discharged)', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        localStorage.clear();
+        mockFetch();
+    });
+
+    it('says who can see this, and the answer is the per-query user scope', async () => {
+        // True because authorisation *is* `AND user_id = ?` on every query (agent guide
+        // invariant 7), there is no ACL layer, no share endpoint and no second account —
+        // and since Phase 6 that includes all five journal handlers, each of which reads
+        // the id from `c.Get("userID")` and returns 404 rather than 403 on a miss.
+        renderVault();
+        await screen.findByText(/SQLite file/);
+
+        expect(screen.getByText(/Whoever can reach the server/)).toHaveTextContent(
+            'Whoever can reach the server it runs on and sign in as you. There are no other '
+            + "accounts, no sharing, and no way for one user to see another's analyses."
+        );
+    });
+
+    it('describes the export as complete, including what Phase 6 added to it', async () => {
+        // True because `ExportVault` reads every journal row this user has — every kind,
+        // superseded ones included — with `Preload("Mentions")`, and renders corrections as
+        // `supersedes` client ids. "Anything you have since corrected" is that clause.
+        renderVault();
+        await screen.findByText(/SQLite file/);
+
+        expect(screen.getByText(/A complete copy/)).toHaveTextContent(
+            'A complete copy — every relationship, every snapshot, notes, tags, uncertainty '
+            + 'flags and guided answers included, and every journal entry with the people it '
+            + 'names, the triggers it leans on, and anything you have since corrected.'
+        );
+    });
+
+    it('promises two CSV sheets and no transcript in them', async () => {
+        // True because `exportCSV` downloads the snapshot sheet and then, only when
+        // `buildJournalCSV` returns something, a second file — and `buildJournalCSV` has no
+        // transcript column, which the suite above asserts directly.
+        renderVault();
+        await screen.findByText(/SQLite file/);
+
+        expect(screen.getByText(/The JSON file is the one that can be imported again/))
+            .toHaveTextContent(
+                'The JSON file is the one that can be imported again; the CSV is for '
+                + 'spreadsheets, and arrives as two sheets when there is a journal to write — '
+                + 'one row per snapshot, one row per feeling. What was said stays in the JSON.'
+            );
+    });
+
+    it('promises an idempotent import, by the id the entry was written with', async () => {
+        // True because `applyJournal` matches on `client_id` against rows already scoped to
+        // this user, and `minImportVersion` still accepts a v1 file — "the one before it".
+        renderVault();
+        await screen.findByText(/SQLite file/);
+
+        expect(screen.getByText(/Import a JSON export/)).toHaveTextContent(
+            'Import a JSON export, from this version of the app or the one before it. '
+            + 'Snapshots already here are skipped, and a journal entry is matched by the id '
+            + 'it was written with, so importing the same file twice changes nothing.'
+        );
+    });
+
+    it('states the lock\'s scope and its idle limit from the constant that enforces it', async () => {
+        // The number is read off `IDLE_LIMIT_MS` rather than retyped, for the reason the
+        // *"Does it listen?"* sentence reads `SILENCE_HOLD_MS` and `MAX_CLIP_MS`: a page
+        // that quotes a constant must not be able to describe a machine the code stopped
+        // being.
+        renderVault();
+        await screen.findByText(/SQLite file/);
+
+        expect(screen.getByText(/An optional passphrase/)).toHaveTextContent(
+            'An optional passphrase that covers the app on this device, asked for on load '
+            + `and after ${IDLE_LIMIT_MS / 60000} minutes idle.`
+        );
+    });
+
+    it('says the lock is unavailable where the hashing it needs is, and offers no form', async () => {
+        // `isLockAvailable()` is `Boolean(globalThis.crypto?.subtle)`, and `crypto.subtle`
+        // exists only in a secure context — HTTPS or localhost, which is what the sentence
+        // says. The claim is not only the words: on a device where it is false the page
+        // must not also render a passphrase field it cannot honour.
+        const subtle = globalThis.crypto.subtle;
+        Object.defineProperty(globalThis.crypto, 'subtle', { value: undefined, configurable: true });
+
+        try {
+            renderVault();
+            await screen.findByText(/SQLite file/);
+
+            expect(screen.getByText(/Unavailable here/)).toHaveTextContent(
+                'Unavailable here — the browser only offers the hashing this needs over HTTPS '
+                + 'or on localhost.'
+            );
+            expect(screen.queryByLabelText('New passphrase')).not.toBeInTheDocument();
+        } finally {
+            Object.defineProperty(globalThis.crypto, 'subtle', { value: subtle, configurable: true });
+        }
+    });
+
+    it('counts what this browser session actually loaded, and nothing more', async () => {
+        // The footer says *snapshots*, and `useSubjects().people` is the snapshot list — two
+        // of them in this fixture, against one relationship. A sentence that read the wrong
+        // list would be off by one here and plausible everywhere.
+        renderVault();
+        await screen.findByText(/SQLite file/);
+
+        expect(screen.getByText(/loaded in this browser session/)).toHaveTextContent(
+            `${subjects.length} snapshots loaded in this browser session.`
+        );
     });
 });

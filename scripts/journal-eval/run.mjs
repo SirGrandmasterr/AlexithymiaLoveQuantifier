@@ -322,9 +322,13 @@ const main = async () => {
 
     skipped.forEach(({ file, why }) => process.stderr.write(`skipped ${file}: ${why}\n`));
 
-    const hypotheses = options.hypotheses
-        ? (JSON.parse(await readFile(options.hypotheses, 'utf8')).transcripts ?? JSON.parse(await readFile(options.hypotheses, 'utf8')))
+    // Read and parsed once. The file is accepted either as `{ transcripts: … }` or as the
+    // bare map, and the `??` used to reach for the second by re-reading and re-parsing the
+    // whole file from disk.
+    const hypothesesFile = options.hypotheses
+        ? JSON.parse(await readFile(options.hypotheses, 'utf8'))
         : null;
+    const hypotheses = hypothesesFile ? (hypothesesFile.transcripts ?? hypothesesFile) : null;
 
     const runs = [];
     for (const id of options.candidates) {

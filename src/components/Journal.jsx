@@ -19,6 +19,7 @@ import {
     PEOPLE_PATH,
     RECORD_PARAM,
     RECORD_PARAM_VALUE,
+    SEARCH_PATH,
     TRIGGERS_PATH,
     UNCLEAR_FEELING_ID,
     civilDay,
@@ -608,9 +609,12 @@ const DayHeader = ({ day, today, onCompose, voice }) => (
             </Link>
         </div>
 
-        {/* The two vocabularies, from the screen they were grown on. The bottom bar has
-            one journal slot and the day is what it opens (§9.2), so this is the only way
-            in to either — a screen nobody can reach is not a screen. */}
+        {/* The two vocabularies and, since G2, recall — each from the screen they were
+            grown on. The bottom bar has one journal slot and the day is what it opens
+            (§9.2), so this is the only way in to any of them — a screen nobody can reach
+            is not a screen. Search is linked whether or not the index is on, because the
+            screen behind it says out loud that it is off and where the switch is; a link
+            that vanished would leave a user who turned the toggle on with nothing to find. */}
         <nav aria-label={JOURNAL_COPY.nav.label} className="flex items-center justify-center gap-5">
             <Link
                 to={PEOPLE_PATH}
@@ -623,6 +627,13 @@ const DayHeader = ({ day, today, onCompose, voice }) => (
                 className="text-xs font-medium text-slate-500 hover:text-slate-800 underline underline-offset-4"
             >
                 {JOURNAL_COPY.triggers.heading}
+            </Link>
+            <Link
+                to={SEARCH_PATH}
+                data-journal-search-link
+                className="text-xs font-medium text-slate-500 hover:text-slate-800 underline underline-offset-4"
+            >
+                {JOURNAL_COPY.similar.search.heading}
             </Link>
         </nav>
     </header>

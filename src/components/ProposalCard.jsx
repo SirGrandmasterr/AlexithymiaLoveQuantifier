@@ -145,6 +145,10 @@ export const cardStateFromProposal = (proposal, { relationships = [], triggers =
         proposed: true,
         confirmed: false,
         replaces: null,
+        // Where this word came from, when it did not come from the model (§6.3, G2). Null
+        // for everything the model proposed and everything the user picked from the grid;
+        // `{ entryClientIds }` for a word taken from *"words you chose before"*.
+        retrieval: null,
         about: (feeling.about || []).map(about => {
             if (about.kind === 'person') return { kind: 'person', person: personKey(about.name) };
             if (about.kind === 'trigger') return { kind: 'trigger', trigger: triggerKey(about.label) };
@@ -248,6 +252,45 @@ export const buildProvenance = (state, { runtime, model, promptVersion, provenan
         dropped_by_filter: provenance?.dropped_by_filter ?? 0,
         ambiguity: state.ambiguity,
         edited_transcript: state.transcript.trim() !== String(originalTranscript ?? '').trim()
+    };
+};
+
+/**
+ * The **retrieval** provenance block — §6.3's `from: "retrieval"`, written beside `proposal`
+ * rather than inside it (G2).
+ *
+ * Beside, because they are two different sources and the difference is the point. `proposal`
+ * is what a *model* said about this sentence; this is what the *user themselves* said about
+ * sentences like it, months ago. Folding the second into the first would make
+ * `proposal.proposed` a list with two meanings in it, and the honest measure §4.4 wants —
+ * how often the user changed the machine's mind — would stop being computable.
+ *
+ * `payload.retrieval` needs no version bump: §6.4's rule is that a field readers may treat as
+ * unknown is an addition, and every reader here already ignores what it does not name. The
+ * server keeps it untouched for the same reason — `decodePayload` validates only the keys its
+ * struct names, so **the server gains nothing in this slice either**, exactly as in G1.
+ *
+ * Returns `null` when retrieval offered nothing, so a card on a device with the index off
+ * writes no key at all rather than an empty one claiming a feature ran.
+ */
+export const buildRetrievalProvenance = (state, { offers = [], triggerOffers = [], acceptedTriggers = [], model = null } = {}) => {
+    const offeredFeelings = offers.map(offer => ({ id: offer.id, entries: [...offer.entryClientIds] }));
+    const offeredTriggers = triggerOffers.map(offer => ({ client_id: offer.clientId, label: offer.label }));
+
+    if (offeredFeelings.length === 0 && offeredTriggers.length === 0) return null;
+
+    return {
+        from: 'retrieval',
+        model: model ?? null,
+        offered: { feelings: offeredFeelings, triggers: offeredTriggers },
+        accepted: {
+            // Only what is solid on the card, read the same way `confirmedPicked` reads it.
+            feelings: state.feelings
+                .filter(feeling => feeling.confirmed && feeling.retrieval)
+                .map(feeling => feeling.id),
+            triggers: acceptedTriggers
+                .filter(id => state.triggers.some(trigger => trigger.live === id && trigger.confirmed))
+        }
     };
 };
 
@@ -386,6 +429,56 @@ const SimilarTriggerOffers = ({ offers, onUse }) => {
                 </button>
             ))}
             <span className="text-[11px] text-slate-400 font-light">{JOURNAL_COPY.similar.note}</span>
+        </div>
+    );
+};
+
+/**
+ * *"Words you chose before"* — §5.8's second use, on the card (G2).
+ *
+ * The `Last time 62` button, for feelings: the user's own past authorship read back to them.
+ * It is **the most defensible prior there is and it is still only a proposal**, so every chip
+ * here is drawn exactly like a proposed feeling — dashed outline, nothing pre-selected — and
+ * a tap is what puts one on the card. Nothing is written by arriving here.
+ *
+ * Each chip carries the ids of the entries the word was read from, which is what
+ * `payload.retrieval` records if it is kept. There is no count of them on screen and no
+ * ordering the user is told about: rule 2 lets similarity propose and not explain, and
+ * `journal.test.js` walks this group of copy for digits.
+ *
+ * The list is empty on every device with the index off, which is every device by default,
+ * and the card renders identically without it.
+ */
+const PastEntryOffers = ({ offers, onKeep }) => {
+    if (!offers || offers.length === 0) return null;
+
+    return (
+        <div className="space-y-2" data-past-entries>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                {JOURNAL_COPY.similar.past.heading}
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+                {offers.map(offer => {
+                    const known = feelingById(offer.id);
+                    const label = known?.label ?? offer.id;
+                    return (
+                        <button
+                            key={offer.id}
+                            type="button"
+                            data-past-feeling={offer.id}
+                            data-retrieval-from="retrieval"
+                            data-retrieval-entries={offer.entryClientIds.join(' ')}
+                            onClick={() => onKeep(offer)}
+                            aria-label={fillCopy(JOURNAL_COPY.similar.past.keep, { label })}
+                            className={`${chipClass} border border-dashed border-slate-300 bg-white text-slate-600 hover:border-slate-500 transition-colors`}
+                            style={{ color: known?.hex ?? undefined }}
+                        >
+                            {label}
+                        </button>
+                    );
+                })}
+            </div>
+            <p className="text-[11px] text-slate-400 font-light">{JOURNAL_COPY.similar.past.note}</p>
         </div>
     );
 };
@@ -561,8 +654,16 @@ const ProposedFeeling = ({
     );
 };
 
-/** One person the model heard, with §4.5's resolution state and the taps that settle it. */
-const PersonRow = ({ person, relationships, onKeepNew, onPickExisting }) => {
+/**
+ * One person the model heard, with §4.5's resolution state and the taps that settle it.
+ *
+ * `candidates` arrives already ordered — §4.5's own order, or, on a device with the index on
+ * and two people called Alex, that order rearranged by which of them this sentence sounds
+ * most like (§5.8's fifth use). **The list is the same list**: `orderNamesakes` cannot add a
+ * candidate, remove one, or select one, and the note under the row says so out loud rather
+ * than letting a rearrangement pass as a recommendation.
+ */
+const PersonRow = ({ person, relationships, candidates, ordered = false, onKeepNew, onPickExisting }) => {
     const { maskName } = useDiscretion();
     const [picking, setPicking] = useState(false);
     const copy = JOURNAL_COPY.proposal.people;
@@ -610,9 +711,9 @@ const PersonRow = ({ person, relationships, onKeepNew, onPickExisting }) => {
             </div>
 
             {!settled && person.state === 'candidates' && (
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2" data-person-candidates={person.key}>
                     <span className="text-[11px] text-slate-400 font-light">{copy.candidateHint}</span>
-                    {person.candidates.map(candidate => (
+                    {(candidates ?? person.candidates).map(candidate => (
                         <button
                             key={candidate.relationshipId}
                             type="button"
@@ -640,6 +741,12 @@ const PersonRow = ({ person, relationships, onKeepNew, onPickExisting }) => {
                         </button>
                     ))}
                 </div>
+            )}
+
+            {!settled && ordered && person.state === 'candidates' && (
+                <p data-namesake-note className="text-[11px] text-slate-400 font-light">
+                    {JOURNAL_COPY.similar.namesake}
+                </p>
             )}
 
             {!settled && (
@@ -671,7 +778,10 @@ export default function ProposalCard({
     const { blurClass, maskName } = useDiscretion();
     // Off on every device that has not opted in, and off with no provider at all — which is
     // what lets every card test written before G1 keep passing untouched.
-    const { enabled: embeddingsOn, offersFor } = useEmbeddings();
+    const {
+        enabled: embeddingsOn, model: embeddingModel,
+        offersFor, pastFor, orderCandidates, vocabularyFor
+    } = useEmbeddings();
     const copy = JOURNAL_COPY.proposal;
 
     const [state, setState] = useState(() => cardStateFromProposal(result.proposal, { relationships, triggers }));
@@ -693,13 +803,32 @@ export default function ProposalCard({
 
     const editTranscript = (text) => setState(previous => ({ ...previous, transcript: text }));
 
+    /**
+     * §5.8's fourth use — *"the k most similar confirmed entries' labels in the prompt, for
+     * vocabulary consistency"* — and **the re-proposal is the only place in this app where
+     * it can apply.** A proposal needs a transcript to retrieve against, and the first pass
+     * over a recording has none: `VoiceCheckin` asks the model for the words and the labels
+     * in one go (§5.1). By the time this function runs the user has edited the transcript,
+     * so there is a sentence, and this is the second time the same note goes to the model.
+     *
+     * All retrieval does is **reorder** the names and labels the user already has, so that
+     * the ones from entries like this one are read first. It cannot add a word, cannot
+     * remove one, and never names a feeling; `retrievalPrompt.test.js` asserts all three
+     * over the whole proposal golden suite in both languages, which is the guard the G2
+     * prompt makes this item conditional on. What that guard cannot prove — that no model is
+     * ever swayed by an ordering — needs weights, and is `journal-eval`'s.
+     *
+     * With the index off, `vocabularyFor` hands back what it was given and this is the
+     * `context` the card has always used.
+     */
     const rerun = useCallback(async (text) => {
         if (text.trim() === lastProposedText.current.trim()) return;
         lastProposedText.current = text;
         if (!text.trim() || !runtime) return;
 
         setRerunning(true);
-        const next = await propose(textInput(text), context, runtime);
+        const narrowed = await vocabularyFor(text, context);
+        const next = await propose(textInput(text), { ...context, ...narrowed }, runtime);
         setRerunning(false);
         // A runtime that does not take text, or that failed: the edit stands, the chips
         // stay, and nothing on the card claims otherwise.
@@ -708,7 +837,7 @@ export default function ProposalCard({
         setLatest(next);
         setState(previous => mergeProposal(previous, next.proposal, { relationships, triggers }));
         setGrid(open => open || next.proposal.ambiguity === 'feeling');
-    }, [context, runtime, relationships, triggers]);
+    }, [context, runtime, relationships, triggers, vocabularyFor]);
 
     /* ---- feelings ------------------------------------------------------------------- */
 
@@ -737,9 +866,43 @@ export default function ProposalCard({
             if (id !== UNCLEAR_FEELING_ID && others.length >= MAX_FEELINGS_PER_CHECKIN) return previous;
             const fresh = {
                 key: nextKey(), id, intensity: DEFAULT_INTENSITY, uncertain: false,
-                proposed: false, confirmed: true, replaces: null, about: []
+                proposed: false, confirmed: true, replaces: null, retrieval: null, about: []
             };
             return { ...previous, feelings: exclusive([...(id === UNCLEAR_FEELING_ID ? [] : others), fresh], fresh.key) };
+        });
+    };
+
+    /**
+     * The tap on a *"words you chose before"* chip (§5.8's second use).
+     *
+     * It is `addFromGrid` with one difference — the feeling remembers **where it came from**,
+     * so `payload.retrieval` can record that this word was the user's own past authorship
+     * read back rather than something the model said or something they reached for in the
+     * grid. Everything else is identical: the cap holds, `unclear` is still exclusive, and
+     * nothing is written until the card is saved.
+     */
+    const keepFromPast = (offer) => {
+        setMoving(null);
+        setState(previous => {
+            const existing = previous.feelings.find(entry => entry.id === offer.id);
+            if (existing) return previous;
+
+            const others = previous.feelings.filter(entry => entry.id !== UNCLEAR_FEELING_ID);
+            if (offer.id !== UNCLEAR_FEELING_ID && others.length >= MAX_FEELINGS_PER_CHECKIN) return previous;
+
+            const fresh = {
+                key: nextKey(), id: offer.id, intensity: DEFAULT_INTENSITY, uncertain: false,
+                proposed: false, confirmed: true, replaces: null,
+                retrieval: { from: 'retrieval', entryClientIds: [...offer.entryClientIds] },
+                about: []
+            };
+            return {
+                ...previous,
+                feelings: exclusive(
+                    [...(offer.id === UNCLEAR_FEELING_ID ? [] : others), fresh],
+                    fresh.key
+                )
+            };
         });
     };
 
@@ -861,7 +1024,19 @@ export default function ProposalCard({
      * doing nothing: the dashed *new trigger* chip is still there and still mints its own id
      * on its own tap.
      */
-    const useSimilarTrigger = (triggerKey, offer) => setState(previous => {
+    const useSimilarTrigger = (triggerKey, offer) => {
+        // G2: the same tap now leaves a trace. G1 shipped this offer with no provenance at
+        // all, so a record could not say whether a check-in reached a trigger by an exact
+        // match or by taking the index up on a suggestion — and those are two different
+        // things to have happened. Recorded here rather than in `setState` because the
+        // updater can run twice under StrictMode and a list is not idempotent under that.
+        setAcceptedTriggers(previous => (
+            previous.includes(offer.clientId) ? previous : [...previous, offer.clientId]
+        ));
+        applySimilarTrigger(triggerKey, offer);
+    };
+
+    const applySimilarTrigger = (triggerKey, offer) => setState(previous => {
         const target = previous.triggers.find(entry => entry.key === triggerKey);
         if (!target || target.confirmed) return previous;
 
@@ -934,6 +1109,18 @@ export default function ProposalCard({
             provenance: latest.provenance,
             originalTranscript: originalTranscript.current
         });
+
+        // §6.3's `from: "retrieval"`, beside the model's block and never inside it. Null —
+        // and therefore absent — on every device that made no retrieval offer, which is
+        // every device with the index off (§6.4: an absent key reads as "this did not
+        // happen", and that is exactly what it means here).
+        const retrieval = buildRetrievalProvenance(state, {
+            offers: [...offeredEver.current.values()],
+            triggerOffers: Object.values(similar).flat(),
+            acceptedTriggers,
+            model: embeddingModel
+        });
+        if (retrieval) request.payload.retrieval = retrieval;
 
         try {
             await onSave(request);
@@ -1010,6 +1197,85 @@ export default function ProposalCard({
         });
         return rows;
     }, [state.feelings, similar]);
+
+    /** Which of G1's trigger offers the user actually took, for `payload.retrieval`. */
+    const [acceptedTriggers, setAcceptedTriggers] = useState([]);
+
+    /* ---- §5.8's second use: the words this user chose on entries like this one ---------- */
+
+    // `[{ id, entryClientIds }]`, filled asynchronously and empty on every device with the
+    // index off. Rule 3 gates it: without a person or a trigger in common with a past entry
+    // nothing comes back, however alike the sentences are — see `pastEntryOffers`.
+    const [past, setPast] = useState([]);
+
+    // What retrieval offered at **any** point, which is not the same list. A word that is
+    // taken leaves the offers — it is on the card now, and offering it again would be a
+    // second chip for the same word — but the provenance has to say it was offered, or
+    // `accepted` would name a word `offered` never did and the record could not be read.
+    const offeredEver = useRef(new Map());
+
+    // What the card already holds. A word that is on screen is not a word to offer again,
+    // and a word the user has already put down should not come back the moment they do.
+    const onCard = useMemo(
+        () => state.feelings.map(feeling => feeling.id),
+        [state.feelings]
+    );
+
+    useEffect(() => {
+        if (!embeddingsOn || !state.transcript.trim()) {
+            setPast([]);
+            return undefined;
+        }
+
+        let live = true;
+        pastFor(state.transcript, witnessContext, onCard).then(offers => {
+            if (!live) return;
+            offers.forEach(offer => {
+                if (!offeredEver.current.has(offer.id)) offeredEver.current.set(offer.id, offer);
+            });
+            setPast(offers);
+        }).catch(() => {
+            // The card is unchanged. Nothing the user asked for did not happen.
+        });
+
+        return () => { live = false; };
+    }, [embeddingsOn, pastFor, state.transcript, witnessContext, onCard]);
+
+    /* ---- §5.8's fifth use: which Alex does this sentence sound like --------------------- */
+
+    // `{ personKey: [candidate] }` — the **same** candidates §4.5 produced, in a different
+    // order. Nothing is added, removed or selected here; `orderNamesakes` asserts that, and
+    // the note under the row says it to the user.
+    const [namesakes, setNamesakes] = useState({});
+
+    const withCandidates = useMemo(
+        () => state.people.filter(person => !person.confirmed && person.candidates.length > 1),
+        [state.people]
+    );
+
+    useEffect(() => {
+        if (!embeddingsOn || withCandidates.length === 0 || !state.transcript.trim()) {
+            setNamesakes({});
+            return undefined;
+        }
+
+        let live = true;
+        Promise.all(withCandidates.map(async person => (
+            [person.key, await orderCandidates(state.transcript, person.candidates)]
+        ))).then(rows => {
+            if (!live) return;
+            // Only an order that actually changed is kept, so the note that explains the
+            // ordering appears exactly where there is an ordering to explain.
+            setNamesakes(Object.fromEntries(rows.filter(([key, ordered]) => {
+                const before = withCandidates.find(person => person.key === key)?.candidates ?? [];
+                return ordered.some((candidate, at) => candidate !== before[at]);
+            })));
+        }).catch(() => {
+            // The picker keeps §4.5's order, which is the order it has without an index.
+        });
+
+        return () => { live = false; };
+    }, [embeddingsOn, orderCandidates, withCandidates, state.transcript]);
 
     const atCap = state.feelings.length >= MAX_FEELINGS_PER_CHECKIN;
     const sentence = ambiguitySentence(state, maskName);
@@ -1130,6 +1396,11 @@ export default function ProposalCard({
                         </p>
                     </div>
                 )}
+
+                {/* §5.8's second use, under the words rather than among them: the model's
+                    proposals are what the card is about, and these are a second offer beside
+                    them from a different source. Both are dashed, and neither is saved. */}
+                <PastEntryOffers offers={past} onKeep={keepFromPast} />
             </div>
 
             {/* 4. People, with their resolution state. Nothing here is created until Save. */}
@@ -1141,6 +1412,8 @@ export default function ProposalCard({
                             key={person.key}
                             person={person}
                             relationships={relationships}
+                            candidates={namesakes[person.key] ?? person.candidates}
+                            ordered={Boolean(namesakes[person.key])}
                             onKeepNew={keepNewPerson}
                             onPickExisting={pickExisting}
                         />

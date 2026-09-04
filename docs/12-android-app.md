@@ -515,6 +515,14 @@ being one app (§12.2).
 > build behind it — EmbeddingGemma through ONNX Runtime beside Whisper — and it is written in
 > that file as a **missing runtime** rather than as a platform opinion, so the session that
 > adds one deletes a condition rather than arguing with a rule.
+>
+> **G2 raised the cost of that gap**, and the honest way to say it is that the phone is now
+> missing more than a suggestion. `/journal/search` is behind the same switch, so a handset has
+> no recall at all — and half of that screen, the lexical half, needs no model whatsoever. It
+> is not offered separately on any platform (§9.7 gives the feature one control, and a search
+> that worked while the toggle said off would make the Vault page untrue), so the phone loses
+> it with the rest. Whoever adds `embed` gets the search back for free: nothing in
+> `recall.js` or `JournalSearch.jsx` knows what platform it is on.
 
 Beneath `transcribe` sits the **weight store** it cannot work without — `fetchModel({ id,
 baseUrl, files: [{ path, bytes, sha256 }] })` with a `fetchProgress` event, `cancelFetch`,

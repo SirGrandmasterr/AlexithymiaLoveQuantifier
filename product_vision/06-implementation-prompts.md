@@ -80,7 +80,7 @@ docs disagree, fix the docs in the same change.
 | :--- | :-- |
 | `product_vision/06-emotional-journal.md` | The design. Read the sections your prompt names, in full. Do not implement from the prompt alone — the prompt is a scope fence around the design, not a replacement for it. |
 | `product_vision/06-progress.md` | The ledger. What actually shipped in the sessions before yours, and what they warn you about. **Read it before planning.** |
-| `docs/10-agent-guide.md` §2 and §3 | Twenty-six hard invariants and **twenty-one** silent-failure traps (the counts were stale at twenty-two and twelve until 2026-08-23, at sixteen until 2026-09-04, and at twenty until G1 the same day). Several bite in every session. |
+| `docs/10-agent-guide.md` §2 and §3 | Twenty-six hard invariants and **twenty-two** silent-failure traps (the counts were stale at twenty-two and twelve until 2026-08-23, at sixteen until 2026-09-04, at twenty until G1 the same day and at twenty-one until G2). Several bite in every session. |
 | `product_vision/README.md` | The roadmap invariants every phase must preserve. |
 
 Then read the specific files your prompt lists. Read whole files, not greps, for any file you
@@ -231,7 +231,7 @@ Twenty-eight sessions. The **Slice** column maps back to the design document's �
 | **F1** | The outbox | 6-F | Offline journal writes, idempotent retry | A7 |
 | **F2** | Android depth | 6-F | Ritual notification, launcher shortcut, haptics | A8, C4 |
 | **G1** | The embedding index and trigger normalisation | 6-G | EmbeddingGemma, the device-local index, *"same thing?"* | D4, ~~U1~~ (waived) |
-| **G2** | Retrieval: past entries, search, and the Vault line | 6-G | `from: "retrieval"` chips, semantic recall, new Vault entry | G1 |
+| **G2** | Retrieval: past entries, search, and the Vault line · **shipped 2026-09-04** | 6-G | `from: "retrieval"` chips, semantic recall, the namesake order, the retrieval golden set, a widened Vault entry | G1 |
 | **Z** | Phase closeout | — | Final doc sweep, roadmap invariants, security review | all |
 
 ```mermaid
@@ -2691,6 +2691,24 @@ suggestions?"* entry naming EmbeddingGemma **and its terms**, `docs/06-frontend.
 ### G2 — Retrieval: past entries, search, and the Vault line
 
 *The one question a journal is for.*
+
+> **Shipped 2026-09-04, under the same U1 waiver as G1, and with one item of six refused.**
+> ***Already known?*** (item 5) is **blocked rather than skipped**: S0 deferred `person_fact`
+> until the encryption envelope lands and named the proposal card as the place that must not
+> offer one, so there is no proposed fact anywhere for an existing one to be shown beside. The
+> pure function and its tests exist and are wired to nothing.
+>
+> **Item 3 shipped, and the guard it is conditional on is `retrievalPrompt.test.js`** — over
+> all 120 proposal golden cases in both languages, with a hostile retrieval, asserting that a
+> retrieval-influenced prompt loses no word a clear case needs, adds no word the user has not
+> confirmed, names no feeling, and changes no rule. Read that test's header before trusting the
+> claim: those are the three ways a prompt change can flip a case, and it still cannot prove
+> that no model is ever swayed by an *ordering*.
+>
+> **The retrieval golden set exists** and its report is in `product_vision/eval/`, but eight of
+> its twenty-six cases are the *semantic* ones and they are reported **skipped**: the real model
+> has never been loaded on any machine here. A later session should not read "18/18 pass" as
+> evidence about EmbeddingGemma.
 
 ▼▼▼ COPY FROM HERE ▼▼▼
 

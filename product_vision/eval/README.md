@@ -29,10 +29,26 @@ per-clip row). It **refuses to overwrite an existing report**: the tables are ge
 otherwise replace an afternoon of reasoning with an empty heading. Pass `--force` when you mean
 it. The harness itself lives in [`scripts/journal-eval/`](../../scripts/journal-eval/README.md).
 
+### Retrieval (§5.8, session G2)
+
+| File | What it is |
+| :--- | :--------- |
+| [`retrieval-eval-2026-09-04.md`](retrieval-eval-2026-09-04.md) | The retrieval golden set — *given these entries, query x returns y in the top three* — scored by the application's own `recall`. **Eighteen lexical cases pass in both languages; eight semantic cases are reported as skipped** because no embedder was supplied, and are never graded against a stand-in |
+
+`make journal-eval` runs this stage **first and always**, because unlike the model gate it needs
+no weights: the lexical half of search is scored on any machine in milliseconds.
+`make journal-eval RETRIEVAL_ONLY=1` runs just it, and
+`node scripts/journal-eval/retrieval.mjs --embedder <module>` is what turns the eight skips into
+measurements on a machine that has EmbeddingGemma. Unlike the model report this one **is**
+generated end to end, so it takes `--force` freely; there is no hand-written section under it to
+lose. The suite it reads is [`src/journal/embeddings/golden/`](../../src/journal/embeddings/golden/README.md).
+
 **A dated file in this directory is a claim that something was run.** Do not create one before
 it was. The absence of `user-test-report-*.md` is how a later session knows the gate in
 [`06-progress.md`](../06-progress.md) is still open, and the absence of `model-eval-*.md` is
-how it knows no model has cleared §5.7's.
+how it knows no model has cleared §5.7's. The retrieval report is the case that shows what the
+rule is really for: it exists, it says *pass* eighteen times, and it says in its own last
+section that **it is not evidence about EmbeddingGemma** — only about the words.
 
-Later sessions add to this directory: the first real model eval report, and 6-G's retrieval
-report (§11).
+Later sessions add to this directory: the first real model eval report, and the first retrieval
+report with an embedder behind it.

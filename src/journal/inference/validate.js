@@ -254,9 +254,15 @@ const tagsOf = (context) => (
  * model was constrained to; when it carries none, the constants are used.
  */
 export const validateProposal = (raw, context = {}) => {
-    const schema = buildSchema({ feelingIds: feelingIdsOf(context), tags: tagsOf(context) });
-    const knownIds = new Set(feelingIdsOf(context));
-    const knownTags = new Set(tagsOf(context));
+    // Read once each. The schema and the two membership sets are the *same* two vocabularies
+    // — that is the point of building the schema from the context — and reading them twice
+    // invites the day the schema is built from one list and the checks run against another.
+    const feelingIds = feelingIdsOf(context);
+    const tags = tagsOf(context);
+
+    const schema = buildSchema({ feelingIds, tags });
+    const knownIds = new Set(feelingIds);
+    const knownTags = new Set(tags);
     const drops = [];
     const drop = (path, reason) => drops.push({ path, reason });
     const done = (proposal, schemaValid) => ({

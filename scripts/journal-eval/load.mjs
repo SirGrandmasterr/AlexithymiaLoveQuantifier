@@ -29,7 +29,18 @@ const SURFACE = [
     ['parseModelJson', 'src/journal/inference/parse.js'],
     ['buildContext', 'src/journal/inference/index.js'],
     ['FEELINGS, activeFeelings', 'src/constants/journal.js'],
-    ['CONTEXT_TAGS', 'src/constants/contextTags.js']
+    ['CONTEXT_TAGS', 'src/constants/contextTags.js'],
+    // G2. The retrieval golden set is scored by the **app's own** `recall` for the same
+    // reason the proposals are validated by the app's own validator: a harness-local copy of
+    // the search would agree with the shipped one until the day it did not, and that is the
+    // day a report says retrieval works when the screen does something else.
+    [
+        'RETRIEVAL_SUITE, RETRIEVAL_MODES, RETRIEVAL_STATUS, TOP_N, runRetrievalSuite, suiteDocuments',
+        'src/journal/embeddings/retrievalGolden.js'
+    ],
+    ['EMBEDDING_PREFIXES, EMBED_KINDS, INDEX_DIMS, prefixed, toIndexVector', 'src/journal/embeddings/embed.js'],
+    ['SIMILARITY_FLOOR', 'src/journal/embeddings/similar.js'],
+    ['LEXICAL_FLOOR, RELATIVE_FLOOR', 'src/journal/embeddings/recall.js']
 ];
 
 /**
@@ -71,7 +82,11 @@ const STUBS = {
     '@huggingface/transformers': 'export default {};'
 };
 
-/** What was stubbed on the last build. Printed by `--verbose`, so the list is never a surprise. */
+/**
+ * What was stubbed on the last build, recorded so a session debugging a surprising import can
+ * read it. **`--verbose` does not print it** — the comment here said it did, and neither
+ * verbose path in `run.mjs` or `retrieval.mjs` touches this list.
+ */
 export let stubbedPackages = [];
 
 const stubBareImports = (resolveDir) => ({

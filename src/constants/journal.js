@@ -278,6 +278,14 @@ export const PEOPLE_PATH = `${JOURNAL_ROOT}/people`;
 export const TRIGGERS_PATH = `${JOURNAL_ROOT}/triggers`;
 
 /**
+ * Recall (§5.8, G2). A static segment, for `RITUAL_PATH`'s reason — a day is never called
+ * *search* — and a route rather than a box on the day view, because the answer to *"when
+ * did I last feel like this about work?"* is a list of other days and the day view is
+ * about one.
+ */
+export const SEARCH_PATH = `${JOURNAL_ROOT}/search`;
+
+/**
  * The query the launcher's *Check in* shortcut arrives with, and the day view's reading of it.
  *
  * §9.2 gives the shortcut one job: one long-press from the home screen to a check-in, with no
@@ -699,15 +707,15 @@ export const JOURNAL_COPY = {
             model: '{label} suggests them, on this device, under the {licence} licence. Every suggestion waits for you to keep it or put it down.'
         },
         embeddings: {
-            // **Narrower than §9.7's row, deliberately.** That row reads *“Similar-entry
-            // suggestions and search”*; G1 built the suggestions and G2 builds the search,
-            // and a toggle that promises a search this build does not have would be the
-            // same kind of untrue as a Vault sentence about a model that is not running
-            // (invariant 2e). G2 restores the other half with the screen that earns it.
-            label: 'Similar-entry suggestions',
-            // Verbatim from §10.2's Vault entry, minus its search clause, so the toggle and
-            // the privacy page cannot drift apart.
-            description: 'A second small model (EmbeddingGemma, under Google\'s Gemma terms) turns your entries into numbers that this device uses to find entries with similar words. Those numbers are kept only on this device, never sent, never exported, and deleted when you sign out.',
+            // **§9.7's row in full, restored in G2.** G1 shipped this label narrowed to
+            // *“Similar-entry suggestions”*, because it had built the suggestions and not
+            // the search, and a toggle that promises a screen the build does not have is
+            // invariant 2e in the other direction. `/journal/search` is that screen, it is
+            // behind this switch, and the label says so again.
+            label: 'Similar-entry suggestions and search',
+            // Verbatim from §10.2's Vault entry, so the toggle and the privacy page cannot
+            // drift apart.
+            description: 'A second small model (EmbeddingGemma, under Google\'s Gemma terms) turns your entries into numbers that this device uses to find entries with similar words, and to search what you have written. Those numbers are kept only on this device, never sent, never exported, and deleted when you sign out.',
             // Said before the download, never after it — §5.6's rule, and the same sentence
             // shape the voice block uses so the two screens read alike.
             size: '{label}, {size}. It downloads once and stays on this device.',
@@ -829,7 +837,74 @@ export const JOURNAL_COPY = {
         pairsHeading: 'Looks similar to…',
         pairsNote: 'Words that look alike, and that you have used around the same people. Nothing is merged until you say so.',
         pair: "'{a}' looks similar to '{b}'",
-        pairAction: 'Merge these…'
+        pairAction: 'Merge these…',
+
+        /**
+         * G2, §5.8's second use. *"Your past entries"* — the labels the user chose on
+         * entries like this one, offered on the card as dashed chips.
+         *
+         * The heading names **the user** and not the app, because that is what the offer
+         * actually is: their own past authorship, read back. Nothing here counts the
+         * entries it came from — the digit rule above applies to this group as much as to
+         * the trigger offer, and *"you chose this on four entries like this"* would be a
+         * similarity number wearing a different hat.
+         */
+        past: {
+            heading: 'Words you chose before',
+            note: 'From entries of yours that name the same people or the same triggers. Dashed means not saved yet.',
+            keep: "Keep '{label}'"
+        },
+
+        /**
+         * §5.8's fifth use. Two relationships called Alex, and this sentence sounds more
+         * like one of them. It **orders** §4.5's candidates and says so; the picker is
+         * unchanged and nothing is selected.
+         */
+        namesake: 'Put in order by which of them your words sound most like. Nothing is picked for you.',
+
+        /**
+         * §5.8's sixth use. A statement close to one already kept about the same person,
+         * shown beside it. Never a merge, never a replacement — two rows that say the same
+         * thing twice are the user's to keep or drop.
+         */
+        known: {
+            heading: 'Already known?',
+            beside: 'Close to something already kept about this person.'
+        },
+
+        /**
+         * §5.8's third use — recall, *"the one question a journal is for"*.
+         *
+         * Two headings rather than one list, and the split is the design rather than
+         * decoration: `words` is a fact — the words are in the entry and the reader can see
+         * them — and `alike` is this device's guess. Rule 2 lets similarity propose and not
+         * claim, so the guess is never presented as a find.
+         *
+         * There is no count anywhere and no summary anywhere. §5.8 says results are entries
+         * rather than answers, and the app never summarises them: what the screen draws is
+         * what the user wrote, and the rows are the whole of the reply.
+         */
+        search: {
+            heading: 'Search',
+            subheading: 'Find a day by the words that are on it.',
+            label: 'What are you looking for?',
+            placeholder: 'A word, a name, a phrase',
+            words: 'Entries with these words',
+            alike: 'Entries with similar words',
+            // Said under the second list only, so the two are never read as one kind of
+            // result. It says what was compared, never how closely.
+            alikeNote: 'Found by comparing the words on this device.',
+            empty: 'Nothing here has those words yet.',
+            prompt: 'Type a word to look for it.',
+            open: 'Open {day}',
+            openSnapshot: 'Open the timeline',
+            snapshot: 'A snapshot note',
+            // Named rather than silent, on the same rule as the settings screen's: a search
+            // box that is not offered and says nothing about why is a screen that lies about
+            // being absent.
+            off: 'Search is off on this device. Turn on similar-entry suggestions and search in your profile.',
+            unavailable: 'This device has nowhere to keep the numbers, so search stays off here.'
+        }
     },
 
     dayGraph: {

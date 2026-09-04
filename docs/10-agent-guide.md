@@ -12,8 +12,12 @@ the changes most likely to be requested.
 React 19 SPA (src/)  ──HTTP /api──►  Go + Gin (backend/)  ──GORM──►  Postgres or SQLite
 ```
 
-- Three records exist: `User`, `Relationship`, and `AnalysisSubject`. That is the entire
-  schema ([`models.go`](../backend/internal/models/models.go)).
+- Five domain records exist: `User`, `Relationship`, `AnalysisSubject`, and — since Phase 6 —
+  `JournalEntry` and `JournalMention`, plus `RefreshToken` for sessions. That is the entire
+  schema ([`models.go`](../backend/internal/models/models.go)). The two journal tables sit
+  *beside* the love snapshots rather than inside them: a check-in has no `stats`, is not a
+  version of anything, and never appears in a stack. What joins the two layers is
+  `Relationship`.
 - **`JWT_SECRET` must be set or the server exits.** `go run ./cmd/server` without it now
   fails by design.
 - A "person" is a `Relationship`; a "snapshot" is an `AnalysisSubject` pointing at one. The
@@ -23,8 +27,10 @@ React 19 SPA (src/)  ──HTTP /api──►  Go + Gin (backend/)  ──GORM�
   client that only sends `{name, stats}` still works.
 - The seven love categories exist **only** in the frontend `CATEGORIES` constant. The
   backend stores an untyped `map[string]int`.
-- Auth is a stateless 24-hour JWT in `localStorage`; the middleware puts `userID` in the
-  Gin context and every query filters on it.
+- Auth is a 24-hour JWT access token in `localStorage` (`auth.AccessTokenTTL`) **plus a
+  rotating refresh token** held server-side as a hashed `RefreshToken` row
+  (`auth.RefreshTokenTTL`, 60 days), so the *request path* is stateless and the *session* is
+  not. The middleware puts `userID` in the Gin context and every query filters on it.
 - No service layer, no global store, no migration files, no `.env` support.
 
 Read [Concepts](01-concepts.md) before touching domain copy, and
@@ -45,8 +51,8 @@ Breaking any of these produces a silent or confusing failure rather than a clean
 | 2a | **Group stacks by `relationship_id`, never by `name`.** | Two relationships may legitimately share a display name now. Name-grouping would silently merge two different people — the exact bug the entity exists to fix. |
 | 2b | **The write path and the backfill must resolve names the same way.** Both go through `database.FindOrCreateRelationship`. | Two different rules for "which relationship is this name?" split a stack in half, and the halves cannot be told apart afterwards. |
 | 2c | **The cadence nudge never guilt-trips.** No streaks, no badges, no counts of missed check-ins, no red, no urgency vocabulary. | It is a product rule, not a style preference — a missed month must not read as a failure. `nudgeSentence` is tested against a forbidden-word list; keep it that way. |
-| 2d | **Reminders are computed in the browser, never scheduled on the server.** | "Nothing leaves this machine" is a claim the Vault page makes in writing. A scheduler or an email digest would make it false. |
-| 2e | **Every claim on the Vault page must be true of the code as written.** | It says nothing is sent anywhere, there are no AI features, and the database is not encrypted. If you add a network call or a background service, that page is the first thing to fix. |
+| 2d | **Reminders are computed on the device, never scheduled on the server.** | "Nothing leaves this machine" is a claim the Vault page makes in writing. A server-side scheduler or an email digest would make it false. There are **two** channels since 6-F — the check-in cadence and the journal's nightly ritual — and both are decided in JavaScript and handed to the OS through `LocalNotifications` on the phone; the body of each is a fixed, content-free string bound by invariant 2c. A third channel is allowed and a server-side one is not. See trap 20 for the way the two channels collide over `getPending()`. |
+| 2e | **Every claim on the Vault page must be true of the code as written — and since Phase 6, true of *this device* as well as of the build.** | It says every request goes to this app's own origin, and that the database is not encrypted. It no longer says *"there are no AI features"*: three models can run, all on the device, all off by default, and the page therefore has **two paragraphs that are chosen at render time** from the same `localStorage` keys the settings screen writes — `voiceIsOn()` and `embeddingsAreOn()` in [`Vault.jsx`](../src/components/Vault.jsx), each of which asks the *device* (the tier, and whether an index could exist here) as well as the key, so a `true` written by a better browser on the same profile cannot make this page describe a model that is not running. Two further consequences of the same rule: the *voice on* paragraph has a **third** variant because the Light tier is genuinely two models and *"one model"* would be false on it, and the outbox sentence renders **only on the phone**, because that is the only place the queue exists. `Vault.test.jsx` asserts all of them **verbatim**, in both opt-in states and on every tier, and a paraphrase is exactly what those tests exist to refuse. If you add a network call, a background service, a fourth model, or a fourth tier, that page is the first thing to fix — and the test will tell you which sentence. |
 | 3 | **Category `id`s are permanent, and now live in two languages — and they are no longer the only vocabulary that does.** | They are the stored `stats` keys, the `uncertain` entries, the `guide_answers` outer keys, *and* the server's validation allowlist ([`domain.CategoryIDs`](../backend/internal/domain/categories.go)). Renaming one orphans every historical value and starts 400-ing the new one. **Feeling ids and ritual-question ids are the third and fourth permanent id vocabulary** ([`domain.FeelingIDs` and `domain.RitualQuestionIDs`](../backend/internal/domain/journal.go), mirrored by `FEELINGS` and `RITUAL_QUESTIONS` in [`src/constants/journal.js`](../src/constants/journal.js)), with `domain.JournalKinds` under the same rule. The Go side holds **ids only** — labels, glosses and colours are the frontend's, exactly as `domain/categories.go` splits them; the parity between the two languages is asserted by a test that reads `domain/journal.go` from disk (`journal.test.js`). Adding one is two edits in two languages and no schema change; **removing one is forbidden** — retire it with `retired: true` in the frontend constant, so the UI stops offering it while the server keeps accepting it for the rows already written and for an import of them. |
 | 4 | **Tailwind colour classes must be complete literal strings.** | The JIT scanner cannot see `` `bg-${x}-400` ``; interpolated classes are purged and render colourless. |
 | 5 | **Register protected routes inside the `protected` group** in `main.go`. | Outside it, the route is public with no warning — that is how `/uploads` became unauthenticated. |
@@ -189,6 +195,20 @@ Ranked by how much time they waste.
     embedding without a prefix, and `embed.test.js` asserts both strings **character for
     character** — which is the only place the mistake can be caught. Anything that adds a
     caller goes through that function; anything that adds a kind adds a prefix beside it.
+22. **An entry's searchable text is not its transcript, and `entries` is not the journal.**
+    Two halves of the same trap, both from G2 and both silent.
+    `journalDocument` joins the transcript with the *current* names of the people mentioned
+    (through `personName`, which prefers the relationship's name over the label stored on the
+    mention, so a rename is visible everywhere) and the *resolved* labels of the triggers the
+    entry is filed under — each label once, however many feelings name it. So the string that
+    gets embedded and searched is `"Lucie · Der Tag im Büro war lang. · Arbeit"`, not the
+    sentence. A fixture keyed on the transcript alone silently gets an unrelated vector and the
+    feature simply makes no offer; there is nothing to see in the failure.
+    And `useJournal().entries` holds **the loaded range**, which the day view narrows to one
+    month. An id that is not in it means *not loaded* far more often than *deleted*, so nothing
+    may prune on its absence — `EmbeddingContext` drops a vector only when the vocabulary can
+    say the id is dead. The version that pruned on absence re-embedded the whole journal every
+    time the user walked to another month, and looked exactly like a slow device.
 
 ---
 

@@ -85,12 +85,16 @@ export const scoreCase = ({ entry, proposal, contextTriggers = [] }) => {
     const mustInclude = expected.must_include || [];
     const mustNotInclude = expected.must_not_include || [];
 
+    // One evaluation, read twice. `ok` is *"this row has no failures"* by definition, and a
+    // second call to `satisfies` is a second chance for the two to disagree.
+    const failures = satisfies(proposal, expected, contextTriggers);
+
     return {
         id: entry.id,
         pair: entry.pair,
         language: entry.language,
-        failures: satisfies(proposal, expected, contextTriggers),
-        ok: satisfies(proposal, expected, contextTriggers).length === 0,
+        failures,
+        ok: failures.length === 0,
 
         // The gate's two feeling numbers, as counts so they can be summed across clips.
         mustIncludeTotal: mustInclude.length,

@@ -510,10 +510,22 @@ CANDIDATE ?=
 # Extra flags for the harness, e.g. EVAL_ARGS="--verbose --limit 8" while wiring a new runner up.
 EVAL_ARGS ?=
 
+# Extra flags for the retrieval stage, e.g. RETRIEVAL_ARGS="--verbose --force".
+RETRIEVAL_ARGS ?=
+
+# The retrieval golden set (§5.8, session G2) runs **first**, and always, because unlike the
+# proposal candidates it needs no weights: the lexical half of search is scored on any
+# machine in milliseconds. Its semantic half is reported as skipped until an embedder is
+# supplied — `scripts/journal-eval/retrieval.mjs --embedder <module>` — and is never graded
+# against a stand-in.
+#
+# `make journal-eval RETRIEVAL_ONLY=1` runs just that stage, which is what a session touching
+# search wants; a bare `make journal-eval` runs it and then the tier defaults.
 journal-eval:
-	@node scripts/journal-eval/run.mjs \
+	@node scripts/journal-eval/retrieval.mjs $(RETRIEVAL_ARGS)
+	@$(if $(RETRIEVAL_ONLY),true,node scripts/journal-eval/run.mjs \
 		$(if $(CANDIDATE),$(foreach c,$(CANDIDATE),--candidate $(c)),--tier-defaults) \
-		$(EVAL_ARGS)
+		$(EVAL_ARGS))
 
 journal-audio-check:
 	@node scripts/journal-eval/audio-check.mjs $(AUDIO_ARGS)
