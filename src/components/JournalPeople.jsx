@@ -25,32 +25,7 @@ import {
     timeOfDay
 } from '../constants/journal';
 
-/**
- * `/journal/people` and `/journal/people/:id` — everyone the journal has heard about.
- *
- * **This is the screen where a person with no love snapshot exists at all.** The dashboard
- * is snapshot-driven and draws stacks; a person first met in a check-in is a relationship
- * with `snapshot_count: 0`, which the grid will not draw and `GET /api/relationships`
- * returns anyway (§2.2). Until a snapshot exists they live here, and the row says so rather
- * than offering a link to a timeline with nothing on it.
- *
- * **Rename, merge and delete are not here, and their absence is a decision.** They act on
- * the relationship and the dashboard's stack menu already owns them (§9.3); a second copy
- * would be a second set of dialogs to keep true. One line on the detail screen says where
- * they are, so the gap reads as a decision rather than as something missing.
- *
- * The one action that *is* here is §10.6's: remove this person from the journal. It is the
- * journal's own, because what it removes is journal content about a third party, and it
- * leaves the relationship, the snapshots and the entries themselves alone.
- *
- * **No bare strings** — every word comes from `JOURNAL_COPY` (Appendix B item 3). Dates are
- * the exception the day view already made: a `YYYY-MM-DD` is not copy, and here it is also
- * the link's own destination.
- */
-
-/* ------------------------------------------------------------------------------------ */
-/* The pieces                                                                             */
-/* ------------------------------------------------------------------------------------ */
+/* The pieces */
 
 const Heading = ({ title, subtitle, children }) => (
     <header className="space-y-1">
@@ -67,14 +42,6 @@ const Empty = ({ message }) => (
     </div>
 );
 
-/**
- * One person, on the list.
- *
- * The whole row navigates to the detail screen; the timeline is a second, narrower link
- * inside it, present only when there is a stack to open. Two links rather than one with a
- * mode, because "open this person's mentions" and "open this person's snapshots" are two
- * destinations and a row that guessed between them would be wrong half the time.
- */
 const PersonRow = ({ relationship, summary }) => {
     const { maskName } = useDiscretion();
     const hasStack = Number(relationship.snapshot_count) > 0;
@@ -118,9 +85,6 @@ const PersonRow = ({ relationship, summary }) => {
                         {JOURNAL_COPY.people.timeline}
                     </Link>
                 ) : (
-                    // Not a link, and not a nudge to make one either. §2.2: the dashboard
-                    // will draw them the day a snapshot exists, and until then this is a
-                    // fact about the record rather than something to put right.
                     <span data-no-timeline className="text-slate-400 font-light">
                         {JOURNAL_COPY.people.journalOnly}
                     </span>
@@ -164,8 +128,6 @@ const MentionEntry = ({ entry, relationshipId }) => {
                     {entry.day}
                 </Link>
                 {time && <time dateTime={entry.at} className="text-slate-400">{time}</time>}
-                {/* The ritual names people on its *Who?* card and attaches no feeling to
-                    them, so the row says which kind of evening it was and stops there. */}
                 {entry.kind === 'ritual' && (
                     <span className="text-slate-400">{JOURNAL_COPY.day.ritualHeading}</span>
                 )}
@@ -181,8 +143,6 @@ const MentionEntry = ({ entry, relationshipId }) => {
                 </ul>
             )}
 
-            {/* The line that named them, as they said it. Blurred under discretion like
-                every other verbatim line in this app. */}
             {checkin?.transcript && (
                 <p data-transcript className={`text-sm text-slate-600 font-light ${blurClass}`}>
                     {checkin.transcript}
@@ -220,18 +180,6 @@ const FactEntry = ({ entry }) => {
     );
 };
 
-/**
- * §10.6, and the only destructive action this screen owns.
- *
- * The sentence states **both** counts before anything happens, because "remove this person"
- * over a screen of entries does not say how much of it goes — and the two numbers do not
- * overlap: the facts are removed whole, and the entries that merely name them stay and stop
- * being linked. The second sentence says what survives, which is the part a user is most
- * likely to be worried about.
- *
- * Cancelling issues nothing. There is no optimistic anything here: the counts came from what
- * is loaded, and the write is one call that either does both halves or neither.
- */
 export const RemovePersonDialog = ({ name, relationshipId, facts, mentions, onClose }) => {
     const { removePersonFromJournal } = useJournal();
     const { maskName } = useDiscretion();
@@ -263,10 +211,6 @@ export const RemovePersonDialog = ({ name, relationshipId, facts, mentions, onCl
                     </p>
                 )}
                 <p data-remove-body className="text-sm text-slate-600 font-light leading-relaxed">
-                    {/* A clause with nothing to count is left out rather than stated as a
-                        zero, and each carries its own verb so it agrees with its own
-                        number. The button that opens this dialog is not rendered at all
-                        when both are zero, so this is never empty. */}
                     {facts > 0 && countCopy(facts, JOURNAL_COPY.people.remove.facts, { name: maskName(name) })}
                     {facts > 0 && mentions > 0 && ' '}
                     {mentions > 0 && countCopy(mentions, JOURNAL_COPY.people.remove.mentions, { name: maskName(name) })}
@@ -297,27 +241,14 @@ export const RemovePersonDialog = ({ name, relationshipId, facts, mentions, onCl
     );
 };
 
-/* ------------------------------------------------------------------------------------ */
-/* The two screens                                                                        */
-/* ------------------------------------------------------------------------------------ */
+/* The two screens */
 
-/**
- * Sorted by how often the journal names them, then by name.
- *
- * Descriptive and stable, in that order: the count is what this screen is about, and the
- * name breaks the tie so the list does not shuffle between two people mentioned equally
- * often. Never a ranking of anybody — it is the same "most first" the dashboard's own
- * ordering uses, over a number the user wrote themselves.
- */
 const byMentionsThenName = (a, b) => (
     (b.summary.count - a.summary.count)
     || String(a.relationship.name || '').localeCompare(String(b.relationship.name || ''))
 );
 
 export default function JournalPeople() {
-    // Invariant 17: the people come from the subject list, and this screen never fetches
-    // them. `relationships` is every one of them, `snapshot_count: 0` included, which is
-    // the whole reason this list can show somebody the dashboard cannot.
     const { relationships } = useSubjects();
     const { entries, loading, loadError, dismissLoadError, loadAll } = useJournal();
 
@@ -362,16 +293,9 @@ export function JournalPerson() {
 
     useEffect(() => { loadAll(); }, [loadAll]);
 
-    // Keyed by the id, never by the name — which is what makes this screen survive a rename
-    // made in another tab or on the dashboard a moment ago (invariant 2a, §9.1). The name is
-    // looked up fresh on every render, so the heading follows the rename and the entries
-    // below it do not move.
     const relationship = relationships.find(person => person.ID === relationshipId) ?? null;
     const summary = useMemo(() => summarizePerson(entries, relationshipId), [entries, relationshipId]);
 
-    // A relationship that has been deleted is still a person this journal named. The
-    // mention's own `label` is the name as it was said that day — a quotation, and the only
-    // honest thing left to show.
     const name = relationship?.name
         || personName(summary.entries[0]?.mentions?.find(mention => mention.relationship_id === relationshipId))
         || '';
@@ -406,8 +330,6 @@ export function JournalPerson() {
                         </Link>
                     )}
                 </p>
-                {/* Where rename, merge and delete are. Said once, here, so their absence is
-                    a decision a reader can see rather than something to hunt for. */}
                 <p className="text-[11px] text-slate-400 font-light">{JOURNAL_COPY.people.stackActions}</p>
             </Heading>
 
@@ -430,11 +352,6 @@ export function JournalPerson() {
                         )}
                     </section>
 
-                    {/* Drawn even when it is empty, because a person's facts are a thing the
-                        journal can hold and a section that appeared only when it was full
-                        would make its absence unreadable. Nothing in this app writes one
-                        yet — `person_fact` is deferred (§12.5) — so an imported file is the
-                        only way a row lands here. */}
                     <section className="space-y-3">
                         <h2 className="text-sm font-medium text-slate-500">{JOURNAL_COPY.people.facts}</h2>
                         {summary.facts.length === 0 ? (
@@ -446,10 +363,6 @@ export function JournalPerson() {
                         )}
                     </section>
 
-                    {/* Offered only when there is something to take. A person with
-                        snapshots and no journal entries can reach this screen, and a
-                        button whose dialog would have to say "nothing goes" is worse
-                        than no button. */}
                     {summary.count > 0 && (
                         <div className="pt-2">
                             <button

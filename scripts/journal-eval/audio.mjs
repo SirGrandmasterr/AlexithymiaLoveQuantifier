@@ -1,22 +1,3 @@
-/**
- * Finding the clips, checking their consent, and reading what they are.
- *
- * The layout this file expects is written down for humans in
- * `src/journal/inference/golden/audio/README.md`; this is the same rules as code:
- *
- *     golden/audio/<speaker-id>/<case-id>.<clean|noisy>.<ext>
- *
- * Two rules are load-bearing rather than tidy.
- *
- * **A speaker directory with no row in `consent/speakers.json` is refused, not skipped
- * quietly.** §5.7 asks that consent for a real clip is recorded alongside it, and the only
- * version of that promise which survives a busy afternoon is one the harness enforces.
- *
- * **Every clip found is evaluated.** If three people recorded `lucie.de`, that is three
- * clips, not one with two spares. A per-id recall that only holds for one voice is a fact
- * about that voice, and averaging it away is how a suite stops measuring what it was built
- * to measure.
- */
 import { createHash } from 'node:crypto';
 import { readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
@@ -49,14 +30,6 @@ const directories = async (path) => {
     }
 };
 
-/**
- * `{ consented, unconsented, missing }` — the speakers with a row and a directory, the
- * directories with no row, and the rows whose directory is absent.
- *
- * A withdrawn speaker (`withdrawn` set to a date) counts as unconsented from that day on,
- * which is the point of keeping the row rather than deleting it: the next run's clip count
- * drops and the reason is on the record.
- */
 export const readSpeakers = async () => {
     const register = await json(join(CONSENT_DIR, 'speakers.json'));
     const rows = new Map((register.speakers || []).map(speaker => [speaker.id, speaker]));
@@ -84,15 +57,6 @@ export const readSpeakers = async () => {
 
 const ACCEPTED = new Set(['.wav', '.m4a', '.mp3', '.ogg', '.opus', '.flac']);
 
-/**
- * Read a canonical WAV's header without a decoder: sample rate, channels, bit depth and
- * duration, straight out of the RIFF chunks.
- *
- * A parser rather than a shell out to `ffprobe`, because `make journal-audio-check` should
- * tell an operator that their clips are the wrong sample rate on a machine that has no
- * ffmpeg yet — that is exactly the moment the answer is useful. A non-WAV file returns
- * `{ format: <ext> }` and nothing more; `prepare-audio.sh` is what turns it into one.
- */
 export const probeWav = (buffer) => {
     if (buffer.length < 12 || buffer.toString('ascii', 0, 4) !== 'RIFF' || buffer.toString('ascii', 8, 12) !== 'WAVE') {
         return null;
@@ -135,13 +99,6 @@ export const probeClip = async (path) => {
     };
 };
 
-/**
- * Every clip on disk that belongs to a consented speaker, indexed by `<case-id>|<condition>`.
- *
- * Returns `{ clips, skipped }`. `skipped` carries the files that were found under a speaker
- * with no consent, and the ones whose name does not parse — both are things an operator wants
- * named rather than counted.
- */
 export const discoverClips = async ({ caseIds }) => {
     const { consented, unconsented } = await readSpeakers();
     const wanted = new Set(caseIds);
@@ -182,13 +139,6 @@ export const discoverClips = async ({ caseIds }) => {
     return { clips, skipped };
 };
 
-/**
- * The lock file: what each clip was, the last time the harness looked.
- *
- * It is the reason a checked-in report stays reproducible while the audio stays out of git.
- * A report names the lock's `suite_sha`, and anybody with the clips can prove they have the
- * same ones — or find out, by hash, exactly which clip was re-recorded since.
- */
 export const readLock = async () => {
     try {
         return await json(LOCK_FILE);

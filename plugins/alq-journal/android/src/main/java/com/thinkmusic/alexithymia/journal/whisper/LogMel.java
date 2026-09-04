@@ -1,24 +1,5 @@
 package com.thinkmusic.alexithymia.journal.whisper;
 
-/**
- * Whisper's input: an 80-band log-mel spectrogram of thirty seconds of 16 kHz audio, in
- * plain Java with no Android and no native dependency.
- *
- * It is a line-for-line port of what the model was trained on — the same arithmetic
- * transformers.js runs on the web (C3) and openai/whisper's `log_mel_spectrogram`: a
- * periodic Hann window of 400 samples, a hop of 160, reflect padding of 200 on each side,
- * the last frame dropped, power (not magnitude), Slaney-scale mel filters normalised by
- * band width, `log10` clamped at 1e-10, a floor eight decades under the loudest bin, and
- * `(x + 4) / 4`. Every one of those details changes what the encoder sees; the Python
- * prototype this was ported from matches PyTorch's `torch.stft` version to 1.4e-5, and the
- * JVM harness in the C4 ledger entry compares this class against that prototype's dump.
- *
- * The transform itself is a table-driven DFT rather than an FFT: 400 is not a power of
- * two, and an exact 400-point transform is what the model expects. It costs about half a
- * billion multiply-adds for a full clip, which is a fraction of a second on a phone and
- * well under the encoder's own time. If that ever matters, a mixed-radix FFT replaces
- * `frameSpectrum` and nothing else changes.
- */
 public final class LogMel {
 
     public static final int SAMPLE_RATE = 16_000;
@@ -101,10 +82,6 @@ public final class LogMel {
         }
     }
 
-    /**
-     * The spectrogram of one clip, as the encoder wants it: `N_MELS * N_FRAMES` floats,
-     * row-major, band first — the flat form of a `[1, 80, 3000]` tensor.
-     */
     public float[] compute(float[] audio) {
         // Zero-pad or cut to thirty seconds, then reflect-pad 200 samples at each end.
         float[] padded = new float[N_SAMPLES + 2 * PAD];

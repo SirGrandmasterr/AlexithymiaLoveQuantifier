@@ -46,9 +46,6 @@ func setupMockDB(t *testing.T) (sqlmock.Sqlmock, *gorm.DB) {
 	return mock, gormDB
 }
 
-// expectFindOrCreateRelationship mocks the resolution the write path runs before it
-// touches analysis_subjects. `found` picks between reusing an existing relationship and
-// creating one; either way the write ends up pointing at relationship 7.
 func expectFindOrCreateRelationship(mock sqlmock.Sqlmock, found bool) {
 	lookup := mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "relationships"`))
 	if found {
@@ -125,8 +122,6 @@ func TestCreateSubject(t *testing.T) {
 			expectedStatus: http.StatusCreated,
 		},
 		{
-			// The compatibility contract: a name-only client still lands in the right
-			// stack, and reusing an existing name creates no second relationship.
 			name:          "Existing Name Reuses Its Relationship",
 			authenticated: true,
 			userID:        1,
@@ -405,8 +400,6 @@ func TestGetSubjects(t *testing.T) {
 		expectedLen    int
 	}{
 		{
-			// The ORDER BY is asserted here because it is a contract with the client:
-			// `date IS NULL` first is the portable spelling of NULLS LAST.
 			name:          "Valid Request - Returns List Newest First",
 			authenticated: true,
 			userID:        1,
@@ -537,8 +530,6 @@ func TestUpdateSubject(t *testing.T) {
 					WithArgs("1", 1, 1). // id comes as string "1" from router param usually
 					WillReturnRows(rows)
 
-				// Mocks for Save(). The stored row carries no relationship_id, so this also
-				// covers a legacy row being linked on its way through an edit.
 				mock.ExpectBegin()
 				expectFindOrCreateRelationship(mock, false)
 				mock.ExpectExec(regexp.QuoteMeta(`UPDATE "analysis_subjects"`)).
@@ -549,9 +540,6 @@ func TestUpdateSubject(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
-			// Renaming one version has always split it out of its stack. It still does —
-			// but the split is now a relationship_id change instead of an emergent
-			// consequence of two strings no longer matching.
 			name:          "Renaming A Version Re-Resolves Its Relationship",
 			subjectID:     "1",
 			authenticated: true,
@@ -677,8 +665,6 @@ func TestUpdateSubject(t *testing.T) {
 			expectedError:  "guide_answers.storge.1 must be between 0 and 3",
 		},
 		{
-			// Uncertain is checked against the row's *resulting* stats, so dropping a
-			// scored category while the row still flags it unsure is reported, not stored.
 			name:          "Stats Update Orphans An Uncertain Flag",
 			subjectID:     "1",
 			authenticated: true,
@@ -728,8 +714,6 @@ func TestUpdateSubject(t *testing.T) {
 	}
 }
 
-// TestUpdateSubjectPartialMerge is the regression guard for the description wipe:
-// a body carrying only `stats` must leave name, description, date, and tags alone.
 func TestUpdateSubjectPartialMerge(t *testing.T) {
 	storedDate := time.Date(2026, 2, 20, 0, 0, 0, 0, time.UTC)
 
@@ -742,8 +726,6 @@ func TestUpdateSubjectPartialMerge(t *testing.T) {
 		WithArgs("1", 1, 1).
 		WillReturnRows(rows)
 
-	// The name is untouched and the row already has a relationship, so nothing is
-	// re-resolved: an edit to the scores must not move the snapshot between stacks.
 	mock.ExpectBegin()
 	mock.ExpectExec(regexp.QuoteMeta(`UPDATE "analysis_subjects"`)).
 		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1, 7, "Alex", sqlmock.AnyArg(), "rough month", &storedDate, sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), 1).
@@ -795,8 +777,6 @@ func TestUpdateSubjectPartialMerge(t *testing.T) {
 	}
 }
 
-// TestUpdateSubjectExplicitClear proves an explicitly empty value still clears:
-// absent means "unchanged", "" means "clear".
 func TestUpdateSubjectExplicitClear(t *testing.T) {
 	storedDate := time.Date(2026, 2, 20, 0, 0, 0, 0, time.UTC)
 

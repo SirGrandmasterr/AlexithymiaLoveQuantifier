@@ -19,12 +19,6 @@ import { fakeKit } from './voiceKit.fake';
 
 vi.mock('axios');
 
-/**
- * F2 — the launcher shortcut arrives as `?record=1`, and what this device offers decides
- * which composer it arms. The hook is the real one with two fields overridden, so every
- * other test in this file keeps the answer jsdom actually gives (text-only: no
- * `mediaDevices`, so no microphone) and the shortcut tests can put a phone's answer in.
- */
 const voiceState = vi.hoisted(() => ({ showMicrophone: false, primed: true }));
 
 vi.mock('./VoiceCheckin', async (importOriginal) => {
@@ -40,11 +34,6 @@ const TODAY = '2026-08-21';
 
 const relationships = [{ ID: 7, name: 'Lucie', snapshot_count: 0 }];
 
-/**
- * Four endpoints, mocked per URL (trap 10c) — the provider stack loads `/api/subjects` and
- * `/api/relationships` for the people and `/api/journal/entries` and `/api/journal/days` for
- * what was said about them. Copied from `Vault.test.jsx`'s helper, extended by two.
- */
 const mockFetch = ({ entries = [], days = [], rels = relationships } = {}) => {
     axios.get.mockImplementation((url) => {
         if (url === '/api/relationships') return Promise.resolve({ data: rels });
@@ -125,13 +114,6 @@ const renderAt = (path) => render(
 
 const dayShown = () => document.querySelector('header time[datetime]')?.getAttribute('datetime');
 
-/**
- * The day's rows, once they are on screen — and scoped, since B2.
- *
- * The graph's legend names the same feelings the chips do, so a bare
- * `getByText('connectedness')` now finds two: the drawing's key and the check-in it was drawn
- * from. Both are correct and these tests are about the rows, so they say so.
- */
 const rows = async () => {
     await waitFor(() => expect(document.querySelector('[data-entry-kind="checkin"]')).toBeInTheDocument());
     return within(document.querySelector('[data-entry-kind="checkin"]').parentElement);
@@ -287,9 +269,7 @@ describe('the empty states, §9.4', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* The day graph, in the slot A6 left for it (B2)                                         */
-/* ------------------------------------------------------------------------------------ */
+/* The day graph, in the slot A6 left for it (B2) */
 
 describe('the day graph in its slot', () => {
     it('draws the day above the check-ins it was drawn from', async () => {
@@ -470,9 +450,6 @@ describe('the way in to the two vocabularies', () => {
         renderAt(`/journal/${TODAY}`);
         await screen.findByText(JOURNAL_COPY.empty.today);
 
-        // The bottom bar has one journal slot and the day is what it opens (§9.2), so the
-        // day header is the only way to either screen. A link nobody can reach is a screen
-        // nobody can reach.
         const links = screen.getByRole('navigation', { name: JOURNAL_COPY.nav.label });
         expect(within(links).getByRole('link', { name: JOURNAL_COPY.people.heading }))
             .toHaveAttribute('href', PEOPLE_PATH);
@@ -515,9 +492,7 @@ describe('MobileBottomNav', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* F1 — what a queued entry looks like on the day (§9.5)                                  */
-/* ------------------------------------------------------------------------------------ */
+/* F1 — what a queued entry looks like on the day (§9.5) */
 
 const platformState = vi.hoisted(() => ({ native: false }));
 
@@ -594,9 +569,6 @@ describe('an entry saved with no connectivity', () => {
         renderAt(`/journal/${TODAY}`);
         await rows();
 
-        // §9.5. The row id a `DELETE` would name is the server's and this entry has none, and
-        // dropping it from the queue instead would be an offline delete — which this slice
-        // deliberately does not build. The mark stands where the trash icon stands.
         const pending = document.querySelector('[data-entry-kind="checkin"][data-pending="true"]');
         expect(within(pending).queryByLabelText(JOURNAL_COPY.checkin.delete.action)).toBeNull();
         expect(within(pending).getByText(JOURNAL_COPY.day.notSynced)).toBeInTheDocument();
@@ -647,9 +619,7 @@ describe('an entry saved with no connectivity', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* F2 — the launcher's Check in shortcut (§9.2)                                           */
-/* ------------------------------------------------------------------------------------ */
+/* F2 — the launcher's Check in shortcut (§9.2) */
 
 describe('arriving from the launcher shortcut', () => {
     beforeEach(() => {
@@ -698,10 +668,6 @@ describe('arriving from the launcher shortcut', () => {
     });
 
     it('waits for the tier before deciding which one to arm', async () => {
-        // On Android the tier is the plugin's memory report and it lands a moment after
-        // mount. Arming before it does would open the keyboard on a phone with a
-        // transcriber, which is the wrong composer and an unrecoverable one — the sheet is
-        // already up by the time the answer arrives.
         voiceState.primed = false;
         voiceState.showMicrophone = false;
 

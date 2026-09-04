@@ -11,14 +11,6 @@ import {
 import { createFakeEmbedder, withoutPrefix } from './embed.fake';
 import { EMBEDDING_GEMMA_ONNX, EMBEDDING_MODEL, modelFileUrl, totalBytes } from '../inference/models';
 
-/**
- * The boundary, and the two strings on it that have no other way of being checked.
- *
- * **Nothing here loads a weight.** Every test injects `createFakeEmbedder()`, which is the
- * whole reason `embedTexts` takes its runtime as a parameter (§5.7): a suite that needed
- * 219 MB to find out whether a prefix was applied would be a suite nobody runs.
- */
-
 describe('the mandatory prompt prefixes', () => {
     it('is the query prefix, to the character, trailing space included', () => {
         // From the upstream model card. A prefix that is *nearly* right has no symptom: the

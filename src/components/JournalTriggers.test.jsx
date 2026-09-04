@@ -20,15 +20,6 @@ import {
 
 vi.mock('axios');
 
-/**
- * `/journal/triggers` — the vocabulary, and the two corrections it needs.
- *
- * Both corrections are `POST /api/journal/entries` with `supersedes_id` (§7.1), so the
- * assertions here are on **the request body**: there is no rename endpoint to mock and no
- * merge endpoint to mock, and a test that checked what the component thinks it holds would
- * pass over a payload the Go validator rejects.
- */
-
 const relationships = [{ ID: 7, name: 'Lucie', snapshot_count: 0 }];
 
 // Row ids are the server's, and they are what `supersedes_id` names. Distinct per row on
@@ -140,9 +131,7 @@ afterEach(() => {
     vi.useRealTimers();
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* The list                                                                               */
-/* ------------------------------------------------------------------------------------ */
+/* The list */
 
 describe('the Triggers view', () => {
     it('counts the check-ins that name a trigger and names its two most-attached feelings', async () => {
@@ -247,18 +236,8 @@ describe('the Triggers view', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* The merge chain                                                                        */
-/* ------------------------------------------------------------------------------------ */
+/* The merge chain */
 
-/**
- * `a → b → c`, as the client actually sees it.
- *
- * Each merge is a **correction row with its own client id**: the row it replaced was
- * superseded server-side and `GET /api/journal/entries` never returns it, so the only link
- * back is `corrects`. Walking one hop at a time would find `m2` and then hit a gap, and every
- * check-in written before the first merge would resolve to nothing.
- */
 const twoDeepChain = [
     trigger({ id: 'm1', label: 'work', corrects: ['a'], mergedInto: 'b' }),
     trigger({ id: 'm2', label: 'Arbeit', corrects: ['b'], mergedInto: 'c' }),
@@ -336,9 +315,7 @@ describe('a two-deep merge chain', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* Rename                                                                                 */
-/* ------------------------------------------------------------------------------------ */
+/* Rename */
 
 describe('rename', () => {
     const openRename = async () => {
@@ -418,9 +395,7 @@ describe('rename', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* Merge                                                                                  */
-/* ------------------------------------------------------------------------------------ */
+/* Merge */
 
 describe('merge', () => {
     const openMerge = async () => {
@@ -499,9 +474,7 @@ describe('merge', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* The request builders, on their own                                                     */
-/* ------------------------------------------------------------------------------------ */
+/* The request builders, on their own */
 
 describe('the correction builders', () => {
     const readRow = {
@@ -539,9 +512,7 @@ describe('the correction builders', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* The copy rail (Appendix B item 3)                                                      */
-/* ------------------------------------------------------------------------------------ */
+/* The copy rail (Appendix B item 3) */
 
 const walkStrings = (value) => {
     if (typeof value === 'string') return [value];
@@ -550,11 +521,6 @@ const walkStrings = (value) => {
     return [];
 };
 
-/**
- * Everything these screens are allowed to say: the copy object, the closed vocabularies, the
- * words the user themself typed, and the day strings — which are not copy, and are the one
- * thing on screen that is neither a sentence nor a label.
- */
 const allowed = (extra = []) => new Set([
     ...walkStrings(JOURNAL_COPY),
     ...FEELINGS.map(feeling => feeling.label),
@@ -562,13 +528,6 @@ const allowed = (extra = []) => new Set([
     ...extra
 ]);
 
-/**
- * A `fillCopy` result cannot be matched against the template it came from — the cost of
- * A5's decision to use templates rather than functions. Rather than listing every filling a
- * test happens to produce, each template becomes a pattern with `.+` where its placeholders
- * were, so the rail still catches a sentence nobody wrote in `JOURNAL_COPY` while a number
- * or a label dropped into one passes.
- */
 const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const filledTemplates = walkStrings(JOURNAL_COPY)

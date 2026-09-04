@@ -1,14 +1,3 @@
-/**
- * The report — the artefact §5.7 gates on. *"A model does not become a default until its
- * numbers are in a checked-in report."*
- *
- * Two files are written: a Markdown one for people, and a JSON one beside it with every
- * per-clip row, so a later session can re-aggregate without re-running a model. The Markdown
- * is generated and says so at the top; the reasoning a report needs — why a threshold moved,
- * what a caveat means for the decision — is written by hand underneath, in the section this
- * file leaves headed and empty. A generator that also wrote the conclusions would be a
- * generator that could conclude a model passed.
- */
 import { access, writeFile } from 'node:fs/promises';
 import { THRESHOLD_SOURCES } from './gate.mjs';
 
@@ -150,9 +139,6 @@ const werSection = (byGroup, margin) => {
 
 export const buildWerSection = werSection;
 
-/**
- * The whole report as Markdown. `runs` is one entry per candidate, already scored.
- */
 export const renderReport = ({ runs, date, suiteSummary, environment }) => {
     const anyReal = runs.some(run => run.candidate.runtime !== 'reference');
 
@@ -208,7 +194,7 @@ export const renderReport = ({ runs, date, suiteSummary, environment }) => {
         '',
         '## Decisions',
         '',
-        'One line each, and each one repeated in `product_vision/06-progress.md` and §12.5.',
+        'One line each, and each one repeated in `product_vision/README.md` and §12.5.',
         '',
         table(['Question', 'Answer', 'Evidence'], [
             ['Is E4B a desktop-tier default? (§12.5)', '', ''],
@@ -227,14 +213,6 @@ export const renderReport = ({ runs, date, suiteSummary, environment }) => {
     return [head, ...runs.map(candidateSection), tail].join('\n');
 };
 
-/**
- * Write the pair, and **refuse to overwrite a report that already exists.**
- *
- * The generated tables are disposable; the *Reading*, *Decisions* and *What this run does not
- * say* sections underneath them are not, and a second run on the same day would silently
- * replace an afternoon of somebody's reasoning with an empty heading. So a second run on the
- * same day has to say which it means: `--force` to replace, or `--out` to write beside it.
- */
 export const writeReport = async ({ markdownPath, jsonPath, markdown, data, force = false }) => {
     if (!force) {
         for (const path of [markdownPath, jsonPath]) {

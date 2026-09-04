@@ -1,10 +1,11 @@
 # 13 — Zero-Knowledge Envelope Encryption
 
-A blueprint for moving this app from server-readable storage to client-side envelope
-encryption (KEK/DEK), such that an administrator with `psql` and root on the host cannot
-read or deduce a user's relationship data.
+A blueprint for moving this app to client-side envelope encryption (KEK/DEK), such that an
+administrator with `psql` and root on the host cannot read a user's relationship data.
 
-Status: **design, not yet implemented.** Written against the code as of `feature/encryption`.
+Status: **design, not implemented, and not on the roadmap.** Nothing in the product implements
+or promises it. Phase 7 item 10 is "encryption, *if* this document is ever confirmed". If a
+change needs this document to be true in order to make a claim, the claim is wrong.
 
 Companion reading: [03-data-model.md](03-data-model.md), [05-backend.md](05-backend.md),
 [11-known-issues.md](11-known-issues.md).
@@ -13,8 +14,7 @@ Companion reading: [03-data-model.md](03-data-model.md), [05-backend.md](05-back
 
 ## 0. What is actually secret here
 
-Before the crypto, the inventory. These are the columns that carry meaning about a human
-being, and they are all plaintext today:
+The columns that carry meaning about a human being. All plaintext today.
 
 | Table | Column | Why it is sensitive |
 |---|---|---|
@@ -22,51 +22,39 @@ being, and they are all plaintext today:
 | `relationships` | `name` | **names a third party who never consented to being in your database** |
 | `relationships` | `cadence_days` | reveals attention/intensity |
 | `analysis_subjects` | `name` | denormalized copy of the above |
-| `analysis_subjects` | `description` | free-text notes — the highest-sensitivity field in the app |
+| `analysis_subjects` | `description` | free-text notes |
 | `analysis_subjects` | `stats` | the seven category scores |
 | `analysis_subjects` | `tags`, `uncertain`, `guide_answers` | context and self-assessment |
 | `analysis_subjects` | `date`, `kind` | temporal pattern of attention |
-| `journal_entries` | `payload` | **the most sensitive text in the product** — feelings, notes, trigger labels, ritual answers, and later a verbatim transcript of speech about named third parties. It outranks `description` for the same reason a diary outranks a spreadsheet |
-| `journal_entries` | `day`, `at` | the same temporal pattern as `date`, at much higher resolution — a check-in is an instant, and several a day draw a shape a dated snapshot never could |
+| `journal_entries` | `payload` | **the most sensitive text in the product** — feelings, notes, trigger labels, ritual answers, later a verbatim transcript of speech about named third parties |
+| `journal_entries` | `day`, `at` | the same temporal pattern at much higher resolution |
 | `journal_mentions` | `label` | a quotation of a name is a name |
-| `journal_mentions` | `relationship_id` | equality only — which person a row concerns — but that is the same fact `analysis_subjects.relationship_id` already carries |
+| `journal_mentions` | `relationship_id` | equality only — the same fact `analysis_subjects.relationship_id` already carries |
 
-`email` stays plaintext: it is the login identifier and the server must index it. `created_at`,
-`updated_at`, `deleted_at`, `user_id` and row counts stay plaintext — they are structural.
+Staying plaintext as structural: `email` (the login identifier, must be indexed), `created_at`,
+`updated_at`, `deleted_at`, `user_id`, row counts, and — for journal rows — `kind`,
+`schema_version`, `day` and `at`, because the server range-filters and orders on the last two.
 
-**The journal rows arrived in Phase 6 and they are plaintext today, like everything above
-them.** They were nonetheless given the shape this document needs, on the reasoning that the
+**Phase 6's journal rows were given the shape this document needs**, on the reasoning that the
 shape is cheap now and expensive later: every entry carries a client-generated `client_id`
-(§1.2's AAD binding, ready as `alq:v1:journal:<client_id>`), the sensitive text is a single
-opaque `payload` blob rather than a spread of typed columns, and mentions are an **ids-only**
-side table so a merge stays one `UPDATE` and a count stays one query without anything having
-to be decrypted. What would move under this design is stated per row above; `kind`,
-`schema_version` and the two time columns would stay plaintext as structural, because the
-server range-filters by `day` and orders by `at`.
+(ready as §1.2's `alq:v1:journal:<client_id>` AAD), the sensitive text is one opaque `payload`
+blob rather than typed columns, and mentions are an **ids-only** side table so a merge stays one
+`UPDATE` and a count stays one query with nothing decrypted.
 
-**This is a register, not a plan.** This whole document is an unconfirmed option (see the
-status line at the top), and Phase 6 does not wait on it: the Vault page states the plaintext
-position in the journal's own words instead, and **no copy anywhere in the product promises
-that the journal will be encrypted later.** If a change ever needs this document to be true in
-order to make a claim, the claim is wrong rather than early.
+Two notes for whoever implements it. Person matching needs **no new blind index** — matching
+happens on the client against decrypted names and the server only receives ids; the one
+server-side resolution, a mention arriving as `{"name": "Lucie"}`, becomes §1.4's `name_hmac`
+lookup. And **embedding vectors must never reach the server**: they are invertible to text, so a
+vector column is a transcript column under another name.
 
-Two notes for whoever does implement it. Person matching needs **no new blind index** — the
-match happens on the client against decrypted names and the server only ever receives ids; the
-one server-side resolution, a mention that arrives as `{"name": "Lucie"}`, becomes the same
-`name_hmac` lookup §1.4 already defines for the snapshot write path. And **embedding vectors
-must never reach the server at all** — they are invertible to text, so a vector column would
-be a transcript column under another name.
+**The residual metadata leak.** An administrator still learns how many people you track, how
+many snapshots each has, when each row was written and edited, and — via §1.4's blind index —
+*that* two snapshots concern the same person, without learning who. That is the irreducible cost
+of keeping the app's stack/rename/merge behaviour. If it is unacceptable, the app has to stop
+modelling relationships as server-side rows, which is a different product.
 
-**The residual metadata leak, stated up front.** After this change an administrator still
-learns: how many people you track, how many snapshots each has, when each row was written and
-last edited, and — via the blind index in §1.4 — *that* two snapshots concern the same person,
-without learning who. That is the irreducible cost of keeping the app's existing stack/rename/
-merge behaviour. If that leak is unacceptable, the app has to stop modelling relationships as
-server-side rows, which is a different product.
-
-`AppLock` ([src/components/AppLock.jsx](../src/components/AppLock.jsx)) is honest that it is
-"a curtain, not a safe". This document is the safe. AppLock stays as a separate,
-complementary screen lock.
+`AppLock` ([src/components/AppLock.jsx](../src/components/AppLock.jsx)) is honest that it is "a
+curtain, not a safe". This document is the safe; AppLock stays as a complementary screen lock.
 
 ---
 
@@ -76,97 +64,76 @@ complementary screen lock.
 
 ```
 password ──Argon2id(salt, m=64MiB, t=3, p=1)──> masterSecret (32B)
-                                                     │
-                        ┌────────────────────────────┴────────────────────────────┐
-              HKDF-SHA256(info="alq:kek:v1")                HKDF-SHA256(info="alq:auth-verifier:v1")
-                        │                                                          │
-                       KEK (AES-256-GCM)                                   authVerifier (32B)
-                        │                                                          │
-                        │                                          sent to server; stored as bcrypt(verifier)
-                        │                                          server never sees the password
-            AES-256-GCM wrap
-                        │
-                        ▼
-                 wrapped_dek  ──stored in users──┐
-                                                 │
-     DEK (32 random bytes) ──────────────────────┤
-        │                                        │
-        │                            recovery_wrapped_dek ──stored in users──┐
-        │                                        ▲                           │
-        │                          AES-256-GCM wrap                          │
-        │                                        │                           │
-        │                          recoveryKEK ──HKDF(info="alq:recovery-kek:v1")
-        │                                        ▲
-        │                              entropy (32 random bytes)
-        │                                        │
-        │                              BIP-39 ──> 24-word mnemonic (shown once, never stored)
-        │
-        ├── HKDF(info="alq:blind:name:v1") ──> nameHmacKey (HMAC-SHA256) ── blind index
-        └── AES-256-GCM ──> every row blob
+                          │
+     ┌────────────────────┴────────────────────┐
+ HKDF("alq:kek:v1")                HKDF("alq:auth-verifier:v1")
+     │                                         │
+    KEK (AES-256-GCM)                  authVerifier (32B) ──> server stores bcrypt(verifier)
+     │
+     └── AES-256-GCM wrap ──> wrapped_dek  (users)
+                                   ▲
+                                  DEK (32 random bytes)
+                                   │  ├── HKDF("alq:blind:name:v1") ──> nameHmacKey ── blind index
+                                   │  └── AES-256-GCM ──> every row blob
+                                   │
+     recoveryKEK ──HKDF("alq:recovery-kek:v1")── entropy (32B) ──BIP-39──> 24-word mnemonic
+          └── AES-256-GCM wrap ──> recovery_wrapped_dek  (users)
 ```
 
-Four properties are doing the work:
+Four properties do the work:
 
-1. **The DEK is generated once and never changes.** Everything else wraps it. This is why a
-   password change is O(1) rather than O(rows) — see §1.6.
-2. **The KEK and the auth verifier are siblings, not parent and child.** The verifier is a
-   sibling HKDF branch, so possessing the verifier (which the server has) gives no path back to
-   the KEK. Deriving the verifier *from* the KEK would hand the server the wrapping key.
-3. **The recovery mnemonic wraps the same DEK independently.** Losing the password does not
-   invalidate the recovery phrase, and changing the password does not require re-issuing it.
-4. **The DEK never leaves the client.** Not at signup, not during migration, not during
-   password change.
+1. **The DEK is generated once and never changes.** Everything else wraps it, which is why a
+   password change is O(1) rather than O(rows) — §1.6.
+2. **The KEK and the auth verifier are siblings, not parent and child.** Possessing the verifier
+   (which the server has) gives no path to the KEK. Deriving the verifier *from* the KEK would
+   hand the server the wrapping key.
+3. **The recovery mnemonic wraps the same DEK independently.** Changing the password does not
+   re-issue it; losing the password does not invalidate it.
+4. **The DEK never leaves the client** — not at signup, migration, or password change.
 
 ### Why these primitives
 
 | Need | Choice | Why not the alternative |
 |---|---|---|
-| KDF | Argon2id via [`hash-wasm`](https://github.com/Daninet/hash-wasm) | Web Crypto has no Argon2. PBKDF2 (which Web Crypto does have) is GPU-friendly and a poor fit for a phone-typed password. `hash-wasm` is ~20 KB of WASM and has no native dependency, which matters inside a Capacitor WebView. |
-| AEAD | AES-256-GCM via Web Crypto | Native, hardware-accelerated on ARMv8 (every Android target), no bundle cost. ChaCha20-Poly1305 would need libsodium.js (~200 KB WASM) and is only faster on hardware without AES-NI/ARMv8-Crypto, which this app does not target. |
-| Key wrap | AES-256-GCM (not AES-KW) | AES-KW is deterministic and has no AAD. GCM lets the wrap be bound to the salt and key version (§1.3), which detects an admin swapping one user's `wrapped_dek` for another's. |
-| Recovery | [`@scure/bip39`](https://github.com/paulmillr/scure-bip39) | Audited, 3 KB, no Buffer/Node shims — the reason to prefer it over `bip39` inside a WebView. |
-| Blind index | HMAC-SHA256 via Web Crypto | Keyed, so it is not dictionary-attackable the way a bare hash of a first name would be. |
+| KDF | Argon2id via [`hash-wasm`](https://github.com/Daninet/hash-wasm) | Web Crypto has no Argon2; its PBKDF2 is GPU-friendly and a poor fit for a phone-typed password. ~20 KB of WASM, no native dependency — which matters inside a Capacitor WebView |
+| AEAD | AES-256-GCM via Web Crypto | Native, hardware-accelerated on ARMv8, no bundle cost. ChaCha20-Poly1305 needs libsodium.js (~200 KB) and only wins without AES-NI/ARMv8-Crypto, which this app does not target |
+| Key wrap | AES-256-GCM, not AES-KW | AES-KW is deterministic and has no AAD. GCM binds the wrap to the salt and key version, detecting an admin swapping one user's `wrapped_dek` for another's |
+| Recovery | [`@scure/bip39`](https://github.com/paulmillr/scure-bip39) | Audited, 3 KB, no Buffer/Node shims inside a WebView |
+| Blind index | HMAC-SHA256 via Web Crypto | Keyed, so unlike a bare hash of a first name it is not dictionary-attackable |
 
-> **Do not use BIP-39's `mnemonicToSeed`.** It runs PBKDF2-HMAC-SHA512 at 2048 iterations, which
-> is stretching designed for user-chosen passphrases. Our mnemonic already carries 256 bits of
-> machine-generated entropy, so stretching adds latency and no security. Use
-> `mnemonicToEntropy` and HKDF the raw entropy. See §2.4.
+> **Do not use BIP-39's `mnemonicToSeed`.** Its PBKDF2-HMAC-SHA512 × 2048 is stretching for
+> user-chosen passphrases. This mnemonic already carries 256 machine-generated bits, so
+> stretching buys nothing and costs a visible pause on a phone. Use `mnemonicToEntropy` and HKDF
+> the raw entropy.
 
 ### Argon2id parameters
 
-Start at **m=64 MiB, t=3, p=1, 32-byte output, 16-byte random salt** — comfortably above the
-OWASP floor (m=19 MiB, t=2, p=1).
-
-The parameters are stored **per user, in the database**, not as a constant. Two reasons: you can
-raise them for new users without breaking old ones, and you can lower them for a user whose
-low-end Android device takes an unacceptable time. Budget ~0.5 s on a desktop and 1–3 s on a
-mid-range phone; measure on the oldest device you intend to support before committing to 64 MiB.
+**m=64 MiB, t=3, p=1, 32-byte output, 16-byte random salt** — comfortably above the OWASP floor
+(m=19 MiB, t=2, p=1). Stored **per user in the database**, not as a constant, so they can be
+raised for new users and lowered for a low-end device without stranding anyone. Budget ~0.5 s on
+desktop and 1–3 s on a mid-range phone; measure on the oldest supported device first. Every
+reduction directly reduces offline-cracking cost against a stolen `wrapped_dek`.
 
 ## 1.2 Envelope format
 
-One self-describing binary layout everywhere — wrapped DEKs and row payloads alike:
+One self-describing layout everywhere — wrapped DEKs and row payloads alike:
 
 ```
-┌─────────┬──────────────┬───────────────────────┬─────────────┐
-│ version │      IV      │      ciphertext       │  GCM tag    │
-│  1 byte │   12 bytes   │       variable        │  16 bytes   │
-└─────────┴──────────────┴───────────────────────┴─────────────┘
+version (1B) │ IV (12B) │ ciphertext │ GCM tag (16B)
 ```
 
-Web Crypto appends the tag to the ciphertext automatically, so the last two fields are one
-buffer in code. The version byte is what lets you introduce a new cipher later without
-guessing at the format of existing rows.
+Web Crypto appends the tag to the ciphertext, so the last two are one buffer in code. The
+version byte is the sole mechanism for ever changing the format.
 
-Stored as `BYTEA`. Not base64 text: base64 costs 33 % of the table size, and Go's
-`encoding/json` already marshals `[]byte` to a base64 string on the wire, so you get the
-JSON-safe representation for free at the API boundary and pay nothing at rest. Under the SQLite
-fallback `BYTEA` becomes `BLOB`; GORM handles both from a plain `[]byte` field.
+Stored as `BYTEA` (SQLite: `BLOB`), not base64 text: base64 costs 33 % of table size, and Go's
+`encoding/json` already marshals `[]byte` to base64 on the wire — the JSON-safe representation
+comes free at the API boundary and costs nothing at rest.
 
 ### AAD binding
 
-Every AEAD operation is bound to associated data, so a blob is only valid in the exact slot it
-was written to. Without this, an administrator can copy row 7's blob over row 8 — the client
-decrypts it happily and shows the wrong data as authentic.
+Every AEAD operation is bound to associated data, so a blob is valid only in the slot it was
+written to. Without it, an administrator can copy row 7's blob over row 8 and the client
+decrypts it happily as authentic.
 
 | Blob | AAD |
 |---|---|
@@ -176,1176 +143,339 @@ decrypts it happily and shows the wrong data as authentic.
 | `relationships.blob` | `alq:v1:relationship:<client_id>` |
 | `analysis_subjects.blob` | `alq:v1:subject:<client_id>` |
 
-Note what is **not** in the AAD: the server-assigned `id`. It does not exist until after the
-`INSERT`, so it cannot be an input to encryption that happens before it. That is why every
-encrypted row gains a **client-generated `client_id` UUID** — a stable identity the client knows
-at encrypt time. It pays for itself twice, since it also makes the migration batches in §3
-idempotent under retry.
-
-The DEK wrap is bound to the salt rather than to `user_id` for the same reason: at signup the
-client does not yet know its `user_id`, and the salt is client-generated, unique, and already
-being sent.
+Not in the AAD: the server-assigned `id`. It does not exist until after the `INSERT`, so it
+cannot be an input to encryption that happens before it. Hence every encrypted row gains a
+**client-generated `client_id` UUID** — which also makes §3's migration batches idempotent under
+retry. The DEK wrap binds to the salt rather than `user_id` for the same reason: at signup the
+client does not yet know its `user_id`, and the salt is client-generated and already being sent.
 
 ## 1.3 Schema changes (DDL)
 
-The server runs `AutoMigrate` on boot ([database.go:60](../backend/internal/database/database.go#L60)),
-which handles additive columns. It does **not** drop columns, and you would not want it to
-mid-migration. So: additive DDL is expressed as model changes and let `AutoMigrate` apply it;
-the destructive step in Phase 3 is explicit SQL you run deliberately.
+`AutoMigrate` ([database.go:60](../backend/internal/database/database.go#L60)) handles additive
+columns and does not drop any — so Phase 1 is expressed as model changes, and Phase 3's
+destruction is explicit SQL run deliberately.
 
-Both forms are given below because you need the raw SQL anyway for staging rehearsal and for
-the `-check` path in `cmd/migrate`.
+**Phase 1 — additive, backward compatible.**
 
-### Phase 1 DDL — additive, backward compatible
+| Table | Added |
+|---|---|
+| `users` | `kdf_algo` (default `argon2id`), `kdf_salt`, `kdf_mem_kib` (65536), `kdf_iterations` (3), `kdf_parallelism` (1); `wrapped_dek`, `recovery_wrapped_dek`, `recovery_created_at`; `key_version` (0), `token_epoch` (0); `encryption_status` (`legacy`\|`migrating`\|`encrypted`, CHECK-constrained); `client_id`, `profile_blob` |
+| `relationships` | `client_id`, `blob` (`{name, cadence_days}`), `name_hmac`, `is_encrypted` |
+| `analysis_subjects` | `client_id`, `blob`, `is_encrypted`, `schema_version` (1) |
 
-```sql
-BEGIN;
+Two constraints carry weight. `key_version` is in the DEK-wrap AAD, so a replayed old
+`wrapped_dek` fails authentication instead of silently working. And
+`CHECK (encryption_status <> 'encrypted' OR (kdf_salt IS NOT NULL AND wrapped_dek IS NOT NULL))`
+turns a botched migration into a failed transaction rather than an unopenable account.
 
--- ── users ────────────────────────────────────────────────────────────────────
--- KDF parameters are per-user so they can be tuned per device class and raised
--- over time without invalidating existing accounts.
-ALTER TABLE users ADD COLUMN kdf_algo         TEXT    NOT NULL DEFAULT 'argon2id';
-ALTER TABLE users ADD COLUMN kdf_salt         BYTEA;
-ALTER TABLE users ADD COLUMN kdf_mem_kib      INTEGER NOT NULL DEFAULT 65536;
-ALTER TABLE users ADD COLUMN kdf_iterations   INTEGER NOT NULL DEFAULT 3;
-ALTER TABLE users ADD COLUMN kdf_parallelism  INTEGER NOT NULL DEFAULT 1;
-
--- The envelope. wrapped_dek is the password path, recovery_wrapped_dek the mnemonic
--- path; both wrap the identical DEK.
-ALTER TABLE users ADD COLUMN wrapped_dek           BYTEA;
-ALTER TABLE users ADD COLUMN recovery_wrapped_dek  BYTEA;
-ALTER TABLE users ADD COLUMN recovery_created_at   TIMESTAMPTZ;
-
--- key_version increments on every password change; it is in the DEK-wrap AAD, so a
--- replayed old wrapped_dek fails authentication instead of silently working.
-ALTER TABLE users ADD COLUMN key_version  INTEGER NOT NULL DEFAULT 0;
-
--- token_epoch invalidates every outstanding JWT on password change or recovery.
-ALTER TABLE users ADD COLUMN token_epoch  INTEGER NOT NULL DEFAULT 0;
-
--- 'legacy' -> 'migrating' -> 'encrypted'. Drives both the login flow and the
--- server's willingness to accept plaintext writes.
-ALTER TABLE users ADD COLUMN encryption_status TEXT NOT NULL DEFAULT 'legacy';
-ALTER TABLE users ADD CONSTRAINT users_encryption_status_check
-    CHECK (encryption_status IN ('legacy', 'migrating', 'encrypted'));
-
--- An encrypted account must actually have the material to decrypt itself. This
--- constraint is what turns a botched migration into a failed transaction rather
--- than an unopenable account.
-ALTER TABLE users ADD CONSTRAINT users_encrypted_requires_keys
-    CHECK (encryption_status <> 'encrypted'
-           OR (kdf_salt IS NOT NULL AND wrapped_dek IS NOT NULL));
-
-ALTER TABLE users ADD COLUMN client_id    VARCHAR(36);
-ALTER TABLE users ADD COLUMN profile_blob BYTEA;   -- {name, age, mbti_type, profile_picture}
-
--- ── relationships ────────────────────────────────────────────────────────────
-ALTER TABLE relationships ADD COLUMN client_id    VARCHAR(36);
-ALTER TABLE relationships ADD COLUMN blob         BYTEA;   -- {name, cadence_days}
-ALTER TABLE relationships ADD COLUMN name_hmac    BYTEA;   -- blind index, see 1.4
-ALTER TABLE relationships ADD COLUMN is_encrypted BOOLEAN NOT NULL DEFAULT FALSE;
-
--- ── analysis_subjects ────────────────────────────────────────────────────────
-ALTER TABLE analysis_subjects ADD COLUMN client_id      VARCHAR(36);
-ALTER TABLE analysis_subjects ADD COLUMN blob           BYTEA;
-ALTER TABLE analysis_subjects ADD COLUMN is_encrypted   BOOLEAN NOT NULL DEFAULT FALSE;
-ALTER TABLE analysis_subjects ADD COLUMN schema_version INTEGER NOT NULL DEFAULT 1;
-
--- ── indexes ──────────────────────────────────────────────────────────────────
-CREATE UNIQUE INDEX IF NOT EXISTS idx_relationships_user_name_hmac
-    ON relationships (user_id, name_hmac)
-    WHERE deleted_at IS NULL AND name_hmac IS NOT NULL;
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_subjects_user_client_id
-    ON analysis_subjects (user_id, client_id)
-    WHERE client_id IS NOT NULL;
-
-CREATE INDEX IF NOT EXISTS idx_subjects_unmigrated
-    ON analysis_subjects (user_id) WHERE is_encrypted = FALSE;
-
-COMMIT;
-```
+Indexes: `UNIQUE (user_id, name_hmac) WHERE deleted_at IS NULL AND name_hmac IS NOT NULL`;
+`UNIQUE (user_id, client_id) WHERE client_id IS NOT NULL` on subjects; and a partial index on
+`is_encrypted = FALSE` to drive the migration.
 
 > **On that partial unique index.** [models.go:22-24](../backend/internal/models/models.go#L22-L24)
-> notes that relationship-name uniqueness was left to the handlers because "soft deletes would
-> need a partial unique index, and those are spelled differently on SQLite and Postgres".
-> The `CREATE UNIQUE INDEX ... WHERE` form above is in fact accepted by both (SQLite has
-> supported partial indexes since 3.8.0, 2013). Keep the handler check as the source of the
-> friendly 409 — it produces a much better error than a constraint violation — and treat the
-> index as defence in depth against a racing double-insert.
+> left relationship-name uniqueness to the handlers because "soft deletes would need a partial
+> unique index, and those are spelled differently on SQLite and Postgres". The
+> `CREATE UNIQUE INDEX … WHERE` form is in fact accepted by both (SQLite since 3.8.0, 2013).
+> Keep the handler check as the source of the friendly 409 and treat the index as defence in
+> depth against a racing double-insert.
 
-### Phase 3 DDL — destructive, run only when no `legacy` or `migrating` user remains
+**Phase 3 — destructive, only when no `legacy` or `migrating` user remains.** Drop the plaintext
+columns listed in §0, then `ALTER … SET NOT NULL` on both `blob` columns. Guard it with a
+`DO $$` block that raises unless every user is `encrypted` and every subject `is_encrypted` —
+dropping these while one user still needs them destroys their data irrecoverably.
 
-```sql
-BEGIN;
+**Three follow-ups, none optional.** `DROP COLUMN` only marks the column dropped in the
+catalogue; the bytes stay in the heap until every tuple is rewritten.
 
--- Refuse to proceed if anyone is unmigrated. A DO block is used because a bare
--- ALTER cannot express a precondition, and dropping these columns while a single
--- user still needs them destroys their data irrecoverably.
-DO $$
-DECLARE stragglers INTEGER;
-BEGIN
-    SELECT COUNT(*) INTO stragglers FROM users WHERE encryption_status <> 'encrypted';
-    IF stragglers > 0 THEN
-        RAISE EXCEPTION 'refusing to drop plaintext columns: % user(s) not yet encrypted', stragglers;
-    END IF;
-    SELECT COUNT(*) INTO stragglers FROM analysis_subjects WHERE is_encrypted = FALSE;
-    IF stragglers > 0 THEN
-        RAISE EXCEPTION 'refusing to drop plaintext columns: % snapshot(s) not yet encrypted', stragglers;
-    END IF;
-END $$;
+1. `VACUUM FULL` (or `pg_repack`) to rewrite the heap. SQLite: `VACUUM;` plus deleting the
+   `-wal` and `-shm` sidecars.
+2. **Destroy every database backup taken before this point.** A zero-knowledge database with a
+   nightly plaintext dump in object storage is a plaintext database with an extra step.
+3. Rotate WAL segments and any replica — they carry the old tuples too.
 
-ALTER TABLE analysis_subjects
-    DROP COLUMN name,
-    DROP COLUMN description,
-    DROP COLUMN stats,
-    DROP COLUMN tags,
-    DROP COLUMN uncertain,
-    DROP COLUMN guide_answers,
-    DROP COLUMN date,
-    DROP COLUMN kind;
-
-ALTER TABLE relationships
-    DROP COLUMN name,
-    DROP COLUMN cadence_days;
-
-ALTER TABLE users
-    DROP COLUMN name,
-    DROP COLUMN age,
-    DROP COLUMN mbti_type,
-    DROP COLUMN profile_picture;
-
-ALTER TABLE analysis_subjects ALTER COLUMN blob SET NOT NULL;
-ALTER TABLE relationships     ALTER COLUMN blob SET NOT NULL;
-
-COMMIT;
-
--- DROP COLUMN only marks the column dropped in the catalogue. The bytes stay in
--- the heap until every tuple is rewritten. Until this finishes, `psql` cannot see
--- the plaintext but a forensic read of the data files still can.
-VACUUM FULL analysis_subjects;
-VACUUM FULL relationships;
-VACUUM FULL users;
-```
-
-**This is the step people forget.** Nulling a column does not erase it. Three follow-ups are
-mandatory, and none of them are optional-if-you-are-busy:
-
-1. `VACUUM FULL` (or `pg_repack` if you cannot take the exclusive lock) to rewrite the heap.
-2. **Destroy every database backup taken before this point.** They contain full plaintext. A
-   zero-knowledge database with a nightly plaintext dump in object storage is not
-   zero-knowledge; it is a plaintext database with an extra step.
-3. WAL segments and any replica carry the old tuples too — rotate them.
-
-Under the SQLite fallback the equivalent is `VACUUM;` on `alexithymia.db`, plus deleting the
-`-wal` and `-shm` sidecars.
-
-### Model changes
-
-```go
-// backend/internal/models/models.go
-
-type User struct {
-	gorm.Model
-	Email string `gorm:"uniqueIndex;not null" json:"email"`
-
-	// Password is the bcrypt of the *auth verifier* once the account is encrypted, and
-	// the bcrypt of the raw password while it is still legacy. The column does not move
-	// so that the legacy login path keeps working untouched during the migration window;
-	// EncryptionStatus is what says which of the two it currently holds.
-	Password string `gorm:"not null" json:"-"`
-
-	ClientID string `gorm:"type:varchar(36)" json:"client_id"`
-
-	KDFAlgo        string `gorm:"default:'argon2id'" json:"kdf_algo"`
-	KDFSalt        []byte `json:"-"`
-	KDFMemKiB      int    `gorm:"default:65536" json:"-"`
-	KDFIterations  int    `gorm:"default:3" json:"-"`
-	KDFParallelism int    `gorm:"default:1" json:"-"`
-
-	// Marshalled to base64 by encoding/json automatically — no explicit encoding step.
-	WrappedDEK         []byte     `json:"wrapped_dek,omitempty"`
-	RecoveryWrappedDEK []byte     `json:"-"` // only ever returned by the recovery endpoint
-	RecoveryCreatedAt  *time.Time `json:"recovery_created_at"`
-
-	KeyVersion       int    `gorm:"default:0" json:"key_version"`
-	TokenEpoch       int    `gorm:"default:0" json:"-"`
-	EncryptionStatus string `gorm:"default:'legacy';index" json:"encryption_status"`
-
-	ProfileBlob []byte `json:"profile_blob,omitempty"`
-
-	// Legacy plaintext. Dropped in Phase 3; `json:"-"` from Phase 2 so a migrated
-	// client cannot accidentally read a stale value.
-	Name           string `json:"-"`
-	Age            int    `json:"-"`
-	MBTIType       string `json:"-"`
-	ProfilePicture string `json:"-"`
-}
-
-type Relationship struct {
-	gorm.Model
-	UserID   uint   `gorm:"index;not null" json:"user_id"`
-	ClientID string `gorm:"type:varchar(36)" json:"client_id"`
-
-	// NameHMAC is the blind index: HMAC-SHA256(HKDF(DEK, "alq:blind:name:v1"), NFC(name)).
-	// It is what keeps FindOrCreateRelationship and the uniqueness check working without
-	// the server ever holding a name. Deterministic by design — see docs 13 §1.4 for
-	// exactly what that does and does not leak.
-	NameHMAC []byte `gorm:"index" json:"name_hmac"`
-
-	Blob        []byte `json:"blob"` // {name, cadence_days}
-	IsEncrypted bool   `gorm:"default:false;index" json:"is_encrypted"`
-
-	Name        string `json:"-"` // legacy
-	CadenceDays *int   `json:"-"` // legacy
-}
-
-type AnalysisSubject struct {
-	gorm.Model
-	UserID         uint          `json:"user_id"`
-	RelationshipID *uint         `gorm:"index" json:"relationship_id"`
-	Relationship   *Relationship `gorm:"foreignKey:RelationshipID" json:"-"`
-
-	ClientID      string `gorm:"type:varchar(36);index" json:"client_id"`
-	Blob          []byte `json:"blob"`
-	IsEncrypted   bool   `gorm:"default:false;index" json:"is_encrypted"`
-	SchemaVersion int    `gorm:"default:1" json:"schema_version"`
-
-	// Legacy plaintext, dropped in Phase 3.
-	Name         string                    `gorm:"" json:"-"`
-	Kind         string                    `json:"-"`
-	Description  string                    `json:"-"`
-	Date         *time.Time                `json:"-"`
-	Stats        map[string]int            `gorm:"serializer:json" json:"-"`
-	Tags         []string                  `gorm:"serializer:json" json:"-"`
-	Uncertain    []string                  `gorm:"serializer:json" json:"-"`
-	GuideAnswers map[string]map[string]int `gorm:"serializer:json" json:"-"`
-}
-```
-
-The cleartext blob a subject encrypts to:
-
-```jsonc
-{
-  "v": 1,
-  "name": "Alex",              // kept for export/rollback; the relationship blob is authoritative
-  "kind": "full",
-  "date": "2026-03-01",        // null for undated
-  "description": "…",
-  "stats": { "trust": 72 },
-  "tags": ["after the trip"],
-  "uncertain": ["trust"],
-  "guide_answers": { "trust": { "0": 2 } }
-}
-```
+**Model changes.** `users.password` does not move: it holds `bcrypt(password)` while `legacy`
+and `bcrypt(verifier)` once `encrypted`, with `EncryptionStatus` saying which — that is what
+keeps the legacy login path working untouched during the migration window. Legacy plaintext
+fields become `json:"-"` from Phase 2 so a migrated client cannot read a stale value, and are
+dropped in Phase 3. A subject's cleartext blob is
+`{v, name, kind, date, description, stats, tags, uncertain, guide_answers}` — `name` kept for
+export/rollback, with the relationship blob authoritative.
 
 ## 1.4 The blind index — how stacks survive encryption
 
-This is the part of the design that is specific to *this* codebase, and the part a generic
-"just encrypt the columns" answer gets wrong.
-
-Three load-bearing behaviours resolve relationships by name **on the server**:
-
-- [`FindOrCreateRelationship`](../backend/internal/database/backfill.go#L126) on every snapshot write
-- the uniqueness check at [relationships.go:271](../backend/internal/handlers/relationships.go#L271)
-- the rename cascade at [relationships.go:288](../backend/internal/handlers/relationships.go#L288)
-
-Encrypt `name` naively and all three break: AES-GCM is randomized, so the same name encrypts to
-a different blob every time and `WHERE name = ?` can never match.
-
-The fix is a **keyed blind index**:
+The part specific to *this* codebase, and the part a generic "just encrypt the columns" answer
+gets wrong. Three load-bearing behaviours resolve relationships by name **on the server**:
+[`FindOrCreateRelationship`](../backend/internal/database/backfill.go#L126) on every snapshot
+write, the uniqueness check at
+[relationships.go:271](../backend/internal/handlers/relationships.go#L271), and the rename
+cascade at [relationships.go:288](../backend/internal/handlers/relationships.go#L288). Encrypt
+`name` naively and all three break: AES-GCM is randomized, so `WHERE name = ?` can never match.
 
 ```
 name_hmac = HMAC-SHA256( HKDF(DEK, "alq:blind:name:v1"), NFC(trim(name)) )
 ```
 
-The server compares `name_hmac` for equality and enforces uniqueness on
-`(user_id, name_hmac)`. It never learns the name.
+The server compares `name_hmac` for equality and enforces uniqueness on `(user_id, name_hmac)`.
+It never learns the name.
 
-- **Not dictionary-attackable.** A bare `SHA-256("Alex")` would fall to a first-name wordlist in
-  milliseconds. The HMAC key is derived from the DEK, which the server does not have, so there
-  is nothing to brute force against.
-- **Leaks equality only** — that two snapshots concern the same person. The server already knew
-  that from `relationship_id`, so this adds nothing to the existing leak.
-- **Preserves the documented case policy exactly.** Normalization is NFC + trim, deliberately
-  *not* lowercase, so "Alex" and "alex" remain two people as
-  [backfill.go:124-125](../backend/internal/database/backfill.go#L124-L125) specifies.
-- **Per-user key**, so `name_hmac` values are incomparable across accounts. Two users tracking
-  the same person produce different values.
+- **Not dictionary-attackable.** A bare `SHA-256("Alex")` falls to a first-name wordlist in
+  milliseconds; the HMAC key comes from the DEK, which the server does not have.
+- **Leaks equality only** — that two snapshots concern the same person, which
+  `relationship_id` already revealed.
+- **Preserves the case policy exactly.** NFC + trim, deliberately *not* lowercase, so "Alex" and
+  "alex" remain two people as
+  [backfill.go:124-125](../backend/internal/database/backfill.go#L124-L125) specifies. NFC
+  matters because a name typed on iOS and on Android can differ byte-for-byte while looking
+  identical.
+- **Per-user key**, so values are incomparable across accounts.
 
-Rename becomes: client re-encrypts the blob, recomputes `name_hmac`, `PATCH`es both. Merge is
-unchanged apart from copying `name_hmac` instead of `name`.
+Rename: re-encrypt the blob, recompute `name_hmac`, `PATCH` both. Merge copies `name_hmac`
+instead of `name`.
 
 ## 1.5 Authentication without sending the password
 
-Today [`Login`](../backend/internal/handlers/auth.go#L47) receives the raw password. Once the
-KEK is derived from that password, sending it means a malicious or compromised server can
-derive the KEK and unwrap the DEK — which would make the whole exercise theatre.
-
-So login becomes two round trips:
+Once the KEK derives from the password, sending the password lets a compromised server derive
+the KEK and unwrap the DEK — which would make the whole exercise theatre. So login is two round
+trips:
 
 ```
-POST /api/auth/params   { email }
+POST /api/auth/params  { email }
   → { kdf_salt, kdf_mem_kib, kdf_iterations, kdf_parallelism, encryption_status }
-
   client: masterSecret = Argon2id(password, kdf_salt, params)
           verifier     = HKDF(masterSecret, "alq:auth-verifier:v1")
 
-POST /api/login         { email, verifier }
+POST /api/login        { email, verifier }
   → { token, wrapped_dek, key_version, encryption_status }
-
   client: KEK = HKDF(masterSecret, "alq:kek:v1")
           DEK = AES-GCM-decrypt(KEK, wrapped_dek, aad)
 ```
 
 The server bcrypts the verifier exactly as it bcrypts the password today, so
 [`auth.HashPassword`](../backend/internal/auth/auth.go#L41) and `CheckPasswordHash` are reused
-unchanged. Two notes on that:
+unchanged. Two notes:
 
 - **Lower the bcrypt cost from 14 to 10.** Cost 14 exists to slow brute force against a
-  low-entropy human password. The verifier is a 256-bit HKDF output — it is not brute-forceable
-  at any cost factor. Keeping 14 adds ~1 s of server CPU to every login on top of the 1–3 s of
-  Argon2id the client just spent. Cost 10 is still a sound defence-in-depth hash of a
-  high-entropy secret.
-- **`/api/auth/params` is unauthenticated and must not become a user-enumeration oracle.** For
-  an unknown email, return a *deterministic* fake: `kdf_salt = HMAC(server_secret, lower(email))`
-  truncated to 16 bytes, with default parameters and `encryption_status: "encrypted"`. Determinism
-  matters — a random salt per request is detectable by asking twice.
-
-  Be clear-eyed about the residual: during the migration window a genuine `legacy` response
-  proves the account exists, because unknown emails always answer `encrypted`. That oracle
-  closes by itself when the last account migrates. Rate-limit the endpoint per IP in the
-  meantime; do not pretend the gap is not there.
+  low-entropy human password; the verifier is a 256-bit HKDF output and is not brute-forceable
+  at any cost factor. Keeping 14 adds ~1 s of server CPU per login on top of the client's 1–3 s
+  of Argon2id.
+- **`/api/auth/params` must not become a user-enumeration oracle.** For an unknown email return
+  a *deterministic* fake: `kdf_salt = HMAC(server_secret, lower(email))` truncated to 16 bytes,
+  default parameters, `encryption_status: "encrypted"`. Determinism matters — a random salt per
+  request is detectable by asking twice. Residual: during the migration window a genuine
+  `legacy` response proves the account exists, because unknown emails always answer `encrypted`.
+  That oracle closes when the last account migrates; rate-limit per IP meanwhile.
 
 ## 1.6 Password change protocol
 
-The DEK is immutable, so changing a password re-wraps 32 bytes and touches **no** row of user
-data. This holds whether the user has 10 snapshots or 100,000.
+The DEK is immutable, so a password change re-wraps 32 bytes and touches **no** row of user
+data, whether the user has 10 snapshots or 100,000.
 
 ```
-client, with the current session's DEK already in memory:
-  1. verifierOld    = HKDF(Argon2id(oldPassword, currentSalt, currentParams), "alq:auth-verifier:v1")
-  2. newSalt        = 16 random bytes
-  3. masterNew      = Argon2id(newPassword, newSalt, currentParams)
-  4. kekNew         = HKDF(masterNew, "alq:kek:v1")
-     verifierNew    = HKDF(masterNew, "alq:auth-verifier:v1")
-  5. wrappedDekNew  = AES-GCM(kekNew, DEK, aad="alq:v1:dek:<b64(newSalt)>:<keyVersion+1>")
-  6. POST /api/me/password { verifier_old, kdf_salt, kdf_params, verifier_new, wrapped_dek, expected_key_version }
+client (session DEK already in memory):
+  verifierOld   = HKDF(Argon2id(oldPassword, currentSalt, currentParams), "alq:auth-verifier:v1")
+  newSalt       = 16 random bytes
+  masterNew     = Argon2id(newPassword, newSalt, currentParams)
+  kekNew        = HKDF(masterNew, "alq:kek:v1");  verifierNew = HKDF(masterNew, "alq:auth-verifier:v1")
+  wrappedDekNew = AES-GCM(kekNew, DEK, aad="alq:v1:dek:<b64(newSalt)>:<keyVersion+1>")
+  POST /api/me/password { verifier_old, kdf_salt, kdf_params, verifier_new, wrapped_dek, expected_key_version }
 
-server, in ONE transaction:
-  a. SELECT ... FOR UPDATE               -- serializes concurrent changes from two devices
-  b. bcrypt-compare verifier_old         -- 401 on mismatch
-  c. reject if key_version <> expected_key_version   -- 409, someone else changed it first
-  d. UPDATE users SET password = bcrypt(verifier_new),
-                      kdf_salt = ..., kdf_mem_kib = ..., kdf_iterations = ..., kdf_parallelism = ...,
-                      wrapped_dek = ...,
-                      key_version = key_version + 1,
-                      token_epoch = token_epoch + 1
-  e. COMMIT
+server, ONE transaction:
+  SELECT … FOR UPDATE                    -- serializes two devices
+  bcrypt-compare verifier_old            -- 401 on mismatch
+  reject if key_version <> expected      -- 409, someone else changed it first
+  UPDATE password, kdf_*, wrapped_dek, key_version+1, token_epoch+1
 ```
 
-Four consequences worth stating explicitly:
+- **`recovery_wrapped_dek` is untouched** — the phrase issued at signup still works after any
+  number of password changes. Users must be told, or they will assume it is stale and discard it.
+- **`key_version` is in the AAD**, so an administrator restoring an old `wrapped_dek` from a
+  backup gets an AEAD failure rather than a silently-working old password.
+- **`token_epoch` increments**, which is what logs out other devices. Add `epoch` to the JWT
+  claims and compare it in [`AuthMiddleware`](../backend/internal/handlers/middleware.go) — that
+  makes token validation a DB read per request, the honest price of being able to revoke.
+- **The changing device keeps working**; it already holds the DEK and just needs the new token.
 
-- **`recovery_wrapped_dek` is untouched.** It wraps the same DEK under a different KEK, so the
-  recovery phrase issued at signup still works after any number of password changes. Users must
-  be told this, or they will assume the phrase is stale and discard it.
-- **`key_version` is in the AAD**, so an administrator who restores an old `wrapped_dek` from a
-  backup gets an AEAD authentication failure rather than a silently-working old password.
-- **`token_epoch` increments**, which is what actually logs out other devices. Add `epoch` to the
-  JWT claims and compare it in [`AuthMiddleware`](../backend/internal/handlers/middleware.go).
-  That turns token validation into a DB read per request — acceptable for a self-hosted app of
-  this size, and the honest price of being able to revoke.
-- **The old session keeps working on the device that made the change**, because that device
-  already holds the DEK. It just needs the new token.
-
-Password *reset* — as distinct from change — does not exist and cannot. See §4.3.
+Password *reset*, as distinct from change, does not exist and cannot — §4.3.
 
 ---
 
 # Section 2 — Implementation
 
-Dependencies:
-
-```bash
-npm install hash-wasm @scure/bip39
-```
-
-Both are dependency-free and WebView-safe. `hash-wasm` ships WASM inline (no separate asset
-fetch, which matters under Capacitor's `https://localhost` origin). Total added bundle: ~25 KB
-gzipped.
-
-The project is `.jsx`, but Vite compiles `.ts` with no configuration change, so the crypto layer
-is written in TypeScript for the type safety — it sits alongside the existing JSX untouched.
-
-## 2.1 Primitives — `src/crypto/primitives.ts`
-
-```ts
-/**
- * The only file in the app that talks to crypto.subtle directly.
- *
- * Everything here is deliberately small and boring. The envelope layout is fixed by
- * docs/13 §1.2 and the version byte is the sole mechanism for ever changing it, so
- * `pack`/`unpack` must stay the single point where that layout is written down.
- */
-
-const ENVELOPE_VERSION = 1;
-const IV_BYTES = 12;   // 96-bit nonce, the only size AES-GCM is proven at
-const KEY_BYTES = 32;  // AES-256
-
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
-
-/**
- * Absent outside a secure context. Capacitor is configured with androidScheme "https",
- * so the WebView origin is https://localhost and this holds on device — but a dev server
- * reached over plain http:// from a phone will fail here, which is a configuration error
- * worth reporting loudly rather than degrading around.
- */
-export function requireSubtle(): SubtleCrypto {
-    const subtle = globalThis.crypto?.subtle;
-    if (!subtle) {
-        throw new Error(
-            'Web Crypto is unavailable. The app must be served over https:// or localhost; ' +
-            'encryption cannot run in an insecure context.'
-        );
-    }
-    return subtle;
-}
-
-export function randomBytes(length: number): Uint8Array {
-    return globalThis.crypto.getRandomValues(new Uint8Array(length));
-}
-
-/** Best-effort scrub. See §2.6 for what this does and does not guarantee in JS. */
-export function wipe(...buffers: (Uint8Array | null | undefined)[]): void {
-    for (const buffer of buffers) buffer?.fill(0);
-}
-
-export const toBase64 = (bytes: Uint8Array): string =>
-    btoa(String.fromCharCode(...bytes));
-
-export const fromBase64 = (text: string): Uint8Array =>
-    Uint8Array.from(atob(text), char => char.charCodeAt(0));
-
-/** version || iv || ciphertext+tag */
-function pack(iv: Uint8Array, ciphertext: Uint8Array): Uint8Array {
-    const out = new Uint8Array(1 + IV_BYTES + ciphertext.length);
-    out[0] = ENVELOPE_VERSION;
-    out.set(iv, 1);
-    out.set(ciphertext, 1 + IV_BYTES);
-    return out;
-}
-
-function unpack(envelope: Uint8Array): { iv: Uint8Array; ciphertext: Uint8Array } {
-    if (envelope.length < 1 + IV_BYTES + 16) {
-        throw new Error('Ciphertext is truncated.');
-    }
-    if (envelope[0] !== ENVELOPE_VERSION) {
-        throw new Error(
-            `Unsupported ciphertext version ${envelope[0]}; this client understands ${ENVELOPE_VERSION}.`
-        );
-    }
-    return {
-        iv: envelope.subarray(1, 1 + IV_BYTES),
-        ciphertext: envelope.subarray(1 + IV_BYTES)
-    };
-}
-
-/**
- * HKDF-SHA256. The salt is empty on purpose: the input keying material is already
- * either a 32-byte Argon2id output or 32 bytes of CSPRNG entropy, so it is uniformly
- * random and HKDF-Expand alone would do. `info` is what separates the branches, and
- * every caller must pass a distinct, versioned label.
- */
-export async function hkdf(ikm: Uint8Array, info: string, length = KEY_BYTES): Promise<Uint8Array> {
-    const subtle = requireSubtle();
-    const base = await subtle.importKey('raw', ikm, 'HKDF', false, ['deriveBits']);
-    const bits = await subtle.deriveBits(
-        { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: encoder.encode(info) },
-        base,
-        length * 8
-    );
-    return new Uint8Array(bits);
-}
-
-/**
- * Import raw bytes as a NON-EXTRACTABLE AES-GCM key. Non-extractable is the whole point:
- * the browser keeps the key material outside the JS heap, so it cannot be read back by
- * a later XSS, cannot land in a heap snapshot, and cannot be serialized into an error
- * report. The caller wipes the raw bytes immediately afterwards.
- */
-export async function importAesKey(raw: Uint8Array): Promise<CryptoKey> {
-    return requireSubtle().importKey('raw', raw, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
-}
-
-export async function importHmacKey(raw: Uint8Array): Promise<CryptoKey> {
-    return requireSubtle().importKey('raw', raw, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-}
-
-/**
- * AES-256-GCM with a fresh random 96-bit IV per call.
- *
- * Random IVs are safe here by a wide margin: collision probability stays negligible below
- * ~2^32 encryptions under one key, and a heavy user of this app produces a few thousand
- * writes in a lifetime. DEK rotation for nonce exhaustion is not a concern at this scale.
- */
-export async function seal(key: CryptoKey, plaintext: Uint8Array, aad: string): Promise<Uint8Array> {
-    const iv = randomBytes(IV_BYTES);
-    const ciphertext = await requireSubtle().encrypt(
-        { name: 'AES-GCM', iv, additionalData: encoder.encode(aad), tagLength: 128 },
-        key,
-        plaintext
-    );
-    return pack(iv, new Uint8Array(ciphertext));
-}
-
-/** Throws on a wrong key, a corrupted blob, or an AAD mismatch — all indistinguishable, by design. */
-export async function open(key: CryptoKey, envelope: Uint8Array, aad: string): Promise<Uint8Array> {
-    const { iv, ciphertext } = unpack(envelope);
-    try {
-        const plaintext = await requireSubtle().decrypt(
-            { name: 'AES-GCM', iv, additionalData: encoder.encode(aad), tagLength: 128 },
-            key,
-            ciphertext
-        );
-        return new Uint8Array(plaintext);
-    } catch {
-        throw new Error('Decryption failed: wrong key, altered data, or a record moved between rows.');
-    }
-}
-
-export async function sealJson(key: CryptoKey, value: unknown, aad: string): Promise<Uint8Array> {
-    return seal(key, encoder.encode(JSON.stringify(value)), aad);
-}
-
-export async function openJson<T>(key: CryptoKey, envelope: Uint8Array, aad: string): Promise<T> {
-    return JSON.parse(decoder.decode(await open(key, envelope, aad))) as T;
-}
-```
-
-## 2.2 Key derivation — `src/crypto/keys.ts`
-
-```ts
-import { argon2id } from 'hash-wasm';
-import {
-    fromBase64, hkdf, importAesKey, importHmacKey,
-    open, randomBytes, seal, toBase64, wipe
-} from './primitives';
-
-export interface KdfParams {
-    memKiB: number;
-    iterations: number;
-    parallelism: number;
-}
-
-/**
- * Above the OWASP floor (m=19 MiB, t=2, p=1) with headroom. Stored per user rather than
- * applied as a constant, so this can be raised for new accounts and lowered for a device
- * that cannot afford 64 MiB without stranding anyone.
- */
-export const DEFAULT_KDF: KdfParams = { memKiB: 65536, iterations: 3, parallelism: 1 };
-
-const SALT_BYTES = 16;
-const DEK_BYTES = 32;
-
-/** The live session's key material. Every field is a non-extractable CryptoKey. */
-export interface VaultKeys {
-    dek: CryptoKey;          // encrypts every row payload
-    nameHmacKey: CryptoKey;  // computes the relationship blind index
-}
-
-const dekAad = (saltB64: string, keyVersion: number) => `alq:v1:dek:${saltB64}:${keyVersion}`;
-const recoveryAad = (saltB64: string, keyVersion: number) => `alq:v1:rdek:${saltB64}:${keyVersion}`;
-
-async function argon2(password: string, salt: Uint8Array, params: KdfParams): Promise<Uint8Array> {
-    return argon2id({
-        password,
-        salt,
-        parallelism: params.parallelism,
-        iterations: params.iterations,
-        memorySize: params.memKiB,   // KiB
-        hashLength: 32,
-        outputType: 'binary'
-    });
-}
-
-/**
- * The password branch of the hierarchy. Returns the KEK (for unwrapping the DEK) and the
- * verifier (for proving identity to the server) as siblings — neither is derivable from
- * the other, which is what stops the server's copy of the verifier being a path to the KEK.
- */
-export async function deriveFromPassword(
-    password: string,
-    salt: Uint8Array,
-    params: KdfParams
-): Promise<{ kek: CryptoKey; verifier: string }> {
-    const master = await argon2(password, salt, params);
-    const kekBytes = await hkdf(master, 'alq:kek:v1');
-    const verifierBytes = await hkdf(master, 'alq:auth-verifier:v1');
-    wipe(master);
-
-    const kek = await importAesKey(kekBytes);
-    wipe(kekBytes);
-
-    const verifier = toBase64(verifierBytes);
-    wipe(verifierBytes);
-
-    return { kek, verifier };
-}
-
-/**
- * Expand a raw DEK into the session's key set, then destroy the raw bytes.
- *
- * The blind-index key must be derived here, while the DEK is still raw: once imported
- * non-extractably it can no longer be used as HKDF input. That constraint is the reason
- * this function exists rather than two independent derivations.
- */
-async function expand(rawDek: Uint8Array): Promise<VaultKeys> {
-    const nameKeyBytes = await hkdf(rawDek, 'alq:blind:name:v1');
-    const keys: VaultKeys = {
-        dek: await importAesKey(rawDek),
-        nameHmacKey: await importHmacKey(nameKeyBytes)
-    };
-    wipe(nameKeyBytes);
-    return keys;
-}
-
-export interface EnrollmentPayload {
-    kdfSalt: string;             // base64
-    kdfParams: KdfParams;
-    verifier: string;            // base64
-    wrappedDek: string;          // base64
-    recoveryWrappedDek: string;  // base64
-    keyVersion: number;
-}
-
-/**
- * Everything a brand-new (or newly-migrating) account needs, produced in one pass so the
- * password, the DEK and the recovery phrase can never disagree about which DEK they wrap.
- *
- * The mnemonic is returned to be shown to the user exactly once and never persisted.
- */
-export async function createVault(
-    password: string,
-    params: KdfParams = DEFAULT_KDF
-): Promise<{ keys: VaultKeys; mnemonic: string; enrollment: EnrollmentPayload }> {
-    const { generateRecoveryPhrase, recoveryKekFromMnemonic } = await import('./recovery');
-
-    const salt = randomBytes(SALT_BYTES);
-    const saltB64 = toBase64(salt);
-    const keyVersion = 1;
-
-    const { kek, verifier } = await deriveFromPassword(password, salt, params);
-
-    const rawDek = randomBytes(DEK_BYTES);
-    const wrappedDek = await seal(kek, rawDek, dekAad(saltB64, keyVersion));
-
-    const mnemonic = generateRecoveryPhrase();
-    const recoveryKek = await recoveryKekFromMnemonic(mnemonic);
-    const recoveryWrappedDek = await seal(recoveryKek, rawDek, recoveryAad(saltB64, keyVersion));
-
-    const keys = await expand(rawDek);
-    wipe(rawDek);
-
-    return {
-        keys,
-        mnemonic,
-        enrollment: {
-            kdfSalt: saltB64,
-            kdfParams: params,
-            verifier,
-            wrappedDek: toBase64(wrappedDek),
-            recoveryWrappedDek: toBase64(recoveryWrappedDek),
-            keyVersion
-        }
-    };
-}
-
-/** The login path: unwrap the DEK that already exists. */
-export async function unlockVault(
-    kek: CryptoKey,
-    wrappedDekB64: string,
-    kdfSaltB64: string,
-    keyVersion: number
-): Promise<VaultKeys> {
-    const rawDek = await open(kek, fromBase64(wrappedDekB64), dekAad(kdfSaltB64, keyVersion));
-    const keys = await expand(rawDek);
-    wipe(rawDek);
-    return keys;
-}
-
-/** Re-wrap the same DEK under a new password. No user data is touched. */
-export async function rewrapForNewPassword(
-    currentKeys: VaultKeys,
-    rawDek: Uint8Array,
-    newPassword: string,
-    nextKeyVersion: number,
-    params: KdfParams = DEFAULT_KDF
-): Promise<Omit<EnrollmentPayload, 'recoveryWrappedDek'>> {
-    const salt = randomBytes(SALT_BYTES);
-    const saltB64 = toBase64(salt);
-    const { kek, verifier } = await deriveFromPassword(newPassword, salt, params);
-    const wrappedDek = await seal(kek, rawDek, dekAad(saltB64, nextKeyVersion));
-
-    return {
-        kdfSalt: saltB64,
-        kdfParams: params,
-        verifier,
-        wrappedDek: toBase64(wrappedDek),
-        keyVersion: nextKeyVersion
-    };
-}
-```
-
-> **One wrinkle to be honest about.** `rewrapForNewPassword` needs the *raw* DEK, but the session
-> deliberately holds a non-extractable key. Two ways out, pick one and write it down:
-> (a) hold the raw DEK in a closure alongside the CryptoKey for the session's lifetime — simpler,
-> slightly weaker; or (b) re-derive the old KEK from the old password the user types into the
-> change-password form and unwrap `wrapped_dek` again — no long-lived raw material, one extra
-> Argon2id run. **Prefer (b).** The user is typing their old password on that screen anyway, so
-> the cost is invisible and the raw DEK never outlives a single function call.
-
-## 2.3 Payload encryption — `src/crypto/vault.ts`
-
-```ts
-import { fromBase64, openJson, sealJson, toBase64, requireSubtle } from './primitives';
-import type { VaultKeys } from './keys';
-
-export interface SubjectPlain {
-    v: 1;
-    name: string;
-    kind: 'full' | 'pulse';
-    date: string | null;
-    description: string;
-    stats: Record<string, number>;
-    tags: string[];
-    uncertain: string[];
-    guide_answers: Record<string, Record<string, number>>;
-}
-
-export interface RelationshipPlain {
-    v: 1;
-    name: string;
-    cadence_days: number | null;
-}
-
-const subjectAad = (clientId: string) => `alq:v1:subject:${clientId}`;
-const relationshipAad = (clientId: string) => `alq:v1:relationship:${clientId}`;
-
-export const newClientId = (): string => globalThis.crypto.randomUUID();
-
-/**
- * The blind index for a relationship name.
- *
- * NFC + trim, and deliberately NOT lowercased: "Alex" and "alex" have been two different
- * people since Phase 1 (see backfill.go), and the index must reproduce that rule exactly
- * or renaming would silently merge two stacks. NFC matters because a name typed on iOS and
- * the same name typed on Android can differ byte-for-byte while looking identical.
- */
-export async function blindIndex(keys: VaultKeys, name: string): Promise<string> {
-    const normalized = name.normalize('NFC').trim();
-    const mac = await requireSubtle().sign(
-        'HMAC', keys.nameHmacKey, new TextEncoder().encode(normalized)
-    );
-    return toBase64(new Uint8Array(mac));
-}
-
-export async function encryptSubject(
-    keys: VaultKeys, clientId: string, plain: SubjectPlain
-): Promise<string> {
-    return toBase64(await sealJson(keys.dek, plain, subjectAad(clientId)));
-}
-
-export async function decryptSubject(
-    keys: VaultKeys, clientId: string, blobB64: string
-): Promise<SubjectPlain> {
-    return openJson<SubjectPlain>(keys.dek, fromBase64(blobB64), subjectAad(clientId));
-}
-
-export async function encryptRelationship(
-    keys: VaultKeys, clientId: string, plain: RelationshipPlain
-): Promise<string> {
-    return toBase64(await sealJson(keys.dek, plain, relationshipAad(clientId)));
-}
-
-export async function decryptRelationship(
-    keys: VaultKeys, clientId: string, blobB64: string
-): Promise<RelationshipPlain> {
-    return openJson<RelationshipPlain>(keys.dek, fromBase64(blobB64), relationshipAad(clientId));
-}
-
-/**
- * Decrypt a fetched list, isolating failures.
- *
- * One unreadable row must not blank the dashboard: a row that fails to open is far more
- * likely to be a half-finished migration than an attack, and the user needs to see the
- * other 200 snapshots while that is sorted out. Failures are surfaced, never swallowed.
- */
-export async function decryptList<T>(
-    rows: { client_id: string; blob: string }[],
-    decrypt: (clientId: string, blob: string) => Promise<T>
-): Promise<{ items: T[]; failed: string[] }> {
-    const settled = await Promise.allSettled(
-        rows.map(row => decrypt(row.client_id, row.blob))
-    );
-
-    const items: T[] = [];
-    const failed: string[] = [];
-    settled.forEach((outcome, index) => {
-        if (outcome.status === 'fulfilled') items.push(outcome.value);
-        else failed.push(rows[index].client_id);
-    });
-    return { items, failed };
-}
-```
-
-## 2.4 Recovery — `src/crypto/recovery.ts`
-
-```ts
-import { entropyToMnemonic, mnemonicToEntropy, validateMnemonic } from '@scure/bip39';
-import { wordlist } from '@scure/bip39/wordlists/english';
-import { hkdf, importAesKey, randomBytes, wipe } from './primitives';
-
-/**
- * A 24-word BIP-39 phrase over 32 bytes of CSPRNG entropy: 256 bits, plus the checksum
- * that makes a mistyped word a clean error instead of a silent wrong key.
- *
- * BIP-39's own mnemonicToSeed is NOT used. It runs PBKDF2-HMAC-SHA512 for 2048 rounds,
- * which is stretching aimed at low-entropy user-chosen passphrases. This entropy is
- * machine-generated and already full-strength, so stretching would buy nothing and cost
- * a visible pause on a phone. HKDF over the raw entropy is the correct construction here.
- */
-export function generateRecoveryPhrase(): string {
-    const entropy = randomBytes(32);
-    const mnemonic = entropyToMnemonic(entropy, wordlist);
-    wipe(entropy);
-    return mnemonic;
-}
-
-export function isValidRecoveryPhrase(mnemonic: string): boolean {
-    return validateMnemonic(normalizePhrase(mnemonic), wordlist);
-}
-
-/** BIP-39 is lowercase, single-space separated; users paste all sorts of things. */
-export function normalizePhrase(mnemonic: string): string {
-    return mnemonic.normalize('NFKD').trim().toLowerCase().split(/\s+/).join(' ');
-}
-
-export async function recoveryKekFromMnemonic(mnemonic: string): Promise<CryptoKey> {
-    const normalized = normalizePhrase(mnemonic);
-    if (!validateMnemonic(normalized, wordlist)) {
-        throw new Error('That recovery phrase is not valid — check for a mistyped or missing word.');
-    }
-    const entropy = mnemonicToEntropy(normalized, wordlist);
-    const kekBytes = await hkdf(entropy, 'alq:recovery-kek:v1');
-    wipe(entropy);
-    const kek = await importAesKey(kekBytes);
-    wipe(kekBytes);
-    return kek;
-}
-```
-
-**Recovery flow.** The user supplies email + phrase + a new password. The server returns
-`recovery_wrapped_dek`, `kdf_salt` and `key_version` (rate-limited hard — this endpoint is a
-brute-force target, though 256 bits makes guessing hopeless). The client unwraps the DEK with
+Dependencies: `npm install hash-wasm @scure/bip39` — both dependency-free and WebView-safe,
+~25 KB gzipped total. Vite compiles `.ts` with no config change, so the crypto layer can be
+TypeScript alongside the existing JSX.
+
+Four modules, and the decisions inside them that are not obvious:
+
+| Module | Surface | The decisions |
+|---|---|---|
+| `src/crypto/primitives.ts` | `requireSubtle`, `randomBytes`, `wipe`, `toBase64`/`fromBase64`, `hkdf`, `importAesKey`, `importHmacKey`, `seal`/`open`, `sealJson`/`openJson` | The only file that touches `crypto.subtle`. `pack`/`unpack` is the single place the §1.2 layout is written down. HKDF uses an **empty salt** deliberately — the IKM is already 32 uniformly-random bytes, so Expand alone suffices and `info` is what separates branches. Keys import **non-extractable**, so material stays outside the JS heap. `open` throws one indistinguishable error for wrong key, corruption and AAD mismatch, by design |
+| `src/crypto/keys.ts` | `DEFAULT_KDF`, `deriveFromPassword`, `createVault`, `unlockVault`, `rewrapForNewPassword`, `VaultKeys {dek, nameHmacKey}` | The blind-index key must be derived while the DEK is still **raw** — once imported non-extractably it can no longer be HKDF input, which is why one `expand()` produces both keys. `createVault` produces password, DEK and phrase in one pass so they can never disagree about which DEK they wrap |
+| `src/crypto/vault.ts` | `newClientId`, `blindIndex`, `encrypt`/`decrypt` for subject and relationship, `decryptList` | `blindIndex` is NFC + trim and **not** lowercased, per §1.4. `decryptList` isolates failures via `allSettled`: one unreadable row must not blank the dashboard, and failures are surfaced rather than swallowed |
+| `src/crypto/recovery.ts` | `generateRecoveryPhrase`, `isValidRecoveryPhrase`, `normalizePhrase`, `recoveryKekFromMnemonic` | 24 words over 32 CSPRNG bytes: 256 bits plus the checksum that turns a mistyped word into a clean error. HKDF the raw entropy — never `mnemonicToSeed` (§1.1) |
+
+Random 96-bit IVs are safe by a wide margin here: collisions stay negligible below ~2³²
+encryptions under one key, and a heavy user produces a few thousand writes in a lifetime. DEK
+rotation for nonce exhaustion is not a concern at this scale.
+
+> **One wrinkle.** `rewrapForNewPassword` needs the *raw* DEK, but the session deliberately holds
+> a non-extractable key. Either (a) hold the raw DEK in a closure for the session — simpler,
+> weaker — or (b) re-derive the old KEK from the old password the user is already typing into
+> the change-password form and unwrap again. **Prefer (b):** the cost is invisible and the raw
+> DEK never outlives a single function call.
+
+**Recovery flow.** User supplies email + phrase + a new password. The server returns
+`recovery_wrapped_dek`, `kdf_salt` and `key_version` (rate-limited hard). The client unwraps with
 the recovery KEK, derives a fresh KEK from the new password, re-wraps, and posts the new
-`kdf_salt` / `verifier` / `wrapped_dek` with an incremented `key_version` and `token_epoch`.
-
-Offer to reissue the phrase at that point: the old one has just been typed into a form, may
-have been in a clipboard, and the user has proven they will need it again.
+`kdf_salt` / `verifier` / `wrapped_dek` with incremented `key_version` and `token_epoch`. Offer
+to reissue the phrase there: it has just been typed into a form and may have been in a clipboard.
 
 ## 2.5 Session key handling
 
-**Where the DEK lives:** in a module-scoped variable inside a React context provider, as a
+**Where the DEK lives:** a module-scoped variable inside a React context provider, as a
 non-extractable `CryptoKey`. Nowhere else.
 
-**Where it must never live:**
+**Where it must never live:** `localStorage`/`sessionStorage`; **`@capacitor/preferences`** —
+the trap, because it is backed by Android `SharedPreferences`, a **plaintext XML file** readable
+on any rooted device or via `adb backup` on a debuggable build; devtools-visible state; error
+reports; or a React prop that could reach a serialized error boundary.
 
-- `localStorage` / `sessionStorage` — readable by any XSS, and persists across sessions.
-- **`@capacitor/preferences`** — this one is a trap. It is backed by Android `SharedPreferences`,
-  which is a **plaintext XML file** in the app sandbox. It is not encrypted, and it is readable
-  on any rooted device or via `adb backup` on a debuggable build. The plugin is already a
-  dependency for other settings; do not reach for it here.
-- Redux/Zustand devtools-visible state, error reports, or analytics breadcrumbs.
-- The React tree as a prop that could end up in a serialized error boundary.
+**On wiping memory, honestly.** JavaScript cannot guarantee erasure — the GC copies objects,
+strings are immutable, and `fill(0)` scrubs only the copy you hold. `wipe()` is risk reduction,
+not a guarantee. The real mitigation is the non-extractable `CryptoKey`: that material lives
+outside the JS heap, so it survives no heap snapshot and no XSS read.
 
-**On wiping memory — the honest version.** JavaScript cannot guarantee erasure. The GC copies
-objects during compaction, strings are immutable, and a `Uint8Array.fill(0)` only scrubs the
-copy you happen to hold a reference to. `wipe()` above is genuine risk reduction, not a
-guarantee.
-
-The real mitigation is **non-extractable `CryptoKey`s**: the browser holds that key material
-outside the JS heap entirely, so it survives no heap snapshot and no XSS read. That is why every
-key in §2.2 is imported with `extractable: false`, and why raw bytes exist only inside a single
-function body.
-
-```ts
-// src/context/VaultContext.tsx  (sketch of the lifecycle contract)
-
-let sessionKeys: VaultKeys | null = null;   // module scope — never in React state
-
-export function setSessionKeys(keys: VaultKeys | null) { sessionKeys = keys; }
-export function requireSessionKeys(): VaultKeys {
-    if (!sessionKeys) throw new Error('Vault is locked.');
-    return sessionKeys;
-}
-
-/**
- * Teardown. Order matters: drop the keys first, so any in-flight render that tries to
- * decrypt after this point fails closed rather than racing against a half-cleared cache.
- */
-export function lockVault() {
-    sessionKeys = null;
-    clearCache();                                  // src/mobile/offlineCache.js
-    window.localStorage.removeItem('alq:token');
-}
-```
-
-Call `lockVault()` on: explicit logout, `AppLock`'s existing 15-minute idle timeout
-([AppLock.jsx:14](../src/components/AppLock.jsx#L14)), Capacitor's `appStateChange` to
-background (add to [useNativeShell.js](../src/mobile/useNativeShell.js)), and any `401`.
+`lockVault()` drops the keys first — so an in-flight render that tries to decrypt after it fails
+closed — then clears the cache and the token. Call it on explicit logout, `AppLock`'s existing
+15-minute idle timeout ([AppLock.jsx:14](../src/components/AppLock.jsx#L14)), Capacitor's
+`appStateChange` to background, and any `401`.
 
 **Consequence: page refresh logs the user out.** The DEK cannot survive a reload without being
-persisted somewhere, and every available "somewhere" is plaintext. This is a real UX regression
-and must be a deliberate, communicated decision. If it proves intolerable on Android, the only
-sound fix is wrapping the DEK with a hardware-backed key from the Android Keystore
-(`setUserAuthenticationRequired(true)`, unlocked by biometric) via a native plugin — a
-meaningful piece of work, not a config flag. Do not substitute `Preferences` for it.
+persisted, and every available "somewhere" is plaintext. This is a real UX regression and must be
+a deliberate, communicated decision. If it proves intolerable on Android, the only sound fix is
+wrapping the DEK with a hardware-backed Android Keystore key
+(`setUserAuthenticationRequired(true)`, biometric-unlocked) via a native plugin — meaningful
+work, not a config flag. Do not substitute `Preferences`.
 
-**`offlineCache.js` must be updated, and it now holds two things.** It writes the fully
-decrypted subject list to `localStorage` on native
-([offlineCache.js:56](../src/mobile/offlineCache.js#L56)), and since F1 (2026-09-04) it also
-holds the **journal outbox** — entries saved with no connectivity, queued as the request bodies
-they will be posted as ([offlineCache.js:131](../src/mobile/offlineCache.js#L131)). Under this
-design both must hold *ciphertext*: the cache must store the rows exactly as fetched, with
-decryption on read and in memory, and the outbox must be handed a body whose `payload` is
-already sealed. The outbox is the easier of the two — it stores what it is given and never
-inspects `payload`, so the envelope goes in at `createEntry`, not here — and it is the more
-urgent, because it is the one copy of writing the server has never seen. Otherwise the phone
-holds a plaintext copy of everything the server is no longer allowed to see, which would make
-the Android build the weakest link in the entire system.
+**`offlineCache.js` must hold ciphertext, and it now holds two things.** It writes the decrypted
+subject list to `localStorage` on native
+([offlineCache.js:56](../src/mobile/offlineCache.js#L56)) and, since F1 (2026-09-04), the
+**journal outbox** ([offlineCache.js:131](../src/mobile/offlineCache.js#L131)). The cache must
+store rows exactly as fetched and decrypt on read; the outbox must be handed a body whose
+`payload` is already sealed — easier, because it never inspects `payload`, so the envelope goes
+in at `createEntry`. It is also the more urgent of the two, being the one copy of the user's
+writing the server has never seen. Otherwise the phone holds a plaintext copy of everything the
+server is no longer allowed to see, making the Android build the weakest link in the system.
 
 ---
 
 # Section 3 — Migrating existing data
 
-## 3.1 Feasibility: what is and is not possible
+## 3.1 Feasibility
 
-**A server-side background migration is impossible.** Not difficult — impossible, and the
-impossibility is the feature working correctly.
+**A server-side background migration is impossible** — and the impossibility is the feature
+working. Encrypting a user's rows needs their DEK; the DEK is wrapped by a KEK derived from
+their password; the server stores only `bcrypt(...)`, which is one-way. If the server had a
+path, so would an administrator.
 
-Encrypting a user's existing rows requires their DEK. The DEK is wrapped by a KEK derived from
-their password via Argon2id. The server stores only `bcrypt(password)`, which is one-way. So at
-rest, with no user present, the server has no path to the DEK. If it did, so would an
-administrator, and the design would be pointless.
-
-Three consequences that shape everything below:
-
-1. **Migration only happens while a user is logged in with their password in memory.** There is
-   exactly one moment this is true: immediately after a successful login, before the password
-   variable goes out of scope.
-2. **Migration is a client-side data transfer**, not a SQL script. Rows must be fetched in
-   plaintext, encrypted in the browser, and written back. For a heavy user with a few thousand
-   snapshots this is seconds; it is still a loop over the network.
+1. **Migration happens only while a user is logged in with their password in memory** — one
+   moment, immediately after a successful login.
+2. **It is a client-side data transfer, not a SQL script.** Rows are fetched plaintext,
+   encrypted in the browser, written back. Seconds for a heavy user; still a network loop.
 3. **Some accounts will never migrate.** Anyone who never logs in again is permanently legacy.
-   §3.4 is about accepting that rather than pretending otherwise.
 
 ## 3.2 Rollout phases
 
 | Phase | Server | Client | Exit condition |
 |---|---|---|---|
-| **P0** Schema | Phase 1 DDL. Dual-read: serve `blob` if `is_encrypted`, else plaintext. Accept both write shapes. | Unchanged. | Deployed, no behaviour change. |
-| **P1** New accounts | `/api/auth/params`, verifier login, `/api/me/enroll-encryption`. | Signup generates DEK + mnemonic. New accounts start `encrypted`. | New signups are zero-knowledge. |
-| **P2** Lazy migration | `/api/migrate/batch`, `/api/me/finalize-encryption`. | On-login enrollment + resumable batch loop. | `legacy` count trends to zero. |
-| **P3** Enforcement | Reject plaintext writes. Phase 3 DDL. `VACUUM FULL`. Destroy old backups. | Drop all legacy read paths. | No plaintext remains. |
+| **P0** Schema | Phase 1 DDL. Dual-read: serve `blob` if `is_encrypted`, else plaintext. Accept both write shapes | Unchanged | Deployed, no behaviour change |
+| **P1** New accounts | `/api/auth/params`, verifier login, `/api/me/enroll-encryption` | Signup generates DEK + mnemonic; new accounts start `encrypted` | New signups are zero-knowledge |
+| **P2** Lazy migration | `/api/migrate/batch`, `/api/me/finalize-encryption` | On-login enrollment + resumable batch loop | `legacy` count trends to zero |
+| **P3** Enforcement | Reject plaintext writes. Phase 3 DDL. `VACUUM FULL`. Destroy old backups | Drop all legacy read paths | No plaintext remains |
 
-Do not compress P0 and P1. P0 deployed alone, and left alone for a release cycle, is what proves
-the dual-read path works before any data depends on it.
+Do not compress P0 and P1. P0 deployed alone for a release cycle is what proves the dual-read
+path works before any data depends on it.
 
 ## 3.3 On-login migration
 
-```
-1. User logs in normally (legacy path: email + password).
-   Server returns { token, encryption_status: "legacy" }.
+1. User logs in on the legacy path; server returns `encryption_status: "legacy"`.
+2. Client enters a **blocking** one-time flow. Blocking is deliberate: a half-migrated account
+   edited by a user who dismissed the prompt is the worst reachable state.
+3. **"Download a copy of your data first"** — reuse `GET /api/export`
+   ([vault.go:91](../backend/internal/handlers/vault.go#L91)). This is the last moment the
+   server can produce a plaintext file, and the only backstop that survives every failure below,
+   including "user forgets password and loses the phrase".
+4. Show the 24-word phrase and **require three randomly-chosen words back**. Not a checkbox:
+   this is the single point where irreversible loss of access is created.
+5. `POST /api/me/enroll-encryption` → `encryption_status = 'migrating'`. The server **keeps** the
+   old `bcrypt(password)`, which is what lets an interrupted migration log in the old way
+   tomorrow.
+6. The batch loop below — resumable, idempotent.
+7. `POST /api/me/finalize-encryption`, in one transaction: verify zero unencrypted subjects and
+   relationships, set `password = bcrypt(verifier)` (legacy login dies here),
+   `encryption_status = 'encrypted'`, `token_epoch + 1`. A finalize that finds one unmigrated row
+   must 409, not "mostly succeed".
 
-2. Client sees "legacy" and enters a BLOCKING one-time flow. Blocking is deliberate:
-   a half-migrated account edited by a user who dismissed the prompt is the worst state
-   available, and it is reachable in one click if the dialog is dismissible.
+**The batch loop is two-phase, and that is the crux.** Batches of 50, relationships first — a
+snapshot's blind index depends on its relationship's name, so migrating subjects against
+unmigrated relationships would need a second pass.
 
-3. "Download a copy of your data first" — reuse the existing GET /api/export
-   (vault.go:91) to hand the user a plaintext JSON file. This is the last moment the
-   server can produce one, and it is the only backstop that survives every failure
-   mode below, including "user forgets password and loses the phrase".
+- **Phase A** `/api/migrate/batch` writes the ciphertext, leaving the plaintext columns intact.
+- **Phase B** `/api/migrate/verify` re-fetches what the server actually stored, the client
+  decrypts it to prove it round-trips, and only then `/api/migrate/commit` nulls the plaintext.
 
-4. Show the 24-word recovery phrase. REQUIRE confirmation by asking for three
-   randomly-chosen words back. Do not proceed on a checkbox: this is the single point
-   where an irreversible loss of access is created, and the user must have engaged
-   with it.
+A single-phase "encrypt and overwrite" is one dropped connection from a row whose plaintext is
+gone and whose ciphertext never arrived. Two-phase means every intermediate state is readable by
+someone: after A the plaintext is still authoritative, after B the ciphertext is proven.
 
-5. POST /api/me/enroll-encryption
-     { kdf_salt, kdf_params, verifier, wrapped_dek, recovery_wrapped_dek, client_id }
-   Server: encryption_status = 'migrating'. It KEEPS the old bcrypt(password) in
-   users.password. That is what lets an interrupted migration still log in the old
-   way tomorrow.
+`commit` is the only statement that destroys anything, and its `WHERE` carries
+`blob IS NOT NULL` — structurally preventing a commit from clearing plaintext on a row that
+never received ciphertext, whatever ids the client sends. It uses `UpdateColumns` rather than
+`Updates`, matching [backfill.go:78](../backend/internal/database/backfill.go#L78): a mechanical
+migration should not make every row look freshly edited. Retries are idempotent by construction.
 
-6. Batch loop (see below), resumable, idempotent.
-
-7. POST /api/me/finalize-encryption
-   Server, in one transaction:
-     - verify COUNT(*) FROM analysis_subjects WHERE user_id = ? AND is_encrypted = FALSE  == 0
-     - verify the same for relationships
-     - users.password = bcrypt(verifier)     <- the swap; legacy login dies here
-     - encryption_status = 'encrypted'
-     - token_epoch = token_epoch + 1
-   A finalize that finds even one unmigrated row must 409, not "mostly succeed".
-```
-
-### The batch loop, and why it is two-phase
-
-```ts
-// src/migration/migrate.ts
-
-const BATCH = 50;
-
-/**
- * Encrypt one user's history in place.
- *
- * Two-phase per batch, and this is the crux of the whole migration:
- *
- *   Phase A  write the ciphertext, leave the plaintext columns intact
- *   Phase B  re-fetch, decrypt, verify it round-trips, and only THEN null the plaintext
- *
- * A single-phase "encrypt and overwrite" is one dropped connection away from a row whose
- * plaintext is gone and whose ciphertext never arrived. Two-phase means every intermediate
- * state is readable by someone: after A the plaintext is still authoritative, after B the
- * ciphertext is proven. There is no window in which a row is unreadable.
- */
-export async function migrateAccount(keys: VaultKeys, onProgress: (done: number, total: number) => void) {
-    const { data: pending } = await axios.get('/api/migrate/pending');
-    let done = 0;
-
-    // Relationships first: a snapshot's blind index depends on its relationship's name,
-    // so migrating subjects against unmigrated relationships would need a second pass.
-    for (const chunk of batches(pending.relationships, BATCH)) {
-        const prepared = await Promise.all(chunk.map(async (row) => {
-            const clientId = row.client_id ?? newClientId();
-            return {
-                id: row.ID,
-                client_id: clientId,
-                name_hmac: await blindIndex(keys, row.name),
-                blob: await encryptRelationship(keys, clientId, {
-                    v: 1, name: row.name, cadence_days: row.cadence_days
-                })
-            };
-        }));
-
-        // Phase A — ciphertext lands, plaintext untouched.
-        await axios.post('/api/migrate/batch', { kind: 'relationships', rows: prepared });
-
-        // Phase B — server re-reads what it stored; we prove it opens before anything is lost.
-        const { data: stored } = await axios.post('/api/migrate/verify', {
-            kind: 'relationships', ids: prepared.map(r => r.id)
-        });
-        for (const row of stored.rows) {
-            await decryptRelationship(keys, row.client_id, row.blob);  // throws => abort, plaintext intact
-        }
-        await axios.post('/api/migrate/commit', {
-            kind: 'relationships', ids: prepared.map(r => r.id)
-        });
-
-        done += chunk.length;
-        onProgress(done, pending.total);
-    }
-
-    // ... identical shape for subjects ...
-}
-```
-
-Server side, `commit` is the only statement that destroys anything:
-
-```go
-// Idempotent by construction: a retried commit re-nulls already-null columns and
-// re-sets an already-true flag. A client that loses its response mid-batch retries
-// the whole batch safely.
-err := tx.Model(&models.AnalysisSubject{}).
-    Where("user_id = ? AND id IN ? AND blob IS NOT NULL", userID, ids).
-    UpdateColumns(map[string]interface{}{
-        "is_encrypted":  true,
-        "name":          "",
-        "description":   "",
-        "date":          nil,
-        "kind":          "",
-        "stats":         nil,
-        "tags":          nil,
-        "uncertain":     nil,
-        "guide_answers": nil,
-    }).Error
-```
-
-Note `blob IS NOT NULL` in the `WHERE`. It makes it structurally impossible for a commit to
-clear plaintext on a row that never received ciphertext, regardless of what ids the client sends.
-
-`UpdateColumns` rather than `Updates`, matching the reasoning already established at
-[backfill.go:78](../backend/internal/database/backfill.go#L78): a mechanical migration should not
-make every row in the database look freshly edited.
-
-### Run the relationship backfill first
-
-[`BackfillRelationships`](../backend/internal/database/backfill.go#L35) groups legacy snapshots by
-`TRIM(name)` to assign `relationship_id`. It reads plaintext names. **After encryption it can
-never run again.**
-
-So: confirm it has completed and reported zero on every deployment *before* P2 begins. A snapshot
-that reaches encryption with `relationship_id IS NULL` becomes permanently unlinkable — the
-server can no longer group it and the client has no way to ask it to.
+**Run the relationship backfill first.**
+[`BackfillRelationships`](../backend/internal/database/backfill.go#L35) groups legacy snapshots
+by `TRIM(name)` to assign `relationship_id`, and it reads plaintext names — so **after
+encryption it can never run again**. Confirm it has completed and reported zero on every
+deployment *before* P2 begins. A snapshot reaching encryption with `relationship_id IS NULL`
+becomes permanently unlinkable.
 
 ## 3.4 Inactive accounts
 
-Generic SaaS advice ("email them three times, then delete") does not apply cleanly here, and it
-is worth being precise about why: this app has **no scheduler, no email, and no push**, as
-[models.go:29-33](../backend/internal/models/models.go#L29-L33) states plainly. There is no
-mechanism to notify a dormant user, and adding one is a larger project than this migration.
+Generic SaaS advice does not apply: this app has **no scheduler, no email, and no push**
+([models.go:29-33](../backend/internal/models/models.go#L29-L33)), so there is no way to notify a
+dormant user, and adding one is a larger project than this migration. More importantly it is
+**self-hosted** — the operator and the user are usually the same person, and "inactive accounts"
+means "the test account I made in February".
 
-More importantly, it is **self-hosted**. In the common deployment the operator and the user are
-the same person, and "inactive accounts" means "the test account I made in February". Sizing this
-problem like a multi-tenant SaaS would be solving someone else's problem.
+**For the self-hosted case:** add `GET /api/admin/encryption-status` returning
+`{legacy, migrating, encrypted}` counts; leave `legacy` accounts working indefinitely (they are
+no worse off than today); surface the state honestly on the Vault page; and gate P3 on the count
+reaching zero, which the `DO $$` guard enforces mechanically.
 
-**Recommended policy for the self-hosted case:**
-
-1. Add a `GET /api/admin/encryption-status` returning `{legacy, migrating, encrypted}` counts.
-   The operator can see exactly who is outstanding.
-2. Leave `legacy` accounts working indefinitely. They are no worse off than today.
-3. Surface the state in the app: the Vault page already explains where data lives — add an
-   honest banner saying this account's data is *not* encrypted and one login will fix it.
-4. Gate P3 on the count reaching zero, which the DDL's `DO $$` block enforces mechanically.
-
-**If you are running this multi-tenant**, the options are only these three, and none is free:
-
-| Option | Cost |
-|---|---|
-| Wait indefinitely | Plaintext persists; P3 never runs; the promise is never fully delivered. |
-| Hard cutoff — export to an encrypted archive keyed by a server-held key, then purge the rows | Those specific accounts are *not* zero-knowledge and must be labelled as such. Honest, but it is an asterisk on the claim. |
-| Hard cutoff — delete after a stated notice period | Clean and truthful. Requires the notification channel you do not have. |
-
-Pick one and document it in the privacy policy. Do not leave it undecided, because "undecided"
-resolves in practice to option one.
+**Multi-tenant** has only three options, none free: wait indefinitely (plaintext persists, P3
+never runs); export stragglers to an archive keyed by a server-held key, then purge — honest,
+but those accounts are *not* zero-knowledge and must be labelled so; or delete after a stated
+notice period, which is clean but needs the notification channel you do not have. Pick one and
+document it, because "undecided" resolves in practice to the first.
 
 ## 3.5 Data-loss edge cases
 
 | # | Scenario | Guard |
 |---|---|---|
-| 1 | User forgets password, never saved the phrase | **Unrecoverable — accept it.** Mitigated by the forced three-word confirmation (§3.3 step 4) and the pre-migration export (step 3). This is the cost of the feature, not a bug in it. |
-| 2 | Network drops mid-batch | Two-phase commit (§3.3). After Phase A the plaintext is still authoritative; the loop resumes from `/api/migrate/pending`. No row is ever in an unreadable state. |
-| 3 | Ciphertext written, plaintext cleared, blob later fails to open | Phase B decrypts a server round-trip *before* commit. A blob that cannot be read back never reaches commit. |
-| 4 | Two devices migrate the same account concurrently | `enroll-encryption` rejects unless `encryption_status = 'legacy'` under `SELECT ... FOR UPDATE`. The loser gets 409 and re-logs in against the now-`migrating` account. Two different DEKs for one account is the unrecoverable case this prevents. |
-| 5 | Old Android APK hits a migrated account | **Side-loaded APKs cannot be force-updated.** Require an `X-ALQ-Client` version header; return **426 Upgrade Required** when an encrypted account is accessed by a client below the minimum. Without this, an old client reads `blob` as an absent field and cheerfully renders an empty vault — which users will report as data loss. |
-| 6 | Password changed mid-migration | Reject `/api/me/password` with 409 while `encryption_status = 'migrating'`. |
-| 7 | `offlineCache` holds pre-migration plaintext | `clearCache()` on enroll, and re-fetch. Already exported from [offlineCache.js:87](../src/mobile/offlineCache.js#L87). |
-| 7b | The **journal outbox** holds pre-migration plaintext | It cannot simply be cleared — unlike the cache, its rows exist nowhere else. Flush it before enrolling and refuse to enrol while it is non-empty, or re-seal each queued body under the new DEK. `clearOutbox()` exists ([offlineCache.js:148](../src/mobile/offlineCache.js#L148)) and is the wrong tool here. |
-| 8 | User imports an old plaintext export after migrating | Import moves client-side: parse, encrypt, POST ciphertext. The server's [`ImportVault`](../backend/internal/handlers/vault.go#L173) must reject plaintext bodies from encrypted accounts rather than silently storing them. |
-| 9 | Half-migrated account, user edits a snapshot | Block writes while `migrating` (the flow is blocking anyway). Belt and braces: server rejects a plaintext write when `encryption_status <> 'legacy'`. |
-| 10 | Backups still contain plaintext after P3 | §1.3. Destroy pre-migration backups; they are a complete bypass of everything above. |
-| 11 | `crypto.subtle` unavailable (insecure origin) | Fail closed with the explicit error from `requireSubtle()`. Never fall back to storing plaintext — a silent downgrade is worse than a hard failure. |
+| 1 | User forgets password, never saved the phrase | **Unrecoverable — accept it.** Mitigated by the forced three-word confirmation and the pre-migration export. The cost of the feature, not a bug in it |
+| 2 | Network drops mid-batch | Two-phase commit. After Phase A the plaintext is still authoritative; the loop resumes from `/api/migrate/pending` |
+| 3 | Ciphertext written, plaintext cleared, blob later fails to open | Phase B decrypts a server round-trip *before* commit, so an unreadable blob never reaches commit |
+| 4 | Two devices migrate concurrently | `enroll-encryption` rejects unless `encryption_status = 'legacy'` under `SELECT … FOR UPDATE`. The loser gets 409. Two DEKs for one account is the unrecoverable case this prevents |
+| 5 | Old Android APK hits a migrated account | **Side-loaded APKs cannot be force-updated.** Require an `X-ALQ-Client` version header and return **426 Upgrade Required**. Without it an old client reads `blob` as absent and renders an empty vault, which users report as data loss |
+| 6 | Password changed mid-migration | Reject `/api/me/password` with 409 while `migrating` |
+| 7 | `offlineCache` holds pre-migration plaintext | `clearCache()` on enroll, then re-fetch ([offlineCache.js:87](../src/mobile/offlineCache.js#L87)) |
+| 7b | The **journal outbox** holds pre-migration plaintext | It cannot simply be cleared — its rows exist nowhere else. Flush it before enrolling and refuse to enrol while non-empty, or re-seal each queued body. `clearOutbox()` ([offlineCache.js:148](../src/mobile/offlineCache.js#L148)) is the wrong tool |
+| 8 | User imports an old plaintext export after migrating | Import moves client-side. [`ImportVault`](../backend/internal/handlers/vault.go#L173) must reject plaintext bodies from encrypted accounts rather than storing them |
+| 9 | Half-migrated account, user edits a snapshot | Block writes while `migrating`; server also rejects plaintext writes when `encryption_status <> 'legacy'` |
+| 10 | Backups still contain plaintext after P3 | §1.3 — destroy them; they bypass everything above |
+| 11 | `crypto.subtle` unavailable (insecure origin) | Fail closed with an explicit error. Never fall back to plaintext — a silent downgrade is worse than a hard failure |
 
 ---
 
@@ -1353,177 +483,129 @@ resolves in practice to option one.
 
 ## 4.1 Search and indexing
 
-**What is lost:** any future `WHERE description LIKE ...` or server-side filter on content.
-Ordering by `date` goes with it — [`GetSubjects`](../backend/internal/handlers/subjects.go#L266)
-sorts on `date DESC`, [`summaryQuery`](../backend/internal/handlers/relationships.go#L124) computes
-`MAX(date)`, and [`GetMeta`](../backend/internal/handlers/vault.go#L416) computes `MIN(date)`. All
-three must move to the client.
+**Lost:** any server-side filter on content, and ordering by `date` —
+[`GetSubjects`](../backend/internal/handlers/subjects.go#L266) sorts on `date DESC`,
+[`summaryQuery`](../backend/internal/handlers/relationships.go#L124) computes `MAX(date)`, and
+[`GetMeta`](../backend/internal/handlers/vault.go#L416) computes `MIN(date)`. All three move to
+the client.
 
-**What it actually costs this app: close to nothing.** There is no server-side search today —
-every filter in `Dashboard.jsx` runs client-side over a fully-loaded array, and
-[subjects.go:263](../backend/internal/handlers/subjects.go#L263) states that pagination is
+**Actual cost: close to nothing.** There is no server-side search today; every filter in
+`Dashboard.jsx` runs client-side over a fully-loaded array, and
+[subjects.go:263](../backend/internal/handlers/subjects.go#L263) states pagination is
 deliberately absent because the dashboard would need ~500 snapshots before the payload mattered.
-The client already holds every row, so sorting and searching there is a straight relocation, not
-a loss of capability.
+The client already holds every row, so this is a relocation, not a loss.
 
-**What it forecloses:** server-side pagination, server-side full-text search, and any
-"relationships you have not scored in a while" query computed in SQL. If the product ever
-outgrows load-everything, that is the moment this decision becomes expensive. Blind indexes
-extend to equality only; substring search over encrypted data means order-revealing encryption,
-which leaks enough to reconstruct plaintext and should not be used here.
-
-`COUNT(*)` survives and stays server-side — cardinality is already visible metadata.
+**Foreclosed:** server-side pagination, full-text search, and any "not scored in a while" query
+in SQL. Blind indexes extend to equality only; substring search over encrypted data means
+order-revealing encryption, which leaks enough to reconstruct plaintext. `COUNT(*)` survives —
+cardinality is already visible metadata.
 
 ## 4.2 Background jobs and analytics
 
 **Effectively free, because there are none.** Cadence reminders are already computed in the
-browser from the latest snapshot date, and `models.go` says why: "there is no scheduler, no
-email, and no push... which is what keeps 'nothing leaves this machine' true." The app was built
-against this constraint before it was a constraint.
+browser, and `models.go` says why: "there is no scheduler, no email, and no push… which is what
+keeps 'nothing leaves this machine' true." The app was built against this constraint before it
+was one.
 
-**What becomes permanently impossible:**
-
-- Server-side aggregate analytics *derived from stored data*. Analytics is still reachable, but
-  only as a separate opt-in channel that the client feeds deliberately — see
-  [§5](#section-5--anonymized-analytics-over-the-userbase), which is a harder problem than it
-  looks and is not solved by "strip the user id".
-- Server-sent reminders — including email digests, push notifications about a due check-in, or
-  anything else that requires the server to know *what* it is reminding you about. Client-scheduled
-  local notifications via `@capacitor/local-notifications` still work, since the client knows.
-- Server-side deduplication on import. [`isDuplicateSnapshot`](../backend/internal/handlers/vault.go#L370)
-  compares dates and stats maps; both are inside the blob. Import dedup moves client-side.
-- Server-side export. [`ExportVault`](../backend/internal/handlers/vault.go#L91) assembles the
-  document from plaintext. It becomes a client-side assembly over decrypted rows — which is
-  arguably where a document described as "the app's promise that the data is yours" belonged
-  anyway.
-- Operator-side debugging of a data complaint. "My scores look wrong" becomes unfalsifiable from
-  the server. Budget for that in support.
+**Permanently impossible:** server-side aggregate analytics derived from stored data (only the
+separate opt-in channel of [§5](#section-5--anonymized-analytics-over-the-userbase) remains);
+server-sent reminders of any kind that require the server to know *what* it is reminding you
+about — client-scheduled local notifications still work; server-side import dedup
+([`isDuplicateSnapshot`](../backend/internal/handlers/vault.go#L370) compares dates and stats,
+both inside the blob); server-side export
+([`ExportVault`](../backend/internal/handlers/vault.go#L91)), which becomes client-side assembly
+— arguably where "the app's promise that the data is yours" belonged anyway; and operator-side
+debugging of a data complaint, which becomes unfalsifiable from the server. Budget for that in
+support.
 
 ## 4.3 Password reset and recovery
 
-**Password reset by email is gone, permanently.** There is no reset — only *change* (§1.6, requires
-the old password) and *recovery* (§2.4, requires the mnemonic). An administrator with root on the
-database and the host cannot help a user who has lost both. That is the guarantee working, and it
-will still generate angry support tickets.
+**Password reset by email is gone, permanently.** There is only *change* (§1.6, needs the old
+password) and *recovery* (§2.4, needs the mnemonic). An administrator with root cannot help a
+user who has lost both. That is the guarantee working, and it will still generate angry tickets.
 
-Specific risks:
-
-- **The recovery phrase is a bearer secret.** Anyone holding those 24 words has full access,
-  forever, without the password. A screenshot in a cloud photo library defeats the entire system.
-  The UI must say this at the moment it displays the phrase.
-- **No phrase rotation without the DEK.** Reissuing requires an unlocked session, so a user who
-  suspects their phrase was exposed must log in to fix it. Offer rotation in Settings and after
-  every recovery.
-- **Single-factor by construction.** There is no second factor that can gate decryption, because
-  decryption happens client-side with material derived from the password alone.
-- **Argon2id cost is a UX/security dial with a hard floor.** 64 MiB × 3 iterations may take 2–3 s
-  on a low-end Android device. Per-user parameters (§1.1) let you lower it for those devices, but
-  every reduction directly reduces offline-cracking cost against a stolen `wrapped_dek`. Measure
-  on your oldest supported device before shipping.
+- **The recovery phrase is a bearer secret.** Anyone holding those 24 words has full access
+  forever, without the password. A screenshot in a cloud photo library defeats the entire
+  system, and the UI must say so at the moment it displays the phrase.
+- **No phrase rotation without the DEK** — reissuing needs an unlocked session. Offer rotation in
+  Settings and after every recovery.
+- **Single-factor by construction.** No second factor can gate decryption, because decryption
+  happens client-side from the password alone.
+- **Argon2id cost is a UX/security dial with a hard floor** — see §1.1.
 
 ## 4.4 Pre-existing issues this change surfaces
 
-Two things found while reading the code that are not caused by this refactor but that undercut
-its promise, and should be fixed alongside it:
+Not caused by this refactor, but they undercut its promise and should be fixed alongside it:
 
 1. **`/uploads` is served unauthenticated.** [main.go:30](../backend/cmd/server/main.go#L30)
    registers `r.Static("/uploads", "./uploads")` *outside* the protected group, and
-   [upload.go](../backend/internal/handlers/upload.go) names files
-   `profile_<UnixNano>.<ext>` — guessable within a narrow time window and enumerable if the
-   directory is listable. Profile pictures are currently readable by anyone who can reach the
-   server. Encrypting the database while serving avatars from an open directory is an
-   inconsistent promise. Fix: move uploads behind `AuthMiddleware`, or encrypt them client-side
-   and store the blob (the honest option, and the one consistent with everything above).
-
-2. **`offlineCache` writes plaintext to `localStorage` on Android** — the subject list
-   ([offlineCache.js:56](../src/mobile/offlineCache.js#L56)) and, since F1, the journal outbox
-   ([offlineCache.js:131](../src/mobile/offlineCache.js#L131)).
-   Covered in §2.5 — restating it here because if only one thing from this document gets
-   implemented late, this is the one that turns the whole exercise into theatre on the platform
-   the data is most likely to be carried around on.
+   [upload.go](../backend/internal/handlers/upload.go) names files `profile_<UnixNano>.<ext>` —
+   guessable within a narrow window and enumerable if the directory is listable. Encrypting the
+   database while serving avatars from an open directory is an inconsistent promise.
+2. **`offlineCache` writes plaintext to `localStorage` on Android** — the subject list and, since
+   F1, the journal outbox. Covered in §2.5; restated because if only one thing here is
+   implemented late, this is the one that turns the exercise into theatre on the platform the
+   data is most likely to be carried around on.
 
 ---
 
 # Section 5 — Anonymized analytics over the userbase
 
 **Short answer: yes, but it cannot be derived from what is stored.** The server holds ciphertext
-and no key, so there is nothing to aggregate. Analytics has to be a *second, separate channel*
-that the client computes from plaintext it already has and submits deliberately, under opt-in.
-
-That channel is easy to build and easy to build wrong. The failure mode is not a leak of the
-whole vault — it is a slow reintroduction of exactly the trust relationship §1–§4 exists to
-remove, in a subsystem nobody is auditing because it is "just telemetry".
+and no key, so there is nothing to aggregate. Analytics must be a *second, separate channel* the
+client computes from plaintext it already has and submits under opt-in. The failure mode is not
+a leak of the vault — it is slowly reintroducing exactly the trust relationship §1–§4 exists to
+remove, inside a subsystem nobody audits because it is "just telemetry".
 
 ## 5.1 The design rule
 
 > **Assume every analytics submission will be attributed to a named account. Design the payload
 > so that it is still safe under that assumption.**
 
-This is not paranoia, it is the honest reading of the threat model. If the operator is the
-adversary — which is the premise of this entire document — then the operator also controls
-Nginx, the TLS terminator, the application logs and the database. Consider what they see even
-with a perfect payload:
+If the operator is the adversary — the premise of this document — they also control Nginx, the
+TLS terminator, the logs and the database. Even with a perfect payload they see the **IP and
+timing** (an unauthenticated POST fourteen seconds after an authenticated session from the same
+address is not anonymous), the **arrival order** (a `BIGSERIAL` encodes it, and so does `ctid`
+without one — aligning that against the auth log re-links submissions to sessions), and the
+**deployment shape** (on an instance with three users, "anonymous" is a one-in-three guess).
 
-- **IP address and timing.** An unauthenticated `POST /api/analytics` from `1.2.3.4` fourteen
-  seconds after an authenticated session from `1.2.3.4` is not anonymous in any useful sense.
-- **Arrival order.** A `BIGSERIAL` primary key encodes insertion sequence. So does physical row
-  order (`ctid`) even without one. Aligning that sequence against the auth log re-links
-  submissions to sessions.
-- **Deployment shape.** On a self-hosted instance with three users, "anonymous" is a
-  one-in-three guess.
-
-The standard mitigations — batching, random delay, stripping IPs at the edge, shuffled inserts —
-all work against an *honest* operator who wants to avoid accidentally learning things. **None of
-them constrain a dishonest one**, because they are all implemented on infrastructure the
-adversary controls. Genuinely breaking the network link requires a third party the operator does
-not run: an Oblivious HTTP relay, a trusted aggregator, or equivalent. That is real
-infrastructure, and almost certainly out of scope here.
-
-Hence the rule. The payload must survive attribution, because attribution is probably available.
+Batching, random delay, stripping IPs at the edge and shuffled inserts all work against an
+*honest* operator; **none constrain a dishonest one**, because all are implemented on
+infrastructure the adversary controls. Genuinely breaking the link needs a third party the
+operator does not run — an Oblivious HTTP relay or a trusted aggregator — which is almost
+certainly out of scope.
 
 ## 5.2 What can and cannot be sent
 
 | Signal | Safe? | Why |
 |---|---|---|
 | Per-category score, bucketed to deciles | ✅ with noise (§5.4) | One number out of ten, per category, reported independently |
-| Count of relationships tracked, as a band (`1`, `2–4`, `5–9`, `10+`) | ✅ with noise | Coarse, low-cardinality |
+| Relationship count as a band (`1`, `2–4`, `5–9`, `10+`) | ✅ with noise | Coarse, low-cardinality |
 | Median days between snapshots, as a band | ✅ with noise | Behavioural, not content |
 | Which categories were marked `uncertain` (7 bits) | ✅ with noise | Fixed low-cardinality domain |
-| Guide-answer distribution (already a 0–3 scale) | ✅ with noise | Coarse by construction |
-| Preset context tags, from the fixed `ContextCapsule` list only | ⚠️ carefully | Fixed vocabulary is fine; the *combination* of several rare tags is not |
-| **The full 7-category score vector** | ❌ | See §5.3 — this is the big one |
-| Free-text `description` | ❌ never | Unbounded text is inherently re-identifying, and the highest-sensitivity field in the app |
-| Relationship names, or any hash of them | ❌ never | A blind index is unlinkable *to the server*; a name hash submitted alongside analytics is a join key |
-| Exact dates | ❌ | Coarsen to month at most; a precise date is a near-unique fingerprint |
-| Age, MBTI type, email domain | ❌ | Classic quasi-identifiers; three of them together identify almost anyone |
+| Guide-answer distribution (0–3 scale) | ✅ with noise | Coarse by construction |
+| Preset context tags, from the fixed list only | ⚠️ carefully | The fixed vocabulary is fine; a *combination* of several rare tags is not |
+| **The full 7-category score vector** | ❌ | §5.3 |
+| Free-text `description` | ❌ never | Unbounded text is inherently re-identifying |
+| Relationship names, or any hash of them | ❌ never | A blind index is unlinkable *to the server*; a name hash sent alongside analytics is a join key |
+| Exact dates | ❌ | Coarsen to month at most |
+| Age, MBTI type, email domain | ❌ | Classic quasi-identifiers; three together identify almost anyone |
 
 ## 5.3 The tension that decides how useful this can be
 
-**Marginals are defensible. Joint distributions are re-identifying.** This is the constraint
-that determines whether the feature is worth building.
+**Marginals are defensible. Joint distributions are re-identifying.** Seven categories at 0–100
+gives 10¹⁴ possible vectors; bucketed hard to deciles it is still 10⁷. With a thousand users
+essentially every submitted vector is unique — and a unique record is a pseudonym: observe the
+same account twice and you have a trajectory, and a trajectory plus one external fact identifies
+a person. So each category must be reported **as an independent marginal**, never as a vector
+sharing a submission.
 
-Seven categories at 0–100 gives 10<sup>14</sup> possible score vectors. Bucketed hard to deciles
-it is still 10<sup>7</sup> — ten million combinations. With a thousand users, essentially every
-submitted vector is unique. A unique record is a pseudonym: observe the same account twice and
-you have a trajectory, and a trajectory plus one external fact identifies a person.
-
-So each category must be reported **as an independent marginal**, never as a vector sharing a
-submission.
-
-That is a genuine capability loss, and it lands squarely on the most interesting questions:
-
-| Question | Answerable? |
-|---|---|
-| "What does the distribution of Trust scores look like?" | ✅ marginal |
-| "How many people does a typical user track?" | ✅ marginal |
-| "Which category is most often marked uncertain?" | ✅ marginal |
-| "Do people who score high on Eros also score high on Ludus?" | ❌ needs the joint |
-| "Do scores drift up or down over months?" | ❌ needs longitudinal linkage — i.e. a pseudonym |
-| "Do users who check in weekly report higher Trust?" | ❌ needs two fields joined per user |
-
-Pairwise marginals can be released with the privacy budget split across pairs, but with 21
-pairs the per-pair budget — and therefore the accuracy — collapses. Treat correlation analysis
-as unavailable.
+Answerable: the distribution of a single category, how many people a typical user tracks, which
+category is most often uncertain. Not answerable: any correlation between two categories (needs
+the joint), drift over months (needs longitudinal linkage, i.e. a pseudonym), or "do weekly
+checkers report higher Trust" (needs two fields joined per user). Pairwise marginals are possible
+with the budget split across 21 pairs, at which point accuracy collapses — treat correlation
+analysis as unavailable.
 
 ## 5.4 Local differential privacy — the part that is not optional
 
@@ -1531,66 +613,26 @@ Coarsening and minimum-user thresholds share a fatal property: **the client has 
 server about how much protection it is getting.** A client that refuses to submit unless the
 deployment has 1,000 users is asking the adversary how many users the adversary has.
 
-Local differential privacy inverts that. Noise is added **on the device, before the value
-leaves**, so the guarantee holds no matter what the server does with it — including publishing
-every row next to a username. It is the only mechanism in this section that does not reduce to
-trusting the operator, which makes it the only one consistent with the rest of the document.
+LDP inverts that — noise is added **on the device, before the value leaves**, so the guarantee
+holds no matter what the server does, including publishing every row next to a username. It is
+the only mechanism here that does not reduce to trusting the operator.
 
-For binary or small-domain signals, randomized response is sufficient and is about fifteen lines:
+Randomized response (Warner, 1965) is about fifteen lines: with probability
+`p = e^ε/(1+e^ε)` report the true bit, otherwise flip it; the k-ary form for a decile bucket uses
+`p = e^ε/(e^ε + k − 1)`. Two things are non-obvious and both are load-bearing:
 
-```ts
-// src/analytics/ldp.ts
+- **`Math.random()` is not acceptable.** It is not a CSPRNG and its state is recoverable from a
+  modest number of outputs — recovering it would let an observer undo the randomization and read
+  the true bits back. Use `crypto.getRandomValues`. The privacy guarantee is exactly as strong as
+  this coin.
+- **ε is a real, spendable budget.** k independent bits about the same user cost k·ε in the worst
+  case. Pick the per-submission total first, then divide it across questions.
 
-/**
- * Randomized response (Warner, 1965) — local differential privacy for one bit.
- *
- * With probability p = e^ε/(1+e^ε) the true bit is reported; otherwise it is flipped.
- * The report is therefore plausibly deniable on its own, while the population-level
- * frequency is still recoverable by the estimator below.
- *
- * ε is a real, spendable budget: submitting k independent bits about the same user
- * costs k·ε in the worst case. Pick the per-submission total first, then divide it
- * across the questions — do not pick ε per question and let it accumulate silently.
- */
-export function randomizedBit(trueBit: boolean, epsilon: number): boolean {
-    const p = Math.exp(epsilon) / (1 + Math.exp(epsilon));
-    return unbiasedCoin(p) ? trueBit : !trueBit;
-}
+Server-side recovery is a debiasing step, not a `COUNT`:
+`trueFraction = (observed − (1 − p)) / (2p − 1)`. Reading the raw stored fraction as the answer
+is the most likely misuse — at ε=1 a true rate of 10 % reports as roughly 27 %.
 
-/**
- * Math.random() is not acceptable here. It is not a CSPRNG, its state is recoverable
- * from a modest number of outputs, and recovering it would let an observer undo the
- * randomization and read the true bits back out. The privacy guarantee is exactly as
- * strong as this coin.
- */
-function unbiasedCoin(probability: number): boolean {
-    const draw = globalThis.crypto.getRandomValues(new Uint32Array(1))[0];
-    return draw / 0x100000000 < probability;
-}
-
-/** k-ary randomized response, for a decile bucket (k = 10). */
-export function randomizedBucket(trueBucket: number, k: number, epsilon: number): number {
-    const p = Math.exp(epsilon) / (Math.exp(epsilon) + k - 1);
-    if (unbiasedCoin(p)) return trueBucket;
-    const others = [...Array(k).keys()].filter(b => b !== trueBucket);
-    return others[globalThis.crypto.getRandomValues(new Uint32Array(1))[0] % others.length];
-}
-```
-
-Recovering the true frequency server-side is a debiasing step, not a raw `COUNT`:
-
-```go
-// trueFraction inverts randomized response. Reading the raw stored fraction as if it
-// were the answer is the single most likely way to misuse this table: at ε=1 a true
-// rate of 10% reports as roughly 27%.
-func trueFraction(observed float64, epsilon float64) float64 {
-    p := math.Exp(epsilon) / (1 + math.Exp(epsilon))
-    return (observed - (1 - p)) / (2*p - 1)
-}
-```
-
-**How many users this needs, concretely.** At ε = 1, the standard error of the debiased estimate
-is roughly `1.08/√n`:
+At ε = 1 the standard error is roughly `1.08/√n`:
 
 | Users submitting | Accuracy on a yes/no question (ε = 1) |
 |---|---|
@@ -1598,69 +640,47 @@ is roughly `1.08/√n`:
 | 1,000 | ±3.4 points — marginal |
 | 10,000 | ±1.1 points — usable |
 
-A 10-bucket histogram is far hungrier than a single bit — the per-report signal is much weaker at
-the same ε — so budget for roughly an order of magnitude more users, or a looser ε, or coarser
-buckets. Decide which of the three you are spending *before* building the pipeline.
+A 10-bucket histogram is far hungrier at the same ε — budget roughly an order of magnitude more
+users, or a looser ε, or coarser buckets. Decide which of the three you are spending *before*
+building the pipeline.
 
 ## 5.5 The reality check for this app
 
-**This app is self-hosted.** `docker-compose.yml` and [12-android-app.md](12-android-app.md)
-describe a deployment where one person runs the server for themselves. On such an instance:
+**This app is self-hosted.** On such an instance the "userbase" is one person, so an aggregate
+*is* that person's plaintext — and the operator and user are the same party, so there is no
+adversary and no question worth answering. The feature only becomes meaningful with a hosted
+multi-tenant instance of thousands of accounts. Both facts follow: it is only useful at scale,
+and only safe at scale. Below roughly a thousand submitting users an LDP pipeline returns noise
+and a non-LDP pipeline returns identifiable data. There is no useful configuration between.
 
-- The "userbase" is one person, so an aggregate *is* that person's plaintext.
-- The operator and the user are the same party, so there is no adversary — and also no analytics
-  question worth answering.
-
-The feature only becomes meaningful if you also run a **hosted multi-tenant instance** with
-thousands of accounts. Both facts follow from that: it is only useful at scale, and it is only
-safe at scale. Below roughly a thousand submitting users, an LDP pipeline returns noise, and a
-non-LDP pipeline returns identifiable data. There is no useful configuration in between.
-
-If what you actually want is *"let users see how their scores compare to typical"*, there is a
-much better answer that costs nothing here: **ship a static reference distribution** in the
-client — from published research, or from a one-off consented study — and compare locally. The
-user gets the comparison, nothing is collected, and the privacy claim stays absolute.
+If what you want is *"let users see how their scores compare to typical"*, **ship a static
+reference distribution** in the client and compare locally. The user gets the comparison,
+nothing is collected, and the privacy claim stays absolute.
 
 ## 5.6 If you build it anyway
 
-```sql
--- Physically separate from user data. No user_id, no foreign key, no join path back.
--- A random UUID rather than BIGSERIAL: a sequence encodes arrival order, which is a
--- correlation key against the auth log.
-CREATE TABLE analytics_reports (
-    id             UUID PRIMARY KEY,
-    received_on    DATE   NOT NULL,   -- DATE, not TIMESTAMPTZ: hour+minute re-links to sessions
-    schema_version INT    NOT NULL,
-    epsilon        REAL   NOT NULL,   -- record the budget the client actually spent
-    payload        JSONB  NOT NULL
-);
-
--- Physical row order still encodes arrival order via ctid. Buffer and shuffle-insert on
--- an interval if that matters to you — noting, per §5.1, that this constrains an honest
--- operator only.
-```
+A table physically separate from user data — no `user_id`, no foreign key, no join path back:
+`analytics_reports (id UUID PK, received_on DATE, schema_version INT, epsilon REAL, payload
+JSONB)`. A random UUID rather than `BIGSERIAL` because a sequence encodes arrival order, and
+`DATE` rather than `TIMESTAMPTZ` because hour+minute re-links to sessions. Physical row order
+still encodes arrival via `ctid`; buffer and shuffle-insert if that matters, noting per §5.1 that
+it constrains an honest operator only.
 
 Non-negotiables:
 
-1. **Opt-in, default off, unchecked.** Not "opt-out", not a pre-ticked box, not bundled into the
-   terms. The rest of this document is a promise that the product does not collect; anything
-   less than affirmative consent breaks it.
-2. **Show the exact payload before the first submission.** A "preview what is sent" button. The
-   audience for this app has already chosen a tool that encrypts their relationship notes; they
-   will read it, and they should be able to.
-3. **Never route it through an authenticated request.** No JWT, no session cookie, separate
-   endpoint, separate table.
-4. **Submissions are irrevocable.** There is no user id, so there is nothing to delete on
-   request. Under GDPR this is fine *only if* the data is genuinely anonymous — if it is merely
-   pseudonymous, Article 17 applies and you cannot comply. This is a second, independent reason
-   to insist on real LDP rather than "we removed the id".
-5. **Version the schema and record ε per row.** Changing either later without a marker makes
-   every historical row uninterpretable, and a mis-recorded ε silently invalidates the
+1. **Opt-in, default off, unchecked.** Not opt-out, not pre-ticked, not bundled into terms.
+2. **Show the exact payload before the first submission.** This audience will read it.
+3. **Never route it through an authenticated request.** No JWT, separate endpoint, separate table.
+4. **Submissions are irrevocable.** With no user id there is nothing to delete on request — fine
+   under GDPR *only if* the data is genuinely anonymous. If it is merely pseudonymous, Article 17
+   applies and you cannot comply. A second, independent reason to insist on real LDP rather than
+   "we removed the id".
+5. **Version the schema and record ε per row.** A mis-recorded ε silently invalidates the
    debiasing.
 6. **Update the product copy.** [models.go:29-33](../backend/internal/models/models.go#L29-L33)
-   currently states that having no server-side scheduler "is what keeps 'nothing leaves this
-   machine' true", and the Vault page tells users the same thing. Ship telemetry without
-   rewriting that copy and the codebase is asserting something false about itself.
+   and the Vault page both say having no scheduler "is what keeps 'nothing leaves this machine'
+   true". Ship telemetry without rewriting that and the codebase asserts something false about
+   itself.
 
 ---
 

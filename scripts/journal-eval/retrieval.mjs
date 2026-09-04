@@ -1,34 +1,3 @@
-/**
- * The **retrieval** golden set, out of band (§5.8, session G2).
- *
- *     node scripts/journal-eval/retrieval.mjs [--out <path>] [--force] [--verbose]
- *
- * `make journal-eval` runs this before the proposal candidates, because unlike them it needs
- * no weights at all: the lexical half of §5.8's third use is the search the app ships, and
- * it can be scored on any machine in milliseconds.
- *
- * **What a run reports, and the distinction the whole file is built around.**
- *
- * A **lexical** case — *Fussball* finds *Fußball*, *Nebenkosten* finds
- * *Nebenkostenabrechnung*, *Umzug* finds a day that never says the word because it is filed
- * under a trigger whose label does — is answered by words. It passes or fails here, and the
- * number is about the shipped feature.
- *
- * A **semantic** case — *"Wann war ich zuletzt so ausgelaugt von meinem Job?"* reaching an
- * entry about being *erschöpft* after a day in the *Büro* — shares no content word with its
- * answer, and only EmbeddingGemma can bridge it. Without an embedder those are reported
- * **skipped, by name**. They are never graded against a stand-in: a hashed-n-gram embedder
- * would be measured instead of the model, and its number would sit in a report beside numbers
- * that are about a model.
- *
- * **There is no embedder here yet**, and that is a stated gap rather than a silent one. The
- * app's own `createWebEmbedder` is transformers.js under a browser's WASM, and the harness
- * runs under plain `node`; wiring one up is a session's work and belongs with the first
- * machine that has the 219 MB. `--embedder <path>` is the seam: a module default-exporting
- * `async (texts, kind) => number[][]`. `kind` is `'query'` or `'document'` and **the prefixes
- * are applied for it** — see `prefixed` — because a query embedded as a document is a point
- * in the wrong space with no symptom (§5.8, G1's second finding).
- */
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -36,9 +5,7 @@ import { loadInference } from './load.mjs';
 import { repoRoot, today } from './paths.mjs';
 import { writeReport } from './report.mjs';
 
-/* ------------------------------------------------------------------------------------ */
-/* Arguments                                                                              */
-/* ------------------------------------------------------------------------------------ */
+/* Arguments */
 
 export const parseArgs = (argv) => {
     const options = { report: true };
@@ -69,18 +36,8 @@ Usage: node scripts/journal-eval/retrieval.mjs [options]
   --verbose          One line per case.
 `.trim();
 
-/* ------------------------------------------------------------------------------------ */
-/* The embedder seam                                                                      */
-/* ------------------------------------------------------------------------------------ */
+/* The embedder seam */
 
-/**
- * Wrap a user-supplied embedder so that the two mandatory prefixes and the 256-dimension
- * truncation are applied **here** rather than trusted to whoever wrote the module.
- *
- * Both are properties of the weights, not preferences of a harness, and both fail silently:
- * a vector without its prefix still has 256 numbers and still ranks. So the harness owns
- * them, and an embedder module only has to turn strings into arrays of numbers.
- */
 export const wrapEmbedder = async (path, app) => {
     if (!path) return null;
 
@@ -97,9 +54,7 @@ export const wrapEmbedder = async (path, app) => {
     };
 };
 
-/* ------------------------------------------------------------------------------------ */
-/* The report                                                                             */
-/* ------------------------------------------------------------------------------------ */
+/* The report */
 
 const row = (values) => `| ${values.join(' | ')} |`;
 
@@ -176,9 +131,7 @@ export const renderReport = ({ run, app, embedder, when }) => {
     return lines.join('\n');
 };
 
-/* ------------------------------------------------------------------------------------ */
-/* The run                                                                                */
-/* ------------------------------------------------------------------------------------ */
+/* The run */
 
 export const main = async (argv = process.argv.slice(2)) => {
     const options = parseArgs(argv);
@@ -223,16 +176,6 @@ export const main = async (argv = process.argv.slice(2)) => {
         const when = today();
         const out = options.out ?? join(repoRoot, 'product_vision', 'eval', `retrieval-eval-${when}.md`);
 
-        // `writeReport`, not a second overwrite policy. This file had its own, and it was
-        // weaker in the way that loses work: it checked only the `.md` path and then wrote
-        // both, so a `.json` sitting beside a report that had been renamed was clobbered
-        // without a word. The shared one checks both paths and normalises the trailing
-        // newline, so there is one rule for everything written into `product_vision/eval/`.
-        //
-        // Its refusal is **caught rather than propagated**, which is the one thing this stage
-        // does differently from `run.mjs`: this stage is cheap and runs on every
-        // `make journal-eval`, so a second run on the same day must print the numbers and say
-        // it kept the existing report — not fail the target over a file it declined to touch.
         try {
             await writeReport({
                 markdownPath: out,

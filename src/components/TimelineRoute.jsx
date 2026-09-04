@@ -5,11 +5,6 @@ import AnalysisTimeline from './AnalysisTimeline';
 import { useSubjects, findStack } from '../context/SubjectsContext';
 import { useDiscretion } from '../context/DiscretionContext';
 
-/**
- * Where a stack's timeline lives. Keyed by relationship id rather than name since Phase 4,
- * so the link survives a rename — the old /timeline/:name form still resolves, see
- * LegacyTimelineRedirect below.
- */
 export const timelinePath = (relationshipId) => `/relationships/${relationshipId}/timeline`;
 
 const Frame = ({ children }) => (
@@ -74,12 +69,6 @@ export default function TimelineRoute() {
     return <Frame><AnalysisTimeline versions={versions} onBack={goBack} maskName={maskName} /></Frame>;
 }
 
-/**
- * The pre-Phase-4 /timeline/:name form, kept working for links people already have.
- *
- * Resolution is best-effort by name: a stack that has since been renamed cannot be found
- * this way, which is exactly the fragility the id-based route exists to end.
- */
 export function LegacyTimelineRedirect() {
     // useParams decodes for us — decoding again would corrupt a name containing '%'.
     const { name } = useParams();

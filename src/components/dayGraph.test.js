@@ -20,15 +20,8 @@ import {
 } from './dayGraph';
 import { feelingById } from '../constants/journal';
 
-/* ------------------------------------------------------------------------------------ */
-/* Fixtures                                                                               */
-/* ------------------------------------------------------------------------------------ */
+/* Fixtures */
 
-/**
- * A day built in UTC on purpose. `t` is minutes elapsed from the first check-in, so nothing
- * about these fixtures depends on the runner's zone — which is what lets the DST case at the
- * bottom pin a zone and mean it, rather than testing the machine it happens to run on.
- */
 const DAY = '2026-03-14';
 const BASE = Date.parse(`${DAY}T08:00:00Z`);
 
@@ -87,9 +80,7 @@ beforeEach(() => {
     rowId = 0;
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 1. The trunk, and the day it spans                                                     */
-/* ------------------------------------------------------------------------------------ */
+/* 1. The trunk, and the day it spans */
 
 describe('the trunk', () => {
     it('starts at the first check-in rather than at the start of the day', () => {
@@ -150,9 +141,7 @@ describe('the trunk', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 2. One branch per feeling                                                              */
-/* ------------------------------------------------------------------------------------ */
+/* 2. One branch per feeling */
 
 describe('branches', () => {
     it('gives two simultaneous feelings two branches leaving the trunk at the same t', () => {
@@ -214,9 +203,7 @@ describe('branches', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 3. Interpolation between two check-ins that both carry the feeling                      */
-/* ------------------------------------------------------------------------------------ */
+/* 3. Interpolation between two check-ins that both carry the feeling */
 
 describe('a feeling reported twice', () => {
     it('interpolates between 12:00 and 18:00 and never dips below either endpoint', () => {
@@ -271,9 +258,7 @@ describe('a feeling reported twice', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 4. Decay, and where it ends                                                            */
-/* ------------------------------------------------------------------------------------ */
+/* 4. Decay, and where it ends */
 
 describe('decay', () => {
     /** The minute an exponential decay of `intensity` reaches the threshold. */
@@ -330,9 +315,7 @@ describe('decay', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 5. Absence, and the one exception to it                                                */
-/* ------------------------------------------------------------------------------------ */
+/* 5. Absence, and the one exception to it */
 
 describe('a later check-in without the feeling', () => {
     it('does not end the branch — absence is not a report that it stopped', () => {
@@ -422,9 +405,7 @@ describe('an explicit level check-in', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 6. Extrapolation                                                                       */
-/* ------------------------------------------------------------------------------------ */
+/* 6. Extrapolation */
 
 describe('extrapolated segments', () => {
     it('marks what is further than CONFIDENT_MIN from a check-in carrying the feeling, and only that', () => {
@@ -460,9 +441,7 @@ describe('extrapolated segments', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 7. The ritual's day word                                                               */
-/* ------------------------------------------------------------------------------------ */
+/* 7. The ritual's day word */
 
 describe('the ritual day word', () => {
     it('ends the day, needing no special case: decay, then extrapolation, then it rises', () => {
@@ -532,9 +511,7 @@ describe('the ritual day word', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 8. Sampling bounds                                                                     */
-/* ------------------------------------------------------------------------------------ */
+/* 8. Sampling bounds */
 
 describe('sampling', () => {
     it('holds MAX_SAMPLES over a day longer than the step could cover', () => {
@@ -550,11 +527,6 @@ describe('sampling', () => {
     });
 
     it('lets more than five branches be alive at once, because decay outlives a check-in', () => {
-        // §8.2 rule 8 bounds a *check-in* at five feelings, and the composer and the server
-        // both enforce that. It does not bound a *sample*: an intensity-2 feeling stands for
-        // 150·log2(10) ≈ 498 minutes, so two full check-ins an hour apart leave ten branches
-        // alive together. Truncating to five would drop a line the user authored, so nothing
-        // here truncates — `bounds.maxBranches` reports what the day actually held.
         const morning = ['joy', 'excitement', 'pleasure', 'rapport', 'gratitude'];
         const later = ['pride', 'curiosity', 'calm', 'longing', 'boredom'];
         const curve = buildDayCurve([
@@ -589,9 +561,7 @@ describe('sampling', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 9. branchPaths                                                                         */
-/* ------------------------------------------------------------------------------------ */
+/* 9. branchPaths */
 
 describe('branchPaths', () => {
     it('draws one path per branch lifetime, born and merged at trunk valence', () => {
@@ -676,9 +646,7 @@ describe('branchPaths', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 10. project                                                                            */
-/* ------------------------------------------------------------------------------------ */
+/* 10. project */
 
 describe('project', () => {
     it('is the exact 2-D ribbon at pitch 0', () => {
@@ -758,9 +726,7 @@ describe('paintersOrder', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 11. dayGraphLegend                                                                     */
-/* ------------------------------------------------------------------------------------ */
+/* 11. dayGraphLegend */
 
 describe('dayGraphLegend', () => {
     it('lists distinct feelings in order of first appearance', () => {
@@ -809,9 +775,7 @@ describe('dayGraphLegend', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 12. A day that spans a clock change                                                    */
-/* ------------------------------------------------------------------------------------ */
+/* 12. A day that spans a clock change */
 
 describe('a day spanning a daylight-saving change', () => {
     const hadTZ = 'TZ' in process.env;
@@ -834,10 +798,6 @@ describe('a day spanning a daylight-saving change', () => {
     });
 
     it('produces monotonically increasing t across the extra hour', () => {
-        // The civil day of 2025-10-25 runs 04:00 to 04:00 local and contains the autumn
-        // change, so it is twenty-five hours long; the check-ins inside it span twenty-four,
-        // which is already more than a five-minute step can cover. Every `at` below is a real
-        // local wall clock, and two of them read 02:30.
         const clocks = [
             '2025-10-25T04:30:00+02:00',
             '2025-10-25T13:00:00+02:00',
@@ -874,9 +834,7 @@ describe('a day spanning a daylight-saving change', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 13. The reason this module exists at all                                               */
-/* ------------------------------------------------------------------------------------ */
+/* 13. The reason this module exists at all */
 
 describe('the module itself', () => {
     // `import.meta.url` is rewritten by Vite to something `fileURLToPath` refuses; Vitest runs

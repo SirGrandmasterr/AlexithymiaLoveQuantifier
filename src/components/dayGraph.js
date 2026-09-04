@@ -1,30 +1,3 @@
-/**
- * The day graph's geometry: one day of check-ins as a branching curve.
- *
- * Nothing here renders. There is no React import, no SVG, no Recharts — deliberately, and
- * for the reason invariant 19 gives: Recharts draws nothing under jsdom, so a test asserting
- * on a chart's rendered output proves nothing. Every decision the graph makes about where a
- * line goes is therefore made in this file, by a pure function a test can call with a fixture
- * and check to the minute. `LoveShape.jsx` is the precedent — `buildShapeData` is where its
- * honesty rules live, and the component is a `map` over what it returns. This module is the
- * same idea with more arithmetic in it.
- *
- * The four functions §8.4 names:
- *
- *   buildDayCurve(entries, options) → { samples, branches, bounds }   the day as geometry
- *   branchPaths(curve)              → one path per branch lifetime    what the component strokes
- *   project(point, camera)          → screen (x, y), depth, width…    the 2.5-D oblique camera
- *   dayGraphLegend(samples)         → the feelings, in first order    the key beside the drawing
- *
- * `paintersOrder` is the fifth, and small: painter's ordering has to be *stable* for equal
- * depths or two branches at the same energy swap places between renders, so the sort belongs
- * here beside the depth that feeds it rather than in the component.
- *
- * The geometry is deliberately renderer-agnostic. §8.3 picks hand-drawn SVG for this slice and
- * names three.js as the upgrade path rather than a fork: everything below is (x, y, z) and
- * minutes, so a WebGL renderer would consume it unchanged.
- */
-
 import {
     FEELINGS,
     feelingById,
@@ -33,22 +6,10 @@ import {
     UNCLEAR_FEELING_ID
 } from '../constants/journal';
 
-/* ------------------------------------------------------------------------------------ */
-/* 1. The constants, and what they are                                                    */
-/* ------------------------------------------------------------------------------------ */
+/* 1. The constants, and what they are */
 
-/*
- * Every number in this block is a **drawing choice about what the user recorded, not a claim
- * about the user** — the sentence `JOURNAL_COPY.dayGraph.caveat` says on screen, verbatim:
- * "That is a drawing choice about what you recorded, not a claim about you."
- *
- * That is not a disclaimer bolted on afterwards. A half-life is an assertion about how long a
- * feeling lasts, and this application has no way of knowing that and no business guessing it.
- * What it *can* say is how it chose to draw the gap between two things the user did say, which
- * is why the ⓘ shows the half-life in words (`humanMinutes`) rather than hiding it, and why
- * each of these is a named constant an option can override rather than a number inline in the
- * arithmetic. Tune one and the sentence tunes with it; nothing here can drift into a claim.
- */
+/* Every number here is a drawing choice about what the user recorded, not a claim about the
+ * user — the wording `JOURNAL_COPY.dayGraph.caveat` puts on screen. Asserted by dayGraph.test.js. */
 
 /** How long a feeling takes to halve, when nothing further is said about it. §8.2 rule 4. */
 export const FEELING_HALF_LIFE_MIN = 150;
@@ -65,17 +26,6 @@ export const NEUTRAL_SETTLE_MIN = 30;
 /** The sampling interval, in minutes. §8.2 rule 8. */
 export const STEP_MIN = 5;
 
-/**
- * What a feeling with no strength recorded is drawn at.
- *
- * The ritual's day word is one tap on one word and carries no `intensity` (§6.5, A8) — the
- * server accepts the absence rather than let the client invent a number, because a middle
- * value the user never chose would be the application authoring a value (invariant 15). The
- * graph still has to put the line somewhere, so it puts it at the **lightest** step and says
- * so: `JOURNAL_COPY.dayGraph.unstated` is that sentence. The lightest step is the choice that
- * claims least — the alternative, a silent 2, would draw a word tapped at bedtime as strongly
- * as a feeling the user deliberately marked as strong.
- */
 export const UNSTATED_INTENSITY = 1;
 
 /** The bound §8.2 rule 8 sets on one day's samples. A 25-hour day widens the step to hold it. */
@@ -84,11 +34,6 @@ export const MAX_SAMPLES = 288;
 /** The feeling that is a report that nothing in particular is present. §8.2 rule 5. */
 export const NEUTRAL_FEELING_ID = 'neutral';
 
-/**
- * The trunk: the neutral line the day is drawn against, and where every branch is born and
- * dies. Valence 0, energy 0.3, grey — the same three numbers as the `neutral` vocabulary
- * entry, because it is the same place on the two axes.
- */
 export const TRUNK = Object.freeze({ valence: 0, energy: 0.3, hex: '#94a3b8' });
 
 /** Stroke width in px at zero and at full intensity. §8.1: width reinforces y. */
@@ -115,18 +60,10 @@ const DEFAULTS = Object.freeze({
     maxSamples: MAX_SAMPLES
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 2. Small arithmetic                                                                    */
-/* ------------------------------------------------------------------------------------ */
+/* 2. Small arithmetic */
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 
-/**
- * Where a feeling sits in the vocabulary, for the tie-break between two branches born at one
- * moment. Invariant 18's rule, applied to a different drawing: a thing is only recognisable if
- * it is always in the same place, so two feelings tapped in one check-in are ordered by the
- * vocabulary rather than by whichever order the payload happened to list them in.
- */
 const FEELING_ORDER = new Map(FEELINGS.map((feeling, index) => [feeling.id, index]));
 const feelingIndex = (id) => (FEELING_ORDER.has(id) ? FEELING_ORDER.get(id) : Number.MAX_SAFE_INTEGER);
 
@@ -140,14 +77,6 @@ const instantOf = (at) => {
     return Number.isNaN(ms) ? null : ms;
 };
 
-/**
- * The strength a feeling entry draws at.
- *
- * `null` — the writer said nothing — draws at `unstatedIntensity`, which is the constant the ⓘ
- * names. A number outside the scale is clamped rather than dropped: the server would have
- * refused it, so it can only arrive from a file, and a line drawn at the edge of the scale is
- * closer to what was written than no line at all.
- */
 const intensityOf = (value, options) => (
     value === null || value === undefined
         ? options.unstatedIntensity
@@ -160,12 +89,6 @@ export const strokeWidthFor = (intensity) => (
     + (STROKE_WIDTH.max - STROKE_WIDTH.min) * clamp(intensity / MAX_INTENSITY, 0, 1)
 );
 
-/**
- * Monotone cubic tangents, Fritsch–Carlson — the same shape as the `monotone` curve the
- * timeline draws with, and here for §8.2 rule 3's reason: a feeling reported at 12:00 and
- * again at 18:00 was present in between, and a curve that sags below both endpoints would be
- * drawing a dip the user never reported. Fritsch–Carlson's whole guarantee is that it cannot.
- */
 const monotoneTangents = (xs, ys) => {
     const n = xs.length;
     if (n < 2) return [0];
@@ -213,19 +136,8 @@ const hermite = (x, x0, x1, y0, y1, m0, m1) => {
         + (s3 - s2) * h * m1;
 };
 
-/* ------------------------------------------------------------------------------------ */
-/* 3. buildDayCurve                                                                       */
-/* ------------------------------------------------------------------------------------ */
+/* 3. buildDayCurve */
 
-/**
- * The day's check-ins, oldest first, with their payloads read.
- *
- * Sorted here rather than trusted: the provider hands over the server's order (`day`, `at`,
- * id) and that is already right, but this function is the one place a wrong minute becomes a
- * wrong drawing, and a caller passing a list in any other order should still get the day it
- * has. Non-`checkin` kinds are skipped — a ritual row's own copy of the day word would draw
- * the word twice, since A8 writes it as a check-in as well (§6.3).
- */
 const checkinsOf = (entries) => {
     const rows = [];
 
@@ -240,16 +152,6 @@ const checkinsOf = (entries) => {
     return rows;
 };
 
-/**
- * Every feeling's supports — the moments a check-in actually carried it — plus the moments the
- * user said `level` and nothing else.
- *
- * A check-in carrying `level` **beside** another feeling is not that: rule 5's exception is
- * "a report that nothing in particular is present", and a check-in that also names anxiety is
- * a report that something is. So only a check-in whose sole feeling is `level` settles the
- * others; its own branch is drawn like any other, sitting on the trunk because its valence is
- * zero, because the user did say it.
- */
 const supportsOf = (rows, firstAt, options, unknown) => {
     const byFeeling = new Map();
     const neutralAt = [];
@@ -258,9 +160,6 @@ const supportsOf = (rows, firstAt, options, unknown) => {
         const named = row.checkin.feelings.filter(feeling => typeof feeling.id === 'string' && feeling.id);
         const known = named.filter(feeling => {
             if (feelingById(feeling.id)) return true;
-            // Not dropped quietly: a feeling this build has never heard of is reported in
-            // `bounds.unknownFeelings` so a newer writer's vocabulary is visible rather than
-            // silently missing from the drawing.
             unknown.add(feeling.id);
             return false;
         });
@@ -275,9 +174,6 @@ const supportsOf = (rows, firstAt, options, unknown) => {
                 uncertain: feeling.uncertain === true
             };
             const list = byFeeling.get(feeling.id) ?? [];
-            // One moment, one support: a payload naming a feeling twice, or two rows sharing an
-            // instant, must not put two knots on the same x — the interpolation divides by the
-            // gap between them.
             if (list.length && list[list.length - 1].t === t) list[list.length - 1] = support;
             else list.push(support);
             byFeeling.set(feeling.id, list);
@@ -294,15 +190,6 @@ const decayEndT = (t, intensity, options) => (
         : t + options.halfLifeMin * Math.log2(intensity / options.endThreshold)
 );
 
-/**
- * One feeling's branches. Usually one; more than one when an explicit `level` check-in ended it
- * and a later check-in reported it again.
- *
- * Splitting rather than interpolating across the `level` is the honest reading of rules 3 and
- * 5 together: between two check-ins that both carry the feeling, rule 3 draws a line — but a
- * check-in in between saying nothing in particular is present is the user contradicting that
- * line, and drawing through it would be the graph overruling them.
- */
 const branchesFor = (feelingId, supports, neutralAt, options) => {
     const entry = feelingById(feelingId);
     const built = [];
@@ -417,27 +304,6 @@ const uncertainAt = (branch, t) => {
     return value === true;
 };
 
-/**
- * A day of entries as drawable geometry.
- *
- * Returns `{ samples, branches, bounds }`:
- *
- * - `samples` — one every `stepMin` from the first check-in to the last, each
- *   `{ t, branches: [{ feeling, key, intensity, y, z, uncertain, extrapolated }] }`. `t` is
- *   **minutes elapsed since the first check-in**, computed from instants, which is what makes
- *   it monotone across a daylight-saving change: a civil day can be 23 or 25 hours long and a
- *   clock-time axis would run backwards through the autumn hour that happens twice.
- * - `branches` — one per branch lifetime, with the minute it was born and the minute it merged.
- * - `bounds` — the window, the axis extents, and the two instants the component needs to put a
- *   clock time under `t`: `startAt + t * 60000` is the instant of any sample. `null` for a day
- *   with no check-in in it.
- *
- * Before the first check-in nothing is drawn, and after the last nothing is either. §8.2 rule 1
- * gives the reason and it is the timeline's: an undated snapshot is left off the time axis
- * rather than placed at a plausible date, because placing it would be the application
- * inventing a fact. A trunk running back to 00:00 would be exactly that — a claim that the
- * user was level all morning, when what is true is that they had not said anything yet.
- */
 export const buildDayCurve = (entries, options = {}) => {
     const settings = { ...DEFAULTS, ...options };
     const rows = checkinsOf(entries);
@@ -455,19 +321,10 @@ export const buildDayCurve = (entries, options = {}) => {
     byFeeling.forEach((supports, feelingId) => {
         branchesFor(feelingId, supports, neutralAt, settings).forEach(branch => branches.push(branch));
     });
-    // Birth order, then the vocabulary's own order for two feelings born at one moment. Both
-    // halves are needed: `Map` iteration order is insertion order, which is the order the
-    // *payload* happened to list them in, and the legend below reads this order.
     branches.sort((a, b) => (a.startT - b.startT)
         || (feelingIndex(a.feeling) - feelingIndex(b.feeling))
         || (a.key < b.key ? -1 : 1));
 
-    /*
-     * §8.2 rule 8 caps a day at `MAX_SAMPLES`. Five minutes over 24 hours is 289 samples and a
-     * civil day that contains an autumn clock change is 25 hours, so the cap is reached in
-     * practice rather than in theory — the step widens to hold it, which is the one place a
-     * constant is derived rather than fixed, and `bounds.stepMin` reports what was used.
-     */
     const stepMin = span <= 0
         ? settings.stepMin
         : settings.stepMin * Math.max(1, Math.ceil(span / (settings.stepMin * (settings.maxSamples - 1))));
@@ -526,9 +383,7 @@ export const buildDayCurve = (entries, options = {}) => {
     };
 };
 
-/* ------------------------------------------------------------------------------------ */
-/* 4. branchPaths                                                                         */
-/* ------------------------------------------------------------------------------------ */
+/* 4. branchPaths */
 
 /** Accepts a whole curve or a bare samples array, so `branchPaths(samples)` reads as it says. */
 const asCurve = (input) => (
@@ -537,25 +392,6 @@ const asCurve = (input) => (
         : { samples: input?.samples ?? [], branches: input?.branches ?? [] }
 );
 
-/**
- * One path per branch lifetime.
- *
- * The first and last points sit at **trunk valence**, at the branch's own birth and merge
- * minutes rather than at the nearest sample: a branch is born at the check-in that reported
- * it, and rule 2's "two feelings at one moment are two branches leaving the trunk at the same
- * t" is only true if the birth is that moment and not the next multiple of five. A merge point
- * is drawn only when the branch actually reached the trunk — a branch the day ended before, or
- * one an explicit `level` interrupted and a later check-in resumed, never did, and closing it
- * onto the trunk would draw an ending the record does not have.
- *
- * `points` carry a width from the strength at that minute and an opacity from whether that
- * stretch is extrapolated; `segments` splits the path where that opacity changes, because SVG
- * strokes one opacity per `<path>` and the boundary point belongs to both sides or the line
- * shows a gap.
- *
- * Handed a bare samples array it derives the birth and merge minutes from the samples, which
- * is the best available answer: they land on the sampling grid rather than on the check-in.
- */
 export const branchPaths = (input) => {
     const { samples, branches } = asCurve(input);
     const byKey = new Map(branches.map(branch => [branch.key, branch]));
@@ -633,41 +469,13 @@ export const branchPaths = (input) => {
     });
 };
 
-/* ------------------------------------------------------------------------------------ */
-/* 5. project                                                                             */
-/* ------------------------------------------------------------------------------------ */
+/* 5. project */
 
-/**
- * Degrees, and exactly zero where the answer is zero.
- *
- * `Math.sin(Math.PI)` is 1.2e-16, not 0, which is enough to stop a half-turn being a clean
- * mirror and enough to make "at pitch 0 it is the exact 2-D ribbon" almost-true instead of
- * true. Snapping the rounding dust is what makes those two properties assertable rather than
- * approximate.
- */
 const RAD = Math.PI / 180;
 const trig = (value) => (Math.abs(value) < 1e-12 ? 0 : value);
 const sinDeg = (degrees) => trig(Math.sin(degrees * RAD));
 const cosDeg = (degrees) => trig(Math.cos(degrees * RAD));
 
-/**
- * A 2.5-D oblique camera: a point `{ x, y, z }` in graph space to screen `(x, y)` plus the
- * depth painter's ordering sorts on, and the width and opacity multipliers depth implies.
- *
- * `yaw` turns the scene about the vertical axis, so a half-turn mirrors x — the graph read
- * from the other side. `pitch` tilts it, sliding depth up the screen; **at `pitch = 0` this is
- * the identity on x and y**, which is the property that makes the flat ribbon and the tilted
- * drawing the same geometry rather than two implementations. §8.3 calls the flat ribbon the
- * honest fallback and §12.4 leaves open that it is the whole answer; that is only cheap if
- * "flat" is a camera setting rather than a second code path.
- *
- * The depth cues follow the tilt for the same reason: with no tilt there is no depth on
- * screen, so both multipliers are exactly 1 and nothing about the drawing is depth-dependent.
- *
- * Graph space is the caller's to scale. x and z are expected in comparable units and centred
- * on the axis the rotation turns about — the component maps minutes to [-0.5, 0.5] — because a
- * rotation about an axis the data does not straddle swings the whole drawing off screen.
- */
 export const project = (point, camera = {}) => {
     const { yaw = 0, pitch = 0, depthScale = 1 } = camera;
     const x = Number(point?.x) || 0;
@@ -695,15 +503,6 @@ export const project = (point, camera = {}) => {
     };
 };
 
-/**
- * Painter's order: furthest first, and **stable** for equal depths.
- *
- * Two branches at the same energy have the same depth by construction — energy is fixed per
- * feeling, so any two check-ins of the same feeling do — and a sort that reordered them would
- * make the drawing depend on the engine's sort rather than on the day. Decorating with the
- * index rather than relying on `Array.prototype.sort` being stable makes that a property of
- * this function, which is the one a test can hold.
- */
 export const paintersOrder = (items) => (
     (Array.isArray(items) ? items : [])
         .map((item, index) => ({ item, index }))
@@ -711,18 +510,8 @@ export const paintersOrder = (items) => (
         .map(({ item }) => item)
 );
 
-/* ------------------------------------------------------------------------------------ */
-/* 6. dayGraphLegend                                                                      */
-/* ------------------------------------------------------------------------------------ */
+/* 6. dayGraphLegend */
 
-/**
- * The distinct feelings a day's samples hold, in order of first appearance.
- *
- * It takes samples, and a sample holds a feeling id, a strength and two coordinates. There is
- * no person, no trigger, no note and no transcript anywhere in its input, so **discretion mode
- * cannot change what it returns** — not because it checks a setting, but because it never had
- * a name to hide. That is the point of it taking samples rather than entries.
- */
 export const dayGraphLegend = (input) => {
     const { samples } = asCurve(input);
     const seen = new Map();

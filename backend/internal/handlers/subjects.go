@@ -21,9 +21,6 @@ const (
 	maxGuideScale = 3 // guide answers are scale indices: 0=Never … 3=Constantly
 	dateLayout    = "2006-01-02"
 
-	// KindFull is an ordinary snapshot; KindPulse is one taken through the 60-second
-	// quick-pulse path. Both are real versions — the distinction only changes how the
-	// timeline draws them.
 	KindFull  = "full"
 	KindPulse = "pulse"
 )
@@ -39,9 +36,6 @@ type CreateSubjectInput struct {
 	GuideAnswers map[string]map[string]int `json:"guide_answers"`
 }
 
-// UpdateSubjectInput uses pointers so an absent field is distinguishable from an
-// empty one: nil means "leave unchanged", a present value means "write this".
-// This is what stops a client that omits `description` from erasing the note.
 type UpdateSubjectInput struct {
 	Name         *string                    `json:"name"`
 	Description  *string                    `json:"description"`
@@ -53,9 +47,6 @@ type UpdateSubjectInput struct {
 	GuideAnswers *map[string]map[string]int `json:"guide_answers"`
 }
 
-// normalizeKind defaults an absent kind to "full" and rejects anything else. Legacy rows
-// read back as "full" through the column default, so this is the only place the vocabulary
-// can widen.
 func normalizeKind(kind string) (string, error) {
 	switch kind {
 	case "":
@@ -67,8 +58,6 @@ func normalizeKind(kind string) (string, error) {
 	}
 }
 
-// validateStats enforces the seven-category contract and the 0-100 range.
-// Missing keys are legal — an absent key means "not scored", so nothing is zero-filled.
 func validateStats(stats map[string]int) error {
 	for k, v := range stats {
 		if !domain.IsCategoryID(k) {
@@ -81,8 +70,6 @@ func validateStats(stats map[string]int) error {
 	return nil
 }
 
-// validateTags enforces the context-capsule limits and returns the normalized
-// (trimmed) list to store. A nil or empty slice is valid.
 func validateTags(tags []string) ([]string, error) {
 	if len(tags) > maxTags {
 		return nil, fmt.Errorf("too many tags, maximum is %d", maxTags)
@@ -104,9 +91,6 @@ func validateTags(tags []string) ([]string, error) {
 	return normalized, nil
 }
 
-// validateUncertain checks the "unsure" flags against the seven ids and against the
-// stats they annotate: you cannot be unsure about a category you did not score.
-// It is called with the stats the row will actually end up with.
 func validateUncertain(uncertain []string, stats map[string]int) error {
 	for _, id := range uncertain {
 		if !domain.IsCategoryID(id) {
@@ -119,9 +103,6 @@ func validateUncertain(uncertain []string, stats map[string]int) error {
 	return nil
 }
 
-// validateGuideAnswers checks the guided-scoring record: known category ids, integer
-// metric-index keys, and answers within the scale. The number of metrics per category
-// is frontend-owned, so the index is only checked for being a non-negative integer.
 func validateGuideAnswers(guideAnswers map[string]map[string]int) error {
 	for categoryID, answers := range guideAnswers {
 		if !domain.IsCategoryID(categoryID) {
@@ -139,8 +120,6 @@ func validateGuideAnswers(guideAnswers map[string]map[string]int) error {
 	return nil
 }
 
-// parseSubjectDate parses the wire format strictly; a malformed value is an error
-// rather than a silently discarded one.
 func parseSubjectDate(date string) (*time.Time, error) {
 	parsed, err := time.Parse(dateLayout, date)
 	if err != nil {
@@ -218,10 +197,6 @@ func CreateSubject(c *gin.Context) {
 		GuideAnswers: input.GuideAnswers,
 	}
 
-	// Find-or-create is what keeps every pre-Phase-4 client working: a caller that only
-	// knows about names still lands its snapshot in the right relationship, and the FK is
-	// populated on the way through. Both writes share a transaction so a failed insert
-	// cannot leave an empty relationship behind.
 	err = database.DB.Transaction(func(tx *gorm.DB) error {
 		relationship, err := database.FindOrCreateRelationship(tx, subject.UserID, name)
 		if err != nil {
@@ -256,12 +231,6 @@ func GetSubjects(c *gin.Context) {
 		query = query.Where("relationship_id = ?", relationshipID)
 	}
 
-	// Newest first, undated last. `date IS NULL` sorts false before true on both engines,
-	// which is the portable spelling of NULLS LAST — SQLite has no such clause. The id
-	// tiebreaker keeps same-day snapshots in a stable order instead of the engine's whim.
-	//
-	// Pagination is deliberately absent: this is a single-user self-hosted app, and a
-	// dashboard would have to pass ~500 snapshots before the payload mattered.
 	var subjects []models.AnalysisSubject
 	err := query.
 		Order("date IS NULL").
@@ -350,8 +319,6 @@ func UpdateSubject(c *gin.Context) {
 		subject.GuideAnswers = *input.GuideAnswers
 	}
 
-	// Checked against the row's final stats, not the request's: sending stats that drop a
-	// category the row is still unsure about is an inconsistency worth reporting.
 	if err := validateUncertain(subject.Uncertain, subject.Stats); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -370,12 +337,6 @@ func UpdateSubject(c *gin.Context) {
 		}
 	}
 
-	// Renaming a single version detaches it to the relationship that name belongs to,
-	// creating it if it is new. That is what renaming a version has always done — it split
-	// the stack — except now the split is a visible fact in the data rather than an
-	// emergent property of string equality. Renaming the *stack* is PATCH /relationships/:id.
-	// A row that arrives without a relationship (a legacy row on a database whose backfill
-	// has not run) is resolved here too, so it never gets saved back still unlinked.
 	needsRelationship := subject.RelationshipID == nil ||
 		(input.Name != nil && subject.Name != originalName)
 

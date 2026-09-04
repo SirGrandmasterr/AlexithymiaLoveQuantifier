@@ -5,15 +5,6 @@ import { createFakeJournalPlugin, createFakeAppPlugin } from './journalPlugin.fa
 import { WHISPER_TINY, totalBytes } from '../journal/inference/models';
 import { nativeTierReport, setNativeTierReport, detectTier, TIERS } from '../journal/inference/tier';
 
-/**
- * The native capture path, end to end, with the plugin faked (C4).
- *
- * What these prove that a device could not be made to prove on demand: that the plugin is
- * not asked for anything at launch, that the first tap asks in the right order — check,
- * request, open — and that a refusal ends as the recorder's ordinary `permission` error
- * rather than as anything thrown at a screen.
- */
-
 /** Let the promises inside `begin` and `settle` land without moving the clock. */
 const flush = async () => {
     for (let i = 0; i < 8; i += 1) await vi.advanceTimersByTimeAsync(0);
@@ -24,9 +15,7 @@ const recorderOver = (plugin) => createRecorder(nativeCaptureDeps(plugin));
 beforeEach(() => { vi.useFakeTimers(); });
 afterEach(() => { vi.useRealTimers(); setNativeTierReport(null); });
 
-/* ------------------------------------------------------------------------------------ */
-/* 1. The permission, and when it is asked                                               */
-/* ------------------------------------------------------------------------------------ */
+/* 1. The permission, and when it is asked */
 
 describe('the microphone permission', () => {
     it('is asked for nothing at construction, at mount, or while the app is idle', async () => {
@@ -87,9 +76,7 @@ describe('the microphone permission', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 2. The audio stays on the native side                                                 */
-/* ------------------------------------------------------------------------------------ */
+/* 2. The audio stays on the native side */
 
 describe('a clip recorded through the plugin', () => {
     it('is a handle the recorder holds, not samples that crossed the bridge', async () => {
@@ -172,9 +159,7 @@ describe('a clip recorded through the plugin', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 3. The permission prompt is not the background                                        */
-/* ------------------------------------------------------------------------------------ */
+/* 3. The permission prompt is not the background */
 
 describe('the app leaving the foreground', () => {
     it('during the permission prompt does not cancel the request the user is granting', async () => {
@@ -219,9 +204,7 @@ describe('the app leaving the foreground', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 4. The weight store                                                                   */
-/* ------------------------------------------------------------------------------------ */
+/* 4. The weight store */
 
 describe('the native downloader', () => {
     const server = () => 'http://192.168.1.10:8082';
@@ -292,9 +275,7 @@ describe('the native downloader', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 5. The tier report                                                                    */
-/* ------------------------------------------------------------------------------------ */
+/* 5. The tier report */
 
 describe('primeNativeTier', () => {
     it('does nothing in a browser', async () => {

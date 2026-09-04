@@ -1,12 +1,3 @@
-/**
- * The love taxonomy and the pure helpers that read it.
- *
- * This module is the single source for the seven categories: ids, labels, colours (both
- * the Tailwind class and the hex the SVG charts need), prose, behavioural metrics, and
- * slider anchors. The ids are the cross-tier contract — they are also the server's
- * validation allowlist in backend/internal/domain/categories.go.
- */
-
 export const CATEGORIES = [
     {
         id: 'eros',
@@ -565,43 +556,12 @@ export const GUIDE_SCALE = [
 // How far the suggested range extends either side of the average answer.
 export const GUIDE_BAND_RADIUS = 8;
 
-/**
- * How many phrasings every band carries. Enforced by the test that walks the taxonomy: a
- * band with four is a band whose fifth reading was forgotten, not a deliberate exception.
- */
 export const PHRASES_PER_BAND = 5;
 
 /** The anchor band containing `value`, or null if the value falls outside every band. */
 export const anchorFor = (category, value) =>
     (category.anchors || []).find(a => value >= a.min && value <= a.max) || null;
 
-/**
- * Which of a band's five phrasings to show.
- *
- * Bands used to carry one sentence each, which meant the whole scale was explained by four
- * sentences per category and re-reading them taught nothing. Five phrasings, each written
- * through a different lens — where attention goes, what you actually do, a recognisable
- * scene, what their absence is like, how it feels from inside — describe the same position
- * on the scale from five directions, which is a fuller account of it than any one sentence.
- *
- * Two properties matter, and they pull against each other:
- *
- * - **It must not change while the thumb is moving.** The phrase depends on the *band*, not
- *   the value, so dragging from 51 to 67 leaves the sentence still. A phrase that reshuffled
- *   under a moving dial would be unreadable, and would read as a bug.
- * - **It must not be the same phrase forever.** The seed comes from the form that renders
- *   the row and changes each time one is opened, so the second scoring session says
- *   something the first did not.
- *
- * Deterministic given a seed, so the arithmetic is testable and the caller decides how much
- * variety to introduce. The band index is added in, so a single form shows five different
- * lenses as the user moves down the scale rather than the same one six times.
- *
- * @param {object} category one entry from CATEGORIES.
- * @param {number} value the current 0-100 score.
- * @param {number} [seed] rotates the whole set; see `nextPhraseSeed`.
- * @returns {string|null} the phrase, or null when no band contains the value.
- */
 export const anchorPhrase = (category, value, seed = 0) => {
     const bands = category.anchors || [];
     const index = bands.findIndex(band => value >= band.min && value <= band.max);
@@ -610,9 +570,6 @@ export const anchorPhrase = (category, value, seed = 0) => {
     const phrases = bands[index].phrases || [];
     if (phrases.length === 0) return null;
 
-    // `+ index` so consecutive bands do not land on the same lens; the category id shifts
-    // one category's set against another's, so two rows sitting at the same score are not
-    // saying the same kind of thing about themselves.
     const offset = Math.abs(seed) + index + categoryOffset(category.id);
     return phrases[offset % phrases.length];
 };
@@ -622,25 +579,12 @@ const categoryOffset = (id) => (
     String(id || '').split('').reduce((sum, character) => sum + character.charCodeAt(0), 0)
 );
 
-/**
- * The next seed to hand `anchorPhrase`, one per form opened.
- *
- * A counter rather than `Math.random()` per call: a counter guarantees the five phrasings
- * are seen in five openings, where random selection would happily show the same one three
- * times running and defeat the point. The start is random so the sequence does not begin at
- * the same sentence on every launch.
- */
 let phraseCursor = Math.floor(Math.random() * PHRASES_PER_BAND);
 export const nextPhraseSeed = () => {
     phraseCursor += 1;
     return phraseCursor;
 };
 
-/**
- * Plain arithmetic over the answered metrics of one category: the mean of the chosen
- * frequency values, and a range of ±8 around it. Returns null when nothing is answered.
- * Nothing here writes a score — the band is a suggestion the user may ignore.
- */
 export const guideBand = (answers) => {
     const values = Object.values(answers || {})
         .filter(i => GUIDE_SCALE[i] !== undefined)
@@ -666,12 +610,6 @@ export const byDateDesc = (a, b) => new Date(b.date || 0) - new Date(a.date || 0
 // A stack needs at least this many snapshots before "most changed" says anything.
 const MIN_VERSIONS_FOR_RANGE = 3;
 
-/**
- * The one-line summary shown on a card: which styles lead right now, and which dimension
- * has moved the most across the whole stack. Both are descriptive — the highest two scores
- * in the latest snapshot, and the widest range across all snapshots — and both are plain
- * arithmetic the UI states in a sentence. Returns null when there is nothing honest to say.
- */
 export const summarizeStack = (versions) => {
     if (!versions || versions.length === 0) return null;
 

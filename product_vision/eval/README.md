@@ -44,11 +44,15 @@ generated end to end, so it takes `--force` freely; there is no hand-written sec
 lose. The suite it reads is [`src/journal/embeddings/golden/`](../../src/journal/embeddings/golden/README.md).
 
 **A dated file in this directory is a claim that something was run.** Do not create one before
-it was. The absence of `user-test-report-*.md` is how a later session knows the gate in
-[`06-progress.md`](../06-progress.md) is still open, and the absence of `model-eval-*.md` is
-how it knows no model has cleared §5.7's. The retrieval report is the case that shows what the
-rule is really for: it exists, it says *pass* eighteen times, and it says in its own last
-section that **it is not evidence about EmbeddingGemma** — only about the words.
+it was. The absence of `user-test-report-*.md` is how a later session knows the gate in the
+[Phase 7 carry-over](../README.md#carried-into-phase-7) is still open, and the absence of
+`model-eval-*.md` is how it knows no model has cleared §5.7's. The retrieval report is the
+case that shows what the rule is really for: it exists, it says *pass* eighteen times, and it
+says in its own last section that **it is not evidence about EmbeddingGemma** — only about the
+words.
+
+The raw `.json` rows behind the dated reports above were removed from disk to keep the tree
+small; they are unchanged in git at `49e2266`. Future runs write theirs as normal.
 
 Later sessions add to this directory: the first real model eval report, and the first retrieval
 report with an embedder behind it.

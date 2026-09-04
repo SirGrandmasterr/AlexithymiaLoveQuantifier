@@ -1,18 +1,3 @@
-/**
- * Generates product_vision/eval/proposal-card.html from proposal-card.template.html and the
- * real vocabulary in src/constants/journal.js.
- *
- *   node product_vision/eval/build-proposal-card.mjs
- *
- * Why a generator rather than a hand-written mock-up: question 2 of the user test asks how
- * people react to a proposal, and a card whose words, glosses or colours had drifted from the
- * app's would be measuring the mock-up instead. The vocabulary is read from the constant the
- * app itself renders from, so the two cannot disagree — and after any change to FEELINGS this
- * command is the whole of the update.
- *
- * esbuild is used only to resolve the extensionless `./contextTags` import that Vite resolves
- * for the app and Node does not. It writes one file into the OS temp directory and removes it.
- */
 import { build } from 'esbuild';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -34,9 +19,6 @@ const journal = await import(pathToFileURL(bundled).href);
 await rm(scratch, { recursive: true, force: true });
 
 const vocabulary = journal.activeFeelings().map(({ id, label, gloss, hex }) => ({
-    // The card renders a label, a gloss as its tooltip and a colour. Valence and energy are
-    // the graph's axes and no chip reads them, so they are left out rather than copied into a
-    // second place they could go stale.
     id, label, gloss, hex
 }));
 

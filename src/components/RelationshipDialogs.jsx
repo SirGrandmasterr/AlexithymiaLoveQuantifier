@@ -2,14 +2,6 @@ import React, { useEffect, useId, useState } from 'react';
 import { X, AlertTriangle } from 'lucide-react';
 import { CADENCE_OPTIONS, MIN_CADENCE_DAYS, MAX_CADENCE_DAYS } from '../constants/cadence';
 
-/**
- * The stack-level actions: rename, merge, and deleting a whole history.
- *
- * These replace the `window.confirm` pattern the per-version delete still uses. Merging is
- * not reversible, so it needs to state in a sentence what it is about to do — a browser
- * confirm cannot say "all four snapshots of Alex M will move into Alex".
- */
-
 const Shell = ({ children, className = '' }) => (
     <div className={`bg-white rounded-2xl shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] border border-slate-100 ${className}`}>
         {children}
@@ -129,10 +121,6 @@ export const RenameRelationshipDialog = ({ relationship, onRename, onClose }) =>
     );
 };
 
-/**
- * The check-in rhythm setting. Off is first and is the default, because opting in to being
- * reminded should be a choice rather than something to escape from.
- */
 export const CadenceDialog = ({ relationship, onSave, onClose }) => {
     const current = relationship.cadence_days ?? null;
     const isPreset = current === null || CADENCE_OPTIONS.some(option => option.days === current);
@@ -361,11 +349,6 @@ export const DeleteRelationshipDialog = ({ stack, onDelete, onClose }) => {
     const [error, setError] = useState(null);
     const [deleting, setDeleting] = useState(false);
     const count = stack.relationship.snapshot_count;
-    // What the journal holds about this person, which the delete leaves alone (Phase 6
-    // §7.3). It is a second sentence rather than a second clause in the first: a snapshot is
-    // being destroyed and a journal entry is not, and one sentence carrying both verbs would
-    // have to say "deleted" and "kept" in the same breath. Zero is left unsaid entirely —
-    // "0 journal mentions" is a sentence about nothing.
     const mentions = stack.relationship.mention_count ?? 0;
 
     const submit = async () => {

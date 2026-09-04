@@ -6,20 +6,6 @@ const TRIGGER_PX = 72;
 /** Beyond this the indicator stops following the finger, so the gesture has a felt ceiling. */
 const MAX_PULL_PX = 110;
 
-/**
- * Pull-to-refresh over the document scroller.
- *
- * The dashboard fetches once on mount and mutates locally thereafter — deliberate, and fine
- * on a desktop where a reload costs nothing. On a phone the app is resumed rather than
- * reloaded, so a stale list can persist for days with no affordance to correct it. This is
- * that affordance.
- *
- * Native only. On the web the browser's own reload is one keystroke away, and hijacking
- * overscroll there would fight the platform.
- *
- * @param {() => Promise<unknown>} onRefresh
- * @param {boolean} enabled
- */
 export default function usePullToRefresh(onRefresh, enabled = true) {
     const [pull, setPull] = useState(0);
     const [refreshing, setRefreshing] = useState(false);
@@ -90,9 +76,6 @@ export default function usePullToRefresh(onRefresh, enabled = true) {
             }
         };
 
-        // `passive: true` throughout: this never calls preventDefault, so the scroller stays
-        // on the compositor. The card stack's wheel handler is the one place in the app that
-        // needs `{ passive: false }`, and it is a different gesture on a different element.
         const options = { passive: true };
         window.addEventListener('touchstart', onTouchStart, options);
         window.addEventListener('touchmove', onTouchMove, options);

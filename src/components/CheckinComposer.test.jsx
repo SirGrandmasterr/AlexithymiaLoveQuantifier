@@ -11,15 +11,6 @@ import { JOURNAL_COPY, MAX_FEELINGS_PER_CHECKIN, fillCopy } from '../constants/j
 
 vi.mock('axios');
 
-/**
- * The composer, driven the way a user drives it: from `/journal`, through the button the day
- * view puts on screen, to the request that reaches `POST /api/journal/entries`.
- *
- * Everything asserted here is asserted on **the request body**, not on component state. The
- * shape in §7.2 is a contract with a Go handler that will reject a wrong one at runtime and
- * pass every unit test in this file if the assertions are made one level too high up.
- */
-
 const TODAY = '2026-08-21';
 
 /** Two people, one of whom is only ever reached through the prefix rule (§4.5 step 2). */
@@ -69,8 +60,6 @@ const renderJournal = (path = '/journal') => render(
     </MemoryRouter>
 );
 
-/* The composer's own handles. Queried by attribute rather than by text, because a feeling's
-   label is on screen twice once it is picked — once in the grid and once on its card. */
 const gridChip = (id) => document.querySelector(`button[data-feeling="${id}"]`);
 const pickedCard = (id) => document.querySelector(`[data-picked="${id}"]`);
 const addAbout = (id, kind) => document.querySelector(`[data-add-about="${id}:${kind}"]`);
@@ -87,9 +76,6 @@ const save = () => userEvent.click(screen.getByRole('button', { name: JOURNAL_CO
 let originalTZ;
 
 beforeAll(() => {
-    // Pinned so `tz_offset_min` and the offset on `at` are real assertions rather than
-    // whatever the machine running the suite happens to be. `process.env.TZ` takes effect
-    // on the next `Date` call in this Node; the guard case below proves it did.
     originalTZ = process.env.TZ;
     process.env.TZ = 'Europe/Berlin';
 });
@@ -385,9 +371,6 @@ describe('a trigger', () => {
         const minted = document.querySelector('[data-about="trigger"]');
         expect(minted).toHaveTextContent('work');
 
-        // The second feeling reaches the same word from the chip list, because a trigger
-        // minted a moment ago is already part of this composer's vocabulary. Typing it
-        // again would mint a second id and, on save, a second row with the same label.
         await pickTrigger('stress');
         await userEvent.click(within(pickedCard('stress')).getByRole('button', { name: 'work' }));
         await save();
@@ -419,9 +402,6 @@ describe('a trigger', () => {
     });
 
     it('offers a trigger it minted last time, once the server has answered for it', async () => {
-        // The server creates the trigger as its own row inside the entry's transaction and
-        // echoes only the entry, so the provider refetches. Without that, the next check-in
-        // has no way to reach the word and would mint a second row with the same label.
         renderJournal();
         await openComposer();
         await pickTrigger('irritation');
@@ -491,9 +471,6 @@ describe('a trigger', () => {
     });
 
     it('offers a merged trigger under the surviving label only', async () => {
-        // "work" was merged into "the job": the correction row carries the old id in
-        // `corrects` and names the survivor in `merged_into`, and the row it replaced is in
-        // no list the client holds because the server returns only live rows.
         const merged = {
             ...triggerEntry,
             ID: 11,
@@ -684,9 +661,6 @@ describe('the composed request', () => {
         renderJournal();
         await openComposer();
 
-        // A person, a known trigger, a new trigger, a context tag, an unsure feeling, the
-        // context tags of the check-in itself, and a note — one of everything the composer
-        // can put in a payload.
         await userEvent.click(gridChip('rapport'));
         await userEvent.click(addAbout('rapport', 'person'));
         await userEvent.click(document.querySelector('[data-person-candidate="7"]'));
@@ -783,9 +757,6 @@ describe('deleting a check-in from the day view', () => {
     it('states what goes before it goes', async () => {
         mockFetch({ entries: [stored] });
         renderJournal(`/journal/${TODAY}`);
-        // The day has drawn. Gated on the row rather than on a feeling's label: since B2 the
-        // graph's legend names the same feelings the chips do, so a bare `findByText` for one
-        // finds two (both correct).
         await screen.findByLabelText(JOURNAL_COPY.checkin.delete.action);
 
         await userEvent.click(screen.getByLabelText(JOURNAL_COPY.checkin.delete.action));
@@ -803,9 +774,6 @@ describe('deleting a check-in from the day view', () => {
         axios.delete.mockResolvedValue({ data: {} });
         mockFetch({ entries: [stored] });
         renderJournal(`/journal/${TODAY}`);
-        // The day has drawn. Gated on the row rather than on a feeling's label: since B2 the
-        // graph's legend names the same feelings the chips do, so a bare `findByText` for one
-        // finds two (both correct).
         await screen.findByLabelText(JOURNAL_COPY.checkin.delete.action);
 
         await userEvent.click(screen.getByLabelText(JOURNAL_COPY.checkin.delete.action));
@@ -819,9 +787,6 @@ describe('deleting a check-in from the day view', () => {
     it('keeps the check-in when the delete is declined', async () => {
         mockFetch({ entries: [stored] });
         renderJournal(`/journal/${TODAY}`);
-        // The day has drawn. Gated on the row rather than on a feeling's label: since B2 the
-        // graph's legend names the same feelings the chips do, so a bare `findByText` for one
-        // finds two (both correct).
         await screen.findByLabelText(JOURNAL_COPY.checkin.delete.action);
 
         await userEvent.click(screen.getByLabelText(JOURNAL_COPY.checkin.delete.action));
@@ -837,9 +802,6 @@ describe('deleting a check-in from the day view', () => {
         axios.delete.mockRejectedValue({ response: { status: 500, data: {} } });
         mockFetch({ entries: [stored] });
         renderJournal(`/journal/${TODAY}`);
-        // The day has drawn. Gated on the row rather than on a feeling's label: since B2 the
-        // graph's legend names the same feelings the chips do, so a bare `findByText` for one
-        // finds two (both correct).
         await screen.findByLabelText(JOURNAL_COPY.checkin.delete.action);
 
         await userEvent.click(screen.getByLabelText(JOURNAL_COPY.checkin.delete.action));

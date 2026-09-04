@@ -12,10 +12,6 @@ const relationships = [
     { ID: 8, name: 'Sam', snapshot_count: 1 }
 ];
 
-/**
- * Four endpoints now, and one blanket `mockResolvedValue` would feed the same rows to all of
- * them (trap 10c). The shape is `Vault.test.jsx`'s, extended with the two journal reads.
- */
 const mockFetch = ({
     subjects = [],
     relationships: rels = relationships,
@@ -280,9 +276,6 @@ describe('deleteEntry', () => {
 
 describe('the vocabulary the provider resolves', () => {
     it('answers for a renamed trigger by the id the old check-ins still hold', async () => {
-        // Only the correction row is in the list, which is what the server returns: the row
-        // it replaced is stamped `superseded_at` and never reaches the client. The survivor
-        // speaks for the old id through `corrects`.
         mockFetch({ entries: [trigger('trig-2', 'the deadline', { corrects: ['trig-1'] })] });
         renderJournal();
         await settled();
@@ -351,9 +344,7 @@ describe('markedDays', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* F1 — the outbox (§9.5)                                                                 */
-/* ------------------------------------------------------------------------------------ */
+/* F1 — the outbox (§9.5) */
 
 const platformState = vi.hoisted(() => ({ native: false }));
 
@@ -362,11 +353,6 @@ vi.mock('../mobile/platform', async (importOriginal) => ({
     isNative: () => platformState.native
 }));
 
-/**
- * The `resume` signal, as Android delivers it. Mocked rather than driven through the real
- * plugin because the web implementation of `@capacitor/app` has no `resume` to fire — and the
- * thing under test is what the provider does when one arrives, not who sent it.
- */
 const capacitor = vi.hoisted(() => ({ listeners: new Map() }));
 
 vi.mock('@capacitor/app', () => ({
@@ -490,9 +476,6 @@ describe('the outbox', () => {
         // 1. A retry — the flush asked for directly.
         await act(async () => { await latest.flushOutbox(); });
         await waitFor(() => expect(latest.outbox).toHaveLength(0));
-        // The row the server echoed is now the day's, spliced once. Asserted here rather
-        // than at the end, because the refetch in step 3 replaces this list with what the
-        // mocked server holds — which is nothing, and which is not what is under test.
         expect(latest.entries.map(row => row.ID)).toEqual([42]);
         // 2. `resume`: the phone comes back to the foreground.
         await fireResume();
@@ -500,9 +483,6 @@ describe('the outbox', () => {
         //    `usePullToRefresh` calls exactly this function.
         await act(async () => { await latest.refresh(); });
 
-        // The count, not the final state. A queue that posted three times and was cleared
-        // three times would look identical from the outside and would be three rows on a
-        // server that was not idempotent.
         expect(postsFor('queued-1')).toHaveLength(1);
         expect(latest.outbox).toEqual([]);
     });
@@ -526,9 +506,6 @@ describe('the outbox', () => {
         await settled();
         await queueOffline();
 
-        // §7.2: a second post of the same `client_id` answers `200` with the row that is
-        // already there. The previous attempt got through and the acknowledgement did not;
-        // the entry is stored once, and this queue is done with it.
         axios.post.mockReset();
         axios.post.mockResolvedValue({ status: 200, data: checkin({ ID: 42, client_id: 'queued-1' }) });
 
@@ -576,10 +553,6 @@ describe('the outbox — new people, new triggers, and what it will not do', () 
         await act(async () => { await latest.flushOutbox(); });
         await waitFor(() => expect(latest.outbox).toHaveLength(0));
 
-        // One request, carrying both. Not a trigger posted first and a check-in posted
-        // second: two posts can land the first and lose the second, which would leave a
-        // vocabulary entry for a moment that was never recorded — and would make this queue
-        // keep sequencing state, which is the sync engine this slice does not build.
         const posts = axios.post.mock.calls.filter(([url]) => url === '/api/journal/entries');
         expect(posts).toHaveLength(1);
         expect(posts[0][1].triggers).toEqual([{ label: 'the deadline', client_id: 'trig-new' }]);
@@ -601,9 +574,6 @@ describe('the outbox — new people, new triggers, and what it will not do', () 
             mentions: [{ ref: 0, name: 'Noor', label: 'Noor' }]
         }));
 
-        // There is no local relationship id to conflict with anything: the queued body says
-        // who, in words, and `FindOrCreateRelationship` decides what that means at the
-        // moment the entry lands (§7.2).
         expect(latest.outbox[0].request.mentions[0]).toEqual({ ref: 0, name: 'Noor', label: 'Noor' });
         expect(latest.outbox[0].request.mentions[0].relationship_id).toBeUndefined();
     });
@@ -615,9 +585,6 @@ describe('the outbox — new people, new triggers, and what it will not do', () 
         await queueOffline(checkinRequest({ payload: { v: 1, source: 'typed', note: 'the first words' } }));
         await queueOffline(checkinRequest({ payload: { v: 1, source: 'typed', note: 'what was meant' } }));
 
-        // §9.5: a correction of an entry that is still in this queue replaces it here. Two
-        // rows would be two check-ins of the same moment, and the second would not be a
-        // correction of anything — the server has never seen the first.
         expect(latest.outbox).toHaveLength(1);
         expect(latest.outbox[0].request.payload.note).toBe('what was meant');
         expect(JSON.parse(window.localStorage.getItem(OUTBOX_KEY))).toHaveLength(1);

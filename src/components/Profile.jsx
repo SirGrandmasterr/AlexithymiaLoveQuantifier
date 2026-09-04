@@ -44,28 +44,7 @@ import { embeddingsAvailable } from '../journal/embeddings/availability';
 import { isNative } from '../mobile/platform';
 import { createNativeDownloader, primeNativeTier } from '../mobile/journalPlugin';
 
-// This screen used to call through its own `axios.create()` instance, which carried the
-// token but not App.jsx's response interceptor — interceptors on the global default do not
-// apply to instances. A dead session therefore ended here as a permanent "Failed to load
-// profile data." banner instead of a logout, because nothing was watching for the 401.
-// The global default already carries the Authorization header (App.jsx sets it
-// synchronously at import time and on every token transition), so using it directly loses
-// nothing and gains the 401 handling. See docs/10-agent-guide.md Recipe 6.
-
-
-/**
- * The voice block: what this device can run, whether the model is on it, and the two
- * settings that only mean anything once it is.
- *
- * Split out of `JournalSettings` because it has a dependency the rest of that section does
- * not — it asks the device what it can do, and asks Cache Storage what it holds — and
- * because it is the block whose copy the Vault page quotes. Keeping it whole makes the two
- * easy to read against each other.
- */
 const VoiceSettings = () => {
-    // Android (C4): the tier is the plugin's memory report rather than the WebView's
-    // guess, the files live in the plugin's store rather than Cache Storage, and the
-    // sentence under the heading says which of the two this screen is describing.
     const native = isNative();
     const [detected, setDetected] = useState(() => detectTier());
     const [override, setOverride] = useState(readTierOverride);
@@ -78,9 +57,6 @@ const VoiceSettings = () => {
     const [language, setLanguage] = useState(readLanguage);
     const [onDevice, setOnDevice] = useState(null);
 
-    // The shell primes the report at launch; this is for the screen that got here first.
-    // On the web the same shape of question is WebGPU's — an **adapter**, asked for rather
-    // than read off `navigator.gpu`, which D3 watched be present on a browser that had none.
     useEffect(() => {
         let live = true;
         (native ? primeNativeTier() : probeWebGpu()).then(() => {
@@ -94,9 +70,6 @@ const VoiceSettings = () => {
 
     const memoryGb = native ? nominalMemoryGb(nativeTierReport()?.totalMemoryBytes) : null;
 
-    // What this tier actually needs (D3): one model on the Full tier, two on the Light one.
-    // The list is `tierModels`' and the sentence is built from it, so the screen cannot
-    // promise a size it is not about to download.
     const models = useMemo(() => tierModels(tier, { native }), [tier, native]);
     const downloader = useMemo(
         () => createModelSetDownloader(models, native ? { createDownloader: createNativeDownloader } : {}),
@@ -221,10 +194,6 @@ const VoiceSettings = () => {
                             </button>
                         )}
 
-                        {/* D2. *On when voice is on* (§9.7): the toggle exists only under a
-                            voice that is on, because with voice off there is no proposal to
-                            show or hide. While no model proposes, the line under it says so
-                            rather than letting the label imply otherwise (invariant 2e). */}
                         {voice && (
                             <div className="mt-6" data-suggestions-settings>
                                 <button
@@ -245,11 +214,6 @@ const VoiceSettings = () => {
                                 <p className="mt-3 text-xs text-slate-400 font-light leading-relaxed max-w-md">
                                     {JOURNAL_COPY.settings.suggestions.description}
                                 </p>
-                                {/* D3: the model has a name now, and the line under the
-                                    toggle says which one and on what terms. While
-                                    `PROPOSAL_MODEL` was null this said that nothing on this
-                                    device proposes anything — the sentence a feature with no
-                                    model behind it owes the person reading it. */}
                                 <p className="mt-2 text-xs text-slate-400 font-light leading-relaxed max-w-md" data-suggestions-model>
                                     {fillCopy(JOURNAL_COPY.settings.suggestions.model, {
                                         label: PROPOSAL_MODEL.label,
@@ -435,52 +399,17 @@ const EmbeddingSettings = () => {
     );
 };
 
-/**
- * The journal's per-device settings (§9.7), beside *Check-in reminders* and in the same
- * shape, because they are the same kind of thing: a preference this device holds and nothing
- * else ever sees.
- *
- * **All nine, since G1.** Voice, *keep transcripts*, the transcription language and the
- * tier joined the ritual's three in C3; `suggestions` got its control in D2 with the card it
- * governs, and `embeddings` gets its here, with the index it governs. The rule that kept
- * those two off the screen until their features existed still holds and is worth keeping
- * written down rather than deleting with the last exception to it: **a description is not
- * permission to render a control**, because a toggle for something the app cannot do makes
- * the Vault's claims false (invariant 2e).
- *
- * The voice block has a rule the others do not: it is only a toggle where the device could
- * actually run the transcriber. Everywhere else it is a sentence saying why not — which for
- * a self-hosted app reached over plain `http://` is the common case, not the exotic one,
- * because the microphone, WebCrypto and Cache Storage all require a secure context.
- *
- * Unlike the reminders block above it there is no `available()` gate: the ritual is a screen,
- * not a notification, so it works everywhere. What is native-only is the *reminder* for it,
- * and that is F2's.
- */
 const JournalSettings = () => {
     const [ritual, setRitual] = useState(readRitualSetting);
     const [questions, setQuestions] = useState(readOptionalQuestions);
     const [askWho, setAskWho] = useState(readAskWho);
 
-    // Written on change rather than on a Save button, like the reminders toggle: these are
-    // device preferences, not profile fields, and the form's Save posts to the server.
-    //
-    // The notification follows the key rather than leading it (F2). `setRitualReminder` is a
-    // no-op on the web, asks for POST_NOTIFICATIONS at the moment the ritual is turned on and
-    // never at launch, and cancels when it is turned off or the time moves. A refusal is not
-    // an error and nothing here reads its answer: the ritual is a screen, the setting is the
-    // user's, and being reminded of it is the part Android gets a say in.
     const saveRitual = (next) => {
         setRitual(next);
         writeRitualSetting(next);
         setRitualReminder(next);
     };
 
-    // Read through a ref rather than through the render's copy. Two chips toggled inside one
-    // task — which a thumb cannot do and a script can — would otherwise both compute their
-    // "next" from the same stale list and the first one would be lost. The ref costs three
-    // lines and removes the whole class; the write stays here rather than in an effect,
-    // because an effect firing on mount would write the key before the user touched it.
     const questionsRef = useRef(questions);
 
     const toggleQuestion = (id) => {
@@ -636,12 +565,6 @@ export default function Profile() {
         fetchProfile();
     }, []);
 
-    /**
-     * The OS is the authority on whether reminders are on, not this component: the user can
-     * revoke POST_NOTIFICATIONS in Settings at any time. `setRemindersEnabled` returns the
-     * state that actually holds afterwards, and that is what is rendered — so a denied prompt
-     * leaves the control off rather than showing a toggle that lies.
-     */
     const toggleReminders = async () => {
         setReminderError(null);
         const next = await setRemindersEnabled(!reminders);
@@ -740,11 +663,6 @@ export default function Profile() {
                         <div className="relative group">
                             <div className="w-24 h-24 rounded-full overflow-hidden bg-slate-100 border-4 border-white shadow-md flex items-center justify-center">
                                 {formData.profile_picture ? (
-                                    // Stored server-relative (`/uploads/profile_<nanos>.jpg`).
-                                    // In a browser that resolves against the page origin and is
-                                    // correct; in the WebView it would resolve against
-                                    // `https://localhost` and 404, so it is rebased onto the
-                                    // configured server. Returns the path untouched on web.
                                     <img src={resolveAssetUrl(formData.profile_picture)} alt="Profile" className="w-full h-full object-cover" />
                                 ) : (
                                     <User size={40} className="text-slate-400" />
@@ -866,8 +784,6 @@ export default function Profile() {
                         </div>
                     </div>
 
-                    {/* Native only: there is no equivalent on the web, where the in-app
-                        nudge already appears whenever the dashboard is open. */}
                     {remindersAvailable() && (
                         <div className="pt-8 border-t border-slate-50">
                             <div className="flex items-center gap-2 text-slate-800 font-medium mb-4">

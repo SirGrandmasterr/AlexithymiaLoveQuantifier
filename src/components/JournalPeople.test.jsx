@@ -17,15 +17,6 @@ import {
 
 vi.mock('axios');
 
-/**
- * `/journal/people` and `/journal/people/:id`.
- *
- * The screen that makes a journal-only person exist. Two things are asserted here that no
- * other test in the suite can: that a relationship with `snapshot_count: 0` is *listed* and
- * *not* linked to a timeline, and that the detail screen is reached by id — so a rename
- * landing mid-session moves the heading and moves nothing else.
- */
-
 const relationships = [
     // The journal-only one. The dashboard will not draw her; this screen must.
     { ID: 7, name: 'Lucie', snapshot_count: 0 },
@@ -43,12 +34,6 @@ const mockFetch = ({ entries = [], days = [], rels = relationships } = {}) => {
 
 let nextId = 100;
 
-/**
- * One check-in naming one person, with the feelings attached to them.
- *
- * `feelings` is a list of ids; each is attached to the mention at ref 0, which is the person
- * this entry is about. Anything the test wants *unattached* it passes in `loose`.
- */
 const checkin = ({ day, at, relationshipId, label = 'Lucie', feelings = [], loose = [], transcript = null }) => ({
     ID: nextId++,
     client_id: `checkin-${nextId}`,
@@ -268,9 +253,6 @@ describe('one person', () => {
         expect(await screen.findByRole('heading', { name: 'Lucie' })).toBeInTheDocument();
         expect(document.querySelectorAll('[data-mention-entry]')).toHaveLength(2);
 
-        // The rename lands the way it lands in the app: the subject list refetches and the
-        // same relationship comes back under a different name. Nothing about the route
-        // changed, because the route never carried the name (invariant 2a).
         mockFetch({
             rels: [{ ID: 7, name: 'Lucie Moreau', snapshot_count: 0 }, relationships[1]],
             entries: [

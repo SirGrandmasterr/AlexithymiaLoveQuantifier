@@ -4,27 +4,6 @@ import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
 
-/**
- * The microphone, natively: 16 kHz mono float samples into a buffer that never leaves this
- * process, with a level reading every 50 ms for the meter on screen.
- *
- * It is the native half of C2's recorder and deliberately no more than that. The state
- * machine — tap to start and tap to stop, the two-second silence stop, the thirty-second
- * limit, *add more*, discard on background — stays in `src/journal/recorder.js`, which
- * drives this class through the plugin exactly as it drives `MediaRecorder` on the web.
- * Two things are enforced here regardless, because a stalled WebView must not be able to
- * leave a microphone open: the capture ends itself at `maxMs` (the recorder passes
- * `MAX_CLIP_MS`, so the number has one home), and the plugin aborts it when the activity
- * pauses.
- *
- * The audio source is `VOICE_RECOGNITION`: the source speech recognisers use, which the
- * platform keeps flat — the same request the web build makes by turning noise suppression
- * and automatic gain off (§4.2), so the meter measures the clip the model will see.
- *
- * The level is the RMS of the last 1,024 samples (64 ms), on the same 0…1 scale as the web
- * meter's RMS over an `AnalyserNode` frame, so `SPEECH_LEVEL` and `SILENCE_LEVEL` in the
- * recorder mean the same thing on both platforms.
- */
 public final class AudioCapture {
 
     public interface Listener {
@@ -128,10 +107,6 @@ public final class AudioCapture {
         return (float) Math.sqrt(sum / n);
     }
 
-    /**
-     * Stop and hand over what was captured. Returns the same samples if the limit stopped
-     * the capture first; returns an empty array if nothing was ever started.
-     */
     public float[] stop() {
         Thread toJoin;
         synchronized (lock) {

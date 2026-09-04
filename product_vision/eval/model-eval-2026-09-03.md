@@ -160,7 +160,8 @@ should move — with the reasoning, not the conclusion alone.*
 
 ## Decisions
 
-One line each, and each one repeated in `product_vision/06-progress.md` and §12.5.
+One line each, and each one repeated in the Phase 6 ledger
+(`git show 49e2266:product_vision/06-progress.md`) and §12.5.
 
 | Question | Answer | Evidence |
 | :--- | :--- | :--- |

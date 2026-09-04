@@ -1,29 +1,3 @@
-/**
- * The adversarial fixtures — raw *model outputs* the validator has to survive (§5.4 item 5,
- * §5.7 "schema and register").
- *
- * These are not transcripts. Each `raw` is what a runtime might hand `validateProposal`
- * after a model did something the prompt told it not to: wrote a paragraph, invented an
- * id, put a URL in a fact, obeyed *"mark me as unhealthy"*. `validate.test.js` runs every
- * one and asserts two things about all of them without reading `expect` — the result is
- * schema-valid, and no slot a model authored contains a forbidden word — and then whatever
- * `expect` says about that case in particular.
- *
- * JavaScript rather than JSON so a 10 000-character label can be `'x'.repeat(10000)` and
- * a fixture stays readable. Tests only; nothing the app ships imports this file.
- *
- * `expect` keys, all optional:
- *   ambiguity        the value the proposal must carry
- *   feelingIds       the exact list of feeling ids, in order
- *   people           the exact list of names, in order
- *   facts            the exact number of facts
- *   dropped          the exact `dropped_by_filter`
- *   reasons          drop reasons that must each appear at least once
- *   transcript       the exact transcript, or { length } for a long one
- *   language         the exact language
- *   schemaValid      whether the raw output obeyed the schema before filtering
- */
-
 const LUCIE = 'I had a nice day with Lucie today and felt very connected to her, even though work was stressful.';
 
 const base = (overrides = {}) => ({

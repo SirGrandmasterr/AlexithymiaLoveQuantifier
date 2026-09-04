@@ -60,10 +60,6 @@ const LoveChart = ({ stats, uncertain = [] }) => {
     );
 };
 
-/**
- * The one-line stack summary: which styles lead, and what has moved most.
- * The ⓘ states the arithmetic, because every number shown must be explainable.
- */
 const SummaryLine = ({ versions }) => {
     const summary = useMemo(() => summarizeStack(versions), [versions]);
     if (!summary) return null;
@@ -135,22 +131,6 @@ const CardStack = ({ versions, maskName = (name) => name, blurClass = '', onEdit
         // listener must be re-registered when it changes.
     }, [sortedVersions.length, activeIndex]);
 
-    // Scrubbing the stack by touch — and the axis it is allowed to use.
-    //
-    // This was a *vertical* drag, mirroring the wheel handler, and that was the bug. Vertical
-    // is what the page scrolls with, so every attempt to scroll from a card was a coin toss:
-    // sometimes the page moved, sometimes the stack riffled, and which one you got depended
-    // on where your finger happened to land. Two gestures competing for one axis cannot be
-    // fixed with a better threshold, only by moving one of them.
-    //
-    // So the stack now takes the horizontal axis, which nothing else on this screen wants,
-    // and vertical belongs to the page unconditionally — reinforced by `touch-action: pan-y`
-    // on the container, which tells the compositor the same thing without waiting for us.
-    // The direction follows the visual metaphor rather than the old wheel: swiping left
-    // pushes the top card off to reveal the older one beneath.
-    //
-    // Anyone who does not care to discover a swipe has the pager underneath the stack, which
-    // is the discoverable half of the same control.
     useEffect(() => {
         const container = containerRef.current;
         if (!container) return;
@@ -176,9 +156,6 @@ const CardStack = ({ versions, maskName = (name) => name, blurClass = '', onEdit
             const deltaX = event.touches[0].clientX - startX;
             const deltaY = event.touches[0].clientY - startY;
 
-            // Vertical intent is the page's, and it is settled early and permanently: a
-            // gesture that starts as a scroll must not turn into a scrub halfway through
-            // because the finger drifted sideways.
             if (!decided && Math.abs(deltaY) > YIELD_PX && Math.abs(deltaY) > Math.abs(deltaX)) {
                 startX = null;
                 return;
@@ -223,13 +200,7 @@ const CardStack = ({ versions, maskName = (name) => name, blurClass = '', onEdit
         <>
             <div
                 ref={containerRef}
-                // `touch-action: pan-y` states the axis split the touch handler implements: the
-                // browser may scroll this vertically without consulting us, and horizontal is
-                // ours. It also removes the ~300ms the WebView otherwise spends deciding.
                 style={{ touchAction: 'pan-y' }}
-                // 500px is taller than the content area of a 360×640 phone once the header and
-                // the bottom bar are removed, which left the newest card clipped. Below `sm` the
-                // stack takes the viewport height it can actually have.
                 className="relative h-[min(70vh,500px)] sm:h-[500px]"
             >
                 {sortedVersions.map((person, index) => {
@@ -369,8 +340,6 @@ const CardStack = ({ versions, maskName = (name) => name, blurClass = '', onEdit
                                 )}
                             </div>
 
-                            {/* Hover-only, so this is the desktop half of the story; the pager
-                                below the stack is the touch half. */}
                             <div className="hidden sm:block absolute inset-x-0 bottom-4 px-6 text-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                                 {sortedVersions.length > 1 && (
                                     <p className="text-[10px] text-slate-400 uppercase tracking-widest">
@@ -383,11 +352,6 @@ const CardStack = ({ versions, maskName = (name) => name, blurClass = '', onEdit
                 })}
             </div>
 
-            {/* The discoverable half of the scrub.
-                A swipe nobody is told about is a feature nobody has, and on a phone there is no
-                hover state to hint with — the "Scroll ↓ for history" line inside the card only
-                ever appears under a mouse. Two buttons and a count say the same thing out loud,
-                and give the gesture a fallback for anyone who would rather tap. */}
             {sortedVersions.length > 1 && (
                 <div className="sm:hidden mt-3 flex items-center justify-center gap-4">
                     <button
@@ -416,7 +380,6 @@ const CardStack = ({ versions, maskName = (name) => name, blurClass = '', onEdit
         </>
     );
 };
-
 
 export const AboutModal = ({ onClose }) => {
     const [selectedCategory, setSelectedCategory] = useState(null);
@@ -506,22 +469,6 @@ export const AboutModal = ({ onClose }) => {
     );
 };
 
-/**
- * One category's scoring row: dial, slider, anchor phrase, optional guided-scoring panel,
- * and the skip/unsure toggles. Owns no data — every change goes back to PersonForm.
- *
- * There are two ways to set the number and they are not redundant. The track is direct and
- * fast with a mouse; the dial is the one that works under a thumb, because the hand rests
- * clear of the track and of the anchor phrase beside it. See `VaultKnob` for why that
- * separation matters more here than it would on most forms.
- *
- * @param {number} [previousValue] what this category read in the snapshot being built on.
- *   Shown as a mark on the track and a one-tap way back to it — a new version starts at zero
- *   now, so this is how last time's number stays available without being assumed.
- * @param {number} [phraseSeed] which of the band's five phrasings to show. Owned by the form
- *   rather than the row so that one opening speaks with one voice, and the next opening picks
- *   a different one — see `anchorPhrase`.
- */
 export const CategorySliderRow = ({
     category,
     value,
@@ -547,9 +494,6 @@ export const CategorySliderRow = ({
     // "Last time 0" is noise, and so is one already sitting on the old number.
     const hasPrevious = Number.isFinite(previousValue) && previousValue !== value;
 
-    // Quick pulse: one line per category, carrying last time's answer, until the user says
-    // this one moved. Opening a row is the whole interaction — a pulse where nothing
-    // changed costs zero clicks beyond saving.
     if (collapsed) {
         return (
             <button
@@ -577,8 +521,6 @@ export const CategorySliderRow = ({
     return (
         <div className={skipped ? 'opacity-50' : ''}>
             <div className="flex items-center gap-3 mb-2">
-                {/* Left of the label and above the track: the one part of the row a thumb is
-                    meant to land on, positioned so that landing on it hides nothing. */}
                 <VaultKnob
                     value={value}
                     onChange={onValueChange}
@@ -638,8 +580,6 @@ export const CategorySliderRow = ({
                                 style={{ left: `${band.min}%`, width: `${band.max - band.min}%` }}
                             />
                         )}
-                        {/* Where this category stood last time. A mark, not a starting
-                            position: the number is offered, not assumed. */}
                         {hasPrevious && (
                             <div
                                 aria-hidden="true"
@@ -654,12 +594,6 @@ export const CategorySliderRow = ({
                             value={value}
                             onChange={(e) => onValueChange(parseInt(e.target.value))}
                             aria-label={category.label}
-                            // `touch-pan-y` is what stops a scroll from becoming a score. A
-                            // range input claims every touch that lands on it, so dragging the
-                            // page from a spot that happened to be over a track moved the
-                            // number instead — silently, since the finger was covering it.
-                            // With this, vertical belongs to the page and only a deliberate
-                            // sideways drag reaches the control.
                             className="relative w-full h-1 bg-transparent rounded-lg appearance-none cursor-pointer accent-slate-600 touch-pan-y"
                         />
                     </div>
@@ -687,8 +621,6 @@ export const CategorySliderRow = ({
                         )}
                     </div>
 
-                    {/* Guided scoring is hidden in a pulse: the fast path and the slow,
-                        careful path are different tools for different days. */}
                     {!hideGuide && (
                         <button
                             type="button"
@@ -756,19 +688,6 @@ export const CategorySliderRow = ({
     );
 };
 
-/**
- * The names the *Identity* field offers (§2.2).
- *
- * Every relationship, **including the ones with no snapshot**: a person the journal met in a
- * check-in is a relationship the dashboard does not draw, so without this the only way to
- * put a first snapshot on them is to type the name back exactly. Typing it back *almost*
- * exactly is how a near-duplicate is born — and the resolution rule is exact after trim
- * (invariant 2b), so "Lucie M" and "Lucie" would be two people from then on.
- *
- * A `datalist` rather than a picker: it suggests without choosing, so what is submitted is
- * still a string the user confirmed (invariant 15), and `FindOrCreateRelationship` on the
- * server is still the one thing that decides which relationship that string means.
- */
 export const PersonForm = ({ onClose, onSave, initialData, isNewVersion, isPulse, suggestions = [] }) => {
     // A pulse is a new version taken the fast way: same name, today's date, context
     // cleared. Everything that was true of "new version" is true of it.
@@ -788,23 +707,8 @@ export const PersonForm = ({ onClose, onSave, initialData, isNewVersion, isPulse
     // which is the point: "nothing moved" should cost nothing to say.
     const [expanded, setExpanded] = useState(() => new Set());
 
-    // Context describes a period, so it is never inherited by a new version — only
-    // an edit of an existing snapshot seeds it. The same goes for uncertainty and
-    // guide answers: last time's doubt is not this time's.
     const isEditing = Boolean(initialData) && !isNewSnapshot;
 
-    // Every category needs a slider position even when its key is absent from the
-    // stored snapshot, so the zeros are the floor and the stored values sit on top.
-    //
-    // A **new version** now starts from those zeros rather than from last time's numbers.
-    // Inheriting them looked helpful and was quietly corrosive: a row left untouched
-    // recorded a fresh, dated, apparently deliberate score that the user had never actually
-    // made this time, and a stack of those reads as stability when it is really silence.
-    // Starting at zero makes every number in a snapshot something someone decided.
-    //
-    // A **pulse** is the exception, and not an inconsistency: carrying the previous answers
-    // is the whole definition of one — "open what has moved, leave the rest" — and its rows
-    // say "unchanged" on their face, so nothing is being claimed that was not seen.
     const [stats, setStats] = useState(() => ({
         ...CATEGORIES.reduce((acc, cat) => ({ ...acc, [cat.id]: 0 }), {}),
         ...((isEditing || isPulse) ? (initialData?.stats || {}) : {})
@@ -822,19 +726,11 @@ export const PersonForm = ({ onClose, onSave, initialData, isNewVersion, isPulse
     // written straight through. See `src/mobile/knobFeedback.js` for the default.
     const [dialSound, setDialSound] = useState(dialSoundEnabled);
 
-    // One seed per opening of this form, so every row speaks in the same voice today and a
-    // different one next time. Taken in a state initialiser rather than at render, or the
-    // sentences would change under the user on every keystroke.
     const [phraseSeed] = useState(nextPhraseSeed);
     const [description, setDescription] = useState(isEditing ? (initialData.description || '') : '');
     const [tags, setTags] = useState(isEditing ? (initialData.tags || []) : []);
     const [uncertain, setUncertain] = useState(isEditing ? (initialData.uncertain || []) : []);
     const [guideAnswers, setGuideAnswers] = useState(isEditing ? (initialData.guide_answers || {}) : {});
-    // A skipped category is one with no key in the stored stats — Phase 1's semantics.
-    //
-    // A pulse inherits them: "unchanged" has to mean unchanged, so a category left unscored
-    // last time stays unscored unless the user opens it. A full new version does the
-    // opposite — everything is scorable again.
     const [skipped, setSkipped] = useState(() => (
         (isEditing || isPulse) && initialData
             ? CATEGORIES.filter(cat => !isScored(initialData.stats, cat.id)).map(cat => cat.id)
@@ -920,8 +816,6 @@ export const PersonForm = ({ onClose, onSave, initialData, isNewVersion, isPulse
                                 autoFocus={!initialData}
                                 disabled={isNewSnapshot}
                             />
-                            {/* Only when a name is being chosen. A new version and a pulse
-                                already have their person, and the field is disabled. */}
                             {!isNewSnapshot && suggestions.length > 0 && (
                                 <datalist id={nameSuggestionsId} data-name-suggestions>
                                     {suggestions.map(person => (
@@ -945,9 +839,6 @@ export const PersonForm = ({ onClose, onSave, initialData, isNewVersion, isPulse
                         <div>
                             <div className="flex items-center justify-between gap-3">
                                 <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">Metrics</label>
-                                {/* The dial clicks. Some rooms are not the place for that, and
-                                    discretion mode already silences it — this is the standing
-                                    preference for everywhere else. */}
                                 <button
                                     type="button"
                                     onClick={() => {
@@ -1073,15 +964,8 @@ export default function Dashboard() {
         dismissLoadError();
     };
 
-    // The list is fetched once on mount and mutated locally after that, which is invisible on
-    // a desktop where a reload is free. A phone is resumed, not reloaded — this is how the
-    // list gets refetched without one. No-op on web; see `src/mobile/usePullToRefresh.js`.
     const { pull, refreshing, armed } = usePullToRefresh(refresh);
 
-    // Reminders are recomputed from `stacks` whenever it changes, so adding a snapshot or
-    // changing a rhythm cancels the notification it just satisfied. No-op unless the user has
-    // turned reminders on; see `src/mobile/cadenceReminders.js` for the constraints it works
-    // under, which come from the product rule at the top of `constants/cadence.js`.
     useEffect(() => {
         syncReminders(stacks);
     }, [stacks]);
@@ -1224,8 +1108,6 @@ export default function Dashboard() {
                             Overview of your emotional metrics.
                         </p>
                     </div>
-                    {/* On a handset "New Analysis" is the one thing this screen is for, so it
-                        takes the full width rather than sharing a row with an info icon. */}
                     <div className="flex items-center gap-3">
                         <button onClick={() => setIsAboutOpen(true)} aria-label="About" className="flex items-center justify-center p-3 min-h-[48px] min-w-[48px] bg-white border border-slate-200 text-slate-500 rounded-xl hover:border-slate-400 hover:text-slate-700 transition-all shadow-sm">
                             <Info size={18} />
@@ -1237,10 +1119,6 @@ export default function Dashboard() {
                     </div>
                 </header>
 
-                {/* Cached data is not an error, so it does not use the banner slot — that one
-                    is dismissible and this condition is not something the user can dismiss
-                    their way out of. It states the age, because "offline" alone is not
-                    actionable: whether a twenty-minute-old list is fine depends on the list. */}
                 {staleSince && (
                     <div role="status" className="mb-6 p-3 rounded-lg bg-slate-100 border border-slate-200 flex items-center gap-3">
                         <Activity size={16} className="flex-shrink-0 text-slate-400" />
@@ -1270,10 +1148,6 @@ export default function Dashboard() {
                     </div>
                 )}
 
-                {/* One slot, one nudge, never two (§3.6, invariant 2c). After the ritual's
-                    hour the ritual line owns this place for the rest of the session and the
-                    cadence banner waits for the next one — two calm sentences stacked are a
-                    to-do list, which is the thing this app refuses to become. */}
                 {ritualPrompt.owns ? (
                     ritualPrompt.visible && (
                         <RitualNudge
@@ -1313,8 +1187,6 @@ export default function Dashboard() {
                         </div>
                     )}
 
-                    {/* Keyed by relationship id: the name is a label now, and two stacks
-                        are allowed to share one. */}
                     {stacks.map((stack) => (
                         <div key={stack.relationship.ID}>
                             <StackActions

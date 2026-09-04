@@ -1,31 +1,3 @@
-/**
- * `make journal-eval` — the out-of-band evaluation harness (§5.7).
- *
- *     node scripts/journal-eval/run.mjs [--candidate <id>]… [options]
- *
- * Drives a candidate through every golden case at temperature 0 with the output schema as the
- * grammar, validates each answer with the **app's own** `validateProposal`, and writes the
- * report §5.7 gates on. It is not part of `npm test`: it needs weights and minutes.
- *
- * Options
- *   --candidate <id>     Repeatable. Default: every tier default (`--candidate reference`
- *                        needs no weights and checks the harness itself).
- *   --tier-defaults      Every candidate that is a default for a tier — what §5.7's gate is
- *                        about. This is what a bare `make journal-eval` runs.
- *   --hypotheses <file>  Transcriber output for a text-mode candidate, keyed `<case>|<cond>`.
- *                        Without it a text-mode tier is scored over *perfect* transcripts,
- *                        which flatters it, and the report says so.
- *   --limit <n>          First n cases. For trying the wiring, never for a report.
- *   --conditions <list>  Default `clean,noisy`.
- *   --out <path>         Report path. Default `product_vision/eval/<name>-<date>.md`.
- *   --no-report          Print the summary, write nothing.
- *   --force              Overwrite a report that already exists, hand-written sections and all.
- *   --verbose            One line per clip, as it happens.
- *
- * Environment, read by `runners.mjs`: `JOURNAL_EVAL_LLAMA_BIN`, `JOURNAL_EVAL_LITERT_BIN`,
- * `JOURNAL_EVAL_MODEL`, `JOURNAL_EVAL_MMPROJ`, `JOURNAL_EVAL_REPLAY`,
- * `JOURNAL_EVAL_LITERT_ARGS`, `JOURNAL_EVAL_EXTRA_ARGS`.
- */
 import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -42,9 +14,7 @@ import { aggregate, ambiguityConfusion, perIdMetrics, scoreCase } from './score.
 import { createRunner } from './runners.mjs';
 import { aggregateWer, wordErrorRate } from './wer.mjs';
 
-/* ------------------------------------------------------------------------------------ */
-/* Arguments                                                                              */
-/* ------------------------------------------------------------------------------------ */
+/* Arguments */
 
 const parseArgs = (argv) => {
     const options = { candidates: [], conditions: ['clean', 'noisy'], report: true };
@@ -81,9 +51,7 @@ const HELP = [
     '         --conditions clean,noisy | --out <path> | --no-report | --force | --verbose'
 ].join('\n');
 
-/* ------------------------------------------------------------------------------------ */
-/* One candidate                                                                          */
-/* ------------------------------------------------------------------------------------ */
+/* One candidate */
 
 const percentile = (values, fraction) => {
     if (!values.length) return null;
@@ -91,14 +59,6 @@ const percentile = (values, fraction) => {
     return sorted[Math.min(sorted.length - 1, Math.floor(fraction * sorted.length))];
 };
 
-/**
- * Every unit of work for one candidate: which case, which condition, which clip.
- *
- * An audio candidate has one unit per clip found — several if several speakers recorded the
- * same case, none if nobody did. A text candidate has one unit per case, because there is no
- * clip to vary; its `condition` is the one the transcript came from when hypotheses were
- * supplied, and `text` otherwise.
- */
 const planUnits = ({ candidate, cases, clips, conditions, hypotheses }) => {
     const units = [];
     cases.forEach((entry) => {
@@ -127,11 +87,6 @@ const runCandidate = async ({ candidate, suite, clips, options, inference, hypot
     const cases = options.limit ? transcripts.slice(0, options.limit) : transcripts;
     const clipRows = new Map(recordings.clips.map(row => [row.case, row]));
 
-    // A candidate the environment cannot drive is **reported**, not thrown. `make journal-eval`
-    // with no weights installed should say which tiers it could not reach and why — running it
-    // is how you find that out, so aborting on the first missing binary would put the answer
-    // behind the question. When that happens it is the *only* note: the caveats below are about
-    // how a run was scored, and there was no run.
     const notes = [];
     let runner = null;
     let unrunnable = false;
@@ -184,9 +139,6 @@ const runCandidate = async ({ candidate, suite, clips, options, inference, hypot
         const answer = await runner.run({ entry, condition, prompt: promptWithNote, schema, input });
         const { proposal, provenance } = inference.validateProposal(answer.raw, context);
 
-        // `validateProposal` reports "this was not an object at all" as one drop at the root
-        // with no path — the model answered prose, or nothing. Distinct from an answer that
-        // was JSON and wrong, which is what every other drop is.
         if (provenance.drops.some(drop => drop.path === '' && drop.reason === 'shape')) unparseable += 1;
         if (provenance.schema_valid) schemaValid += 1;
         droppedByFilter += provenance.dropped_by_filter;
@@ -238,9 +190,6 @@ const runCandidate = async ({ candidate, suite, clips, options, inference, hypot
         return {
             language, condition,
             ...aggregateWer(group),
-            // Only clips whose condition has a ceiling are counted. A text-mode run has no
-            // condition to look one up by, so the denominator is zero and the report says so
-            // rather than printing a reassuring "0 over".
             withCeiling: group.filter(result => result.ceiling !== null && result.wer !== null).length,
             overCeiling: group.filter(result => result.ceiling !== null && result.wer !== null && result.wer > result.ceiling).length
         };
@@ -294,9 +243,7 @@ const runCandidate = async ({ candidate, suite, clips, options, inference, hypot
     };
 };
 
-/* ------------------------------------------------------------------------------------ */
-/* Entry point                                                                            */
-/* ------------------------------------------------------------------------------------ */
+/* Entry point */
 
 const gitCommit = async () => {
     try {
@@ -322,9 +269,6 @@ const main = async () => {
 
     skipped.forEach(({ file, why }) => process.stderr.write(`skipped ${file}: ${why}\n`));
 
-    // Read and parsed once. The file is accepted either as `{ transcripts: … }` or as the
-    // bare map, and the `??` used to reach for the second by re-reading and re-parsing the
-    // whole file from disk.
     const hypothesesFile = options.hypotheses
         ? JSON.parse(await readFile(options.hypotheses, 'utf8'))
         : null;
@@ -357,18 +301,11 @@ const main = async () => {
         platform: process.platform, arch: process.arch, node: process.version, commit: await gitCommit()
     };
 
-    // A dated file in `product_vision/eval/` is a claim that something was run (that
-    // directory's README says so). A run with no weights in it is a claim about the harness,
-    // so it is named for what it is and cannot be mistaken for a model evaluation.
     const scoredAnything = runs.some(run => run.clipCount > 0);
     const stem = runs.every(run => run.candidate.runtime === 'reference') ? 'harness-check' : 'model-eval';
     const markdownPath = options.out || join(repoRoot, 'product_vision/eval', `${stem}-${date}.md`);
     const jsonPath = markdownPath.replace(/\.md$/, '.json');
 
-    // A dated file in `product_vision/eval/` is a claim that something was run (that
-    // directory's README says so). A run in which every candidate turned out to be undrivable
-    // scored nothing, so it has nothing to claim and writes no file — the summary below says
-    // what happened, which is the useful output in that case.
     if (options.report && scoredAnything) {
         await writeReport({
             markdownPath, jsonPath, force: Boolean(options.force),
@@ -406,9 +343,6 @@ const main = async () => {
             + 'Try `make journal-eval CANDIDATE=reference`, which needs no weights.\n');
     }
 
-    // A failing gate is not a failing command: the harness did its job by saying so, and a
-    // non-zero exit here would make `make journal-eval` unusable as the thing you run to find
-    // out. The report is the verdict.
     return 0;
 };
 

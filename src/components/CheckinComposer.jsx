@@ -26,46 +26,8 @@ import {
     fillCopy
 } from '../constants/journal';
 
-// Still exported from here. `Journal.jsx` reads the chip shape and two suites read the
-// request builder from this module; both moved to `CheckinControls.jsx` when the proposal
-// card needed them too, and the names stay reachable where their importers look.
 export { chipClass, buildCheckinRequest };
 
-/**
- * The check-in composer — chips and typed text, which §4.1 calls the definition of a
- * check-in rather than a fallback for one. Voice arrived in 6-C and the model's card in
- * 6-D, and both land on the same record.
- *
- * **Invariant 15 is structural in this file, not intentional.** Nothing is written that the
- * user did not tap: the pickers in `CheckinControls.jsx` return suggestions and this
- * component never selects one of them, a new person or a new trigger reaches the request
- * only from the button that names it, and the `about` a chip carries is only ever the chip
- * the user put there. The request is built from this component's state at save time, never
- * from a picker's transient text — a label typed and then abandoned mints nothing.
- *
- * **The proposal card (D2) is a second body for the same sheet, not a second sheet.** A
- * composer the microphone opened hands every runtime result to `ProposalCard` when the
- * *Show suggestions* setting is on; the card builds its own request from what the user
- * confirmed and hands it back through `saveProposal`, and the write path is this file's
- * `createEntry` either way. With the setting off, or on a card's *Tap words instead*, the
- * words land in the grid below exactly as they did in C3.
- *
- * **Trap 4:** a failed save leaves the sheet open with every selection intact. `onClose()`
- * sits inside `try`, after the await, and never in a `finally`.
- *
- * **No bare strings.** Every word comes from `JOURNAL_COPY`, so the forbidden-word walk in
- * `journal.test.js` sees the whole surface. Colours are inline `style` from the complete
- * literal hexes in `FEELINGS`, never composed class names (invariant 4).
- */
-
-/**
- * One chip a feeling is about.
- *
- * Two controls, because it does two things: the body picks it up so it can be dropped on
- * another feeling, and the × takes it off this one. A person is masked under discretion and
- * never blurred — the mask is the cover; a trigger or a tag is blurred like every other
- * note in this app (§9.6).
- */
 const AboutChip = ({ about, picked, onPickUp, onRemove }) => {
     const { maskName, blurClass } = useDiscretion();
     const person = about.kind === 'person';
@@ -146,8 +108,6 @@ const PickedFeeling = ({
                     {INTENSITY_DOT.repeat(entry.intensity)}
                 </button>
 
-                {/* The same `≈` the snapshot sliders use for a score the user does not
-                    trust, so one mark means one thing across the app. */}
                 <button
                     type="button"
                     onClick={() => onToggleUncertain(entry.id)}
@@ -229,14 +189,8 @@ const PickedFeeling = ({
     );
 };
 
-/* ------------------------------------------------------------------------------------ */
-/* The two ways in (§9.2)                                                                 */
-/* ------------------------------------------------------------------------------------ */
+/* The two ways in (§9.2) */
 
-/**
- * The header button above `md`, in the corner the dashboard puts *New Analysis* in, so the
- * app's two primary screens share one grammar.
- */
 export const CheckinButton = ({ onOpen, voice = false }) => (
     <button
         type="button"
@@ -253,18 +207,6 @@ export const CheckinButton = ({ onOpen, voice = false }) => (
     </button>
 );
 
-/**
- * The handset button: 64 px, bottom-right, inside the thumb's arc, sitting on top of the
- * bottom bar's height plus the gesture inset so it clears both. It hides with the bar while
- * the soft keyboard is up, for the bar's own reason — a control under an open keyboard is a
- * mis-tap waiting to happen.
- *
- * **C3 gave it the microphone**, where a device can run the transcriber and the user has
- * turned voice on. Under discretion it stays a keyboard for good (§4.4, §9.6): speaking a
- * note aloud defeats the mode, and the app should not offer to. It is replaced rather than
- * disabled — a greyed-out microphone still says *you could be recording* to anyone looking
- * over a shoulder, which is the exact thing the mode exists to prevent.
- */
 export const CheckinFab = ({ onOpen, voice = false }) => (
     <button
         type="button"
@@ -279,9 +221,7 @@ export const CheckinFab = ({ onOpen, voice = false }) => (
     </button>
 );
 
-/* ------------------------------------------------------------------------------------ */
-/* The sheet                                                                              */
-/* ------------------------------------------------------------------------------------ */
+/* The sheet */
 
 export default function CheckinComposer({ onClose, onSaved, mode = 'chips', voiceKit = null, context = null }) {
     const { createEntry } = useJournal();
@@ -324,8 +264,6 @@ export default function CheckinComposer({ onClose, onSaved, mode = 'chips', voic
         if (suggestions && result?.ok) setProposal(result);
     }, [suggestions]);
 
-    /** The card's save: the request is the card's, the write is this sheet's. Trap 4 holds
-        on the card's side — it catches, this only closes on success. */
     const saveProposal = async (request) => {
         const created = await createEntry(request);
         if (onSaved) onSaved(created);
@@ -355,12 +293,6 @@ export default function CheckinComposer({ onClose, onSaved, mode = 'chips', voic
 
     const atCap = picked.length >= MAX_FEELINGS_PER_CHECKIN;
 
-    /**
-     * `unclear` is exclusive, which §4.4 implies and this makes explicit: *can't tell*
-     * beside *joy* is not a record of two things, it is a contradiction, and the record
-     * should not be able to hold one. Choosing it puts the others down; choosing another
-     * puts it down. The sentence saying so is on screen beside the grid.
-     */
     const toggleFeeling = (id) => {
         setMoving(null);
         setPicked(previous => {
@@ -421,11 +353,6 @@ export default function CheckinComposer({ onClose, onSaved, mode = 'chips', voic
             : (previous.length < MAX_TAGS ? [...previous, tag] : previous)
     ));
 
-    /**
-     * The triggers minted in this composer and not yet saved, in the shape the picker's
-     * chips and `triggerCandidates` both read. Deduped by id, so a word attached to two
-     * feelings appears once in the list it is offered from.
-     */
     const pendingTriggers = useMemo(() => {
         const byId = new Map();
         picked.forEach(entry => entry.about.forEach(about => {
@@ -484,9 +411,6 @@ export default function CheckinComposer({ onClose, onSaved, mode = 'chips', voic
                 </div>
 
                 <div className="flex-1 overflow-y-auto px-5 pb-5 space-y-5">
-                    {/* The words first, then what to do with them. There are no proposals
-                        in this slice: the grid below opens with nothing chosen, which is
-                        exactly what §4.6's `feeling` ambiguity already means. */}
                     {kit && (
                         <VoiceCapture
                             kit={kit}
@@ -556,8 +480,6 @@ export default function CheckinComposer({ onClose, onSaved, mode = 'chips', voic
 
                         <FeelingGrid picked={picked} atCap={atCap} query={query} onToggle={toggleFeeling} />
 
-                        {/* Stated before it is reached, so the limit is something the user
-                            was told rather than something they ran into. */}
                         <p className="text-[11px] text-slate-400 font-light">
                             {fillCopy(JOURNAL_COPY.checkin.cap, { max: MAX_FEELINGS_PER_CHECKIN })}
                             {' '}
@@ -597,8 +519,6 @@ export default function CheckinComposer({ onClose, onSaved, mode = 'chips', voic
                         >
                             {JOURNAL_COPY.checkin.noteLabel}
                         </label>
-                        {/* Blurred under discretion like every other note in the app — and
-                            it is what turns this into the `typed` path (§4.1). */}
                         <textarea
                             id="checkin-note"
                             data-composer-note
@@ -612,8 +532,6 @@ export default function CheckinComposer({ onClose, onSaved, mode = 'chips', voic
                     )}
                 </div>
 
-                {/* The card carries its own three controls (§4.4 item 6); two Save buttons on
-                    one sheet would be two answers to which state is written. */}
                 {proposal === null && (
                 <div className="px-5 py-4 border-t border-slate-100 flex-shrink-0 space-y-3 pb-safe">
                     {error && (

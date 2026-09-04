@@ -17,15 +17,6 @@ import { VECTOR_KEY } from './store';
 
 vi.mock('axios');
 
-/**
- * §5.8's payoff, driven end to end: a user says *my job* after months of *work*, and the
- * card offers the word they already have — or does not, when nothing structural agrees.
- *
- * Everything here runs against `createFakeEmbedder`, so **no weight file is opened**, and
- * every assertion about what was written is made on the request body, because that is the
- * only place "nothing was merged" and "no vector left this device" can actually be checked.
- */
-
 const TODAY = '2026-08-21';
 const WORK_ID = '0b7e4c1a-5d2a-4f0c-9e2f-7f3a8c1d4b6e';
 const MONEY_ID = '73c0f1fe-04f9-4a3a-8fb3-319c0671b6cf';
@@ -302,19 +293,8 @@ describe('accepting the offer', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* Rule 1: nothing in the index reaches a request body                                    */
-/* ------------------------------------------------------------------------------------ */
+/* Rule 1: nothing in the index reaches a request body */
 
-/**
- * A payload is vector-shaped if it holds a typed array, a long run of numbers, or any of the
- * field names the index writes.
- *
- * Deliberately broader than the row: it would catch a vector smuggled under any name, and it
- * would catch a `Float32Array` that `JSON.stringify` had quietly turned into an object of
- * numeric keys — which is what a careless `{...row}` into a request body would actually look
- * like on the wire.
- */
 const vectorShaped = (value, path = '') => {
     if (ArrayBuffer.isView(value)) return [`${path}: a typed array`];
     if (Array.isArray(value)) {
@@ -388,9 +368,7 @@ describe('rule 1 — vectors live on the device and nowhere else', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* The Triggers view                                                                      */
-/* ------------------------------------------------------------------------------------ */
+/* The Triggers view */
 
 const renderTriggers = async ({ entries, runtime }) => {
     mockFetch(entries);

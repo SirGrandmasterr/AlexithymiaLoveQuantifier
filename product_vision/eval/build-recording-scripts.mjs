@@ -1,22 +1,3 @@
-/**
- * Generates product_vision/eval/recording-script-<lang>.md from the golden suite.
- *
- *   node product_vision/eval/build-recording-scripts.mjs
- *
- * One file per spoken language, holding every sentence to record, in order, with the exact
- * file name to save it under and any direction the case carries. This is what a person at a
- * microphone reads.
- *
- * Why a generator rather than a hand-written script, for the same reason
- * `build-proposal-card.mjs` is one: the words a speaker says are the denominator of that
- * clip's word error rate. A recording script that had drifted from `transcripts.json` by one
- * word would put a permanent error into every WER computed from it, and nobody would find it
- * — the model would simply look slightly worse than it is. Reading the sentences from the
- * suite makes that impossible.
- *
- * Run it again after adding a case. The files it writes carry a "generated, do not hand-edit"
- * line for the same reason.
- */
 import { readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
@@ -29,13 +10,6 @@ const recordings = JSON.parse(await readFile(join(golden, 'recordings.json'), 'u
 
 const clipRows = new Map(recordings.clips.map(row => [row.case, row]));
 
-/**
- * The six cases whose delivery is part of the test, and what to tell the speaker.
- *
- * Keyed by pair, so both halves get the same direction — the point of a pair is that the two
- * differ in language and in nothing else, and a German half read calmly against an English
- * half read fast would make the language comparison a comparison of two deliveries.
- */
 const DIRECTIONS = {
     'quiet-voice': 'Quietly, close to the microphone, the way somebody actually says this.',
     emphatic: 'Loud and close. Let it clip a little — that is the point.',

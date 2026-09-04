@@ -1,11 +1,3 @@
-/**
- * The two pieces of the I/O half that are pure enough to test, and important enough to want
- * tested: the argument templating that decides what a model is actually asked, and the WAV
- * header reader that decides whether a clip is usable.
- *
- * Runs in `npm test`; no process is spawned here and no model is loaded (see the note at the
- * top of `wer.test.mjs`).
- */
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_ARGS, createReferenceRunner, fillArgs } from './runners.mjs';
 import { probeWav } from './audio.mjs';

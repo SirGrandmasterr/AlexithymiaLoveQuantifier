@@ -2,15 +2,6 @@ import React, { useMemo, useState } from 'react';
 import { Clock, X } from 'lucide-react';
 import { dueStacks, nudgeSentence, snoozeUntil } from '../constants/cadence';
 
-/**
- * The one nudge this application makes.
- *
- * Everything about it is deliberately unexciting: slate, not red; a sentence, not a
- * warning; no count of missed check-ins, no streak, no chain to break. Coming back after
- * six silent months looks exactly like coming back after six days, because the alternative
- * is inviting people into a chore.
- */
-
 const SNOOZE_KEY = 'alq:cadence-snoozed';
 const SEEN_KEY = 'alq:cadence-seen';
 
@@ -35,20 +26,12 @@ const writeJSON = (storage, key, value) => {
 export const readSnoozes = () => readJSON(window.localStorage, SNOOZE_KEY, {});
 export const readSeen = () => readJSON(window.sessionStorage, SEEN_KEY, []);
 
-/**
- * "Later" is a real promise: seven days of silence, stored locally like every other
- * preference here.
- */
 export const snooze = (relationshipId, now = new Date()) => {
     const snoozes = readSnoozes();
     snoozes[relationshipId] = snoozeUntil(now);
     writeJSON(window.localStorage, SNOOZE_KEY, snoozes);
 };
 
-/**
- * Dismissing retires the banner for the rest of the session. Session storage, not local:
- * tomorrow is a new day and the nudge is allowed to say its one sentence again.
- */
 export const markSeen = (relationshipIds) => {
     const seen = new Set(readSeen());
     relationshipIds.forEach(id => seen.add(id));

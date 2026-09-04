@@ -1,14 +1,3 @@
-// Command migrate applies — or merely checks — the database schema, using the exact same
-// AutoMigrate call the server makes on boot.
-//
-// The server migrating itself is convenient but invisible: a schema that failed to move
-// shows up as a 500 from some unrelated endpoint, hours later, with an error message about
-// a column rather than about a migration. This command makes the step addressable on its
-// own, so it can run before the server (`make migrate`), and so CI or a deploy can ask
-// "does this database match the models?" without writing to it (`make migrate-check`).
-//
-// Connection settings come from the same DB_* environment variables as the server; with
-// DB_HOST unset both fall back to the local SQLite file.
 package main
 
 import (
@@ -54,13 +43,6 @@ func main() {
 	fmt.Println("migrate: done")
 }
 
-// findDrift lists tables and columns the models declare but the database does not have.
-//
-// It is deliberately one-directional: a column in the database with no field behind it is
-// left over from a removed field, which AutoMigrate never drops either, and reporting it
-// would make `-check` fail on every database that has ever been rolled back. Type and
-// nullability changes are also out of scope — AutoMigrate's own handling of those differs
-// per engine, so a check that claimed to cover them would be lying.
 func findDrift(db *gorm.DB) ([]string, error) {
 	migrator := db.Migrator()
 	var drift []string

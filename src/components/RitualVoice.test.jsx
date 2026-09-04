@@ -7,15 +7,6 @@ import { RitualVoiceConfirm } from './RitualVoice';
 import { JOURNAL_COPY, fillCopy, ritualDeck } from '../constants/journal';
 import { buildRitualRequest } from './RitualCards';
 
-/**
- * §3.7's confirm card, and the one rule it exists to keep: **a question the note did not
- * mention is absent, not false.**
- *
- * The card is tested apart from the recorder because that is the boundary that matters. What
- * the microphone does is C2's and C4's; what happens between a proposal and a saved row is
- * this, and it is where invariant 14 and invariant 15 both live.
- */
-
 const deck = ritualDeck([]);
 
 const renderCard = (proposed, { people = [], onKeep = vi.fn(), onCards = vi.fn() } = {}) => {

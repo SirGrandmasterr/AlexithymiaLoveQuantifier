@@ -8,18 +8,6 @@ import {
     validateServerUrl
 } from '../mobile/serverUrl';
 
-/**
- * Where is your server?
- *
- * A question the web app never has to ask — it is served *by* the thing it talks to. A
- * packaged APK is not, and this is self-hosted software, so there is no address to bake in.
- * This is the first screen a fresh install shows.
- *
- * The presets are the three addresses that actually come up, in the order they come up:
- * an emulator talking to the host, a phone talking to a box on the LAN, and a real
- * deployment behind a name.
- */
-
 const PRESETS = [
     {
         label: 'Android emulator',
@@ -42,14 +30,6 @@ export default function ServerSettingsModal({ open, onClose, onSaved, dismissibl
 
     const validationError = validateServerUrl(value);
 
-    /**
-     * Reachability check against an endpoint that exists and needs no token.
-     *
-     * `POST /api/login` with an empty body answers `400` from a live server. That is the
-     * point: any structured HTTP reply proves the address resolves, the port is open, and a
-     * Gin router is behind it. Only a transport failure means "wrong address" — a `4xx` here
-     * is a *success*, which reads oddly and is exactly right.
-     */
     const testConnection = async () => {
         const target = normalizeServerUrl(value);
         setBusy(true);

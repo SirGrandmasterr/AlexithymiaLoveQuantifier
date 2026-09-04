@@ -20,10 +20,6 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// These tests run against a real in-memory SQLite database rather than sqlmock. Rename and
-// merge are multi-statement transactions whose whole point is what the rows look like
-// afterwards; asserting on the SQL that produced them would only restate the handler.
-
 // setupSQLiteDB gives each test its own empty database and points the global at it.
 func setupSQLiteDB(t *testing.T) *gorm.DB {
 	t.Helper()
@@ -41,9 +37,6 @@ func setupSQLiteDB(t *testing.T) *gorm.DB {
 		}
 	})
 
-	// The server's own list, so a table added to the schema cannot be missing from the
-	// tests that exercise it — which is exactly how models.RefreshToken would have been
-	// left out here.
 	if err := db.AutoMigrate(database.Models()...); err != nil {
 		t.Fatalf("Failed to migrate schema: %v", err)
 	}
@@ -52,8 +45,6 @@ func setupSQLiteDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-// seedStack creates a relationship with one snapshot per supplied date, mirroring what the
-// create endpoint would have produced.
 func seedStack(t *testing.T, db *gorm.DB, userID uint, name string, dates ...string) *models.Relationship {
 	t.Helper()
 
@@ -380,9 +371,6 @@ func TestDeleteRelationshipRemovesItsSnapshots(t *testing.T) {
 	}
 }
 
-// TestRelationshipRoutesRejectOtherUsers walks every mutating route with a relationship
-// that belongs to somebody else. All of them answer 404 — whether it exists is not this
-// user's business — and none of them change anything.
 func TestRelationshipRoutesRejectOtherUsers(t *testing.T) {
 	db := setupSQLiteDB(t)
 	theirs := seedStack(t, db, 2, "Theirs", "2026-01-10")
@@ -445,9 +433,6 @@ func TestRelationshipRoutesRequireAuth(t *testing.T) {
 	}
 }
 
-// TestCreateSubjectReusesRelationshipByName is the compatibility contract from the client's
-// side: a caller that knows nothing about relationships still lands its snapshot in the
-// right stack, whitespace and all.
 func TestCreateSubjectReusesRelationshipByName(t *testing.T) {
 	db := setupSQLiteDB(t)
 
@@ -488,8 +473,6 @@ func TestCreateSubjectReusesRelationshipByName(t *testing.T) {
 	}
 }
 
-// TestGetSubjectsOrdersByDate proves the ORDER BY against a real engine rather than
-// against the SQL string: newest first, undated last.
 func TestGetSubjectsOrdersByDate(t *testing.T) {
 	db := setupSQLiteDB(t)
 	relationship := seedStack(t, db, 1, "Alex", "2026-01-10", "2026-05-01", "2026-03-01")
@@ -524,10 +507,6 @@ func TestGetSubjectsOrdersByDate(t *testing.T) {
 	}
 }
 
-// TestAggregateTimeScan pins the formats MAX(date) actually comes back as. Both are real:
-// the "+00:00" spelling is what glebarez/sqlite writes today, and the RFC 3339 "Z" spelling
-// is what sits in databases written by the driver's earlier versions. A wrong layout here
-// fails only once a relationship has a dated snapshot, so it is worth asserting directly.
 func TestAggregateTimeScan(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -575,8 +554,6 @@ func itoa(id uint) string {
 	return strconv.FormatUint(uint64(id), 10)
 }
 
-// A mention left pointing at a retired relationship is the stranded row the merge handler
-// exists to prevent — the same reason it already moves soft-deleted snapshots.
 func TestMergeMovesJournalMentions(t *testing.T) {
 	db := setupSQLiteDB(t)
 	target := seedStack(t, db, 1, "Lucie M", "2026-03-01")
@@ -586,8 +563,6 @@ func TestMergeMovesJournalMentions(t *testing.T) {
 	onDeleted := seedEntry(t, db, 1, kindCheckin, "2026-08-21", "2026-08-21T09:00:00Z", source.ID)
 	untouched := seedEntry(t, db, 1, kindCheckin, "2026-08-21", "2026-08-21T10:00:00Z", target.ID)
 
-	// A mention on a soft-deleted entry has to move too: the entry is recoverable, so a
-	// mention left behind would come back pointing at a relationship that no longer exists.
 	db.Delete(&models.JournalEntry{}, onDeleted.ID)
 
 	w := call(t, http.MethodPost, fmt.Sprintf("/relationships/%d/merge", target.ID), 1,
@@ -682,8 +657,6 @@ func TestDeleteRelationshipDetachesMentions(t *testing.T) {
 		t.Errorf("Expected the dialog's count of 2 mentions, got %d", body.MentionsDetached)
 	}
 
-	// The entries survive, and so do their labels — a check-in about a deleted person still
-	// reads as it did the day it was made.
 	var entries []models.JournalEntry
 	if err := db.Preload("Mentions").Where("user_id = ?", 1).Order("id ASC").Find(&entries).Error; err != nil {
 		t.Fatalf("Failed to read the entries back: %v", err)
@@ -702,16 +675,12 @@ func TestDeleteRelationshipDetachesMentions(t *testing.T) {
 		}
 	}
 
-	// relationship_id is left exactly as it was: the relationship is soft-deleted, so every
-	// join through it drops out on its own and nothing had to be rewritten.
 	var stillPointing int64
 	db.Model(&models.JournalMention{}).Where("relationship_id = ?", lucie.ID).Count(&stillPointing)
 	if stillPointing != 2 {
 		t.Errorf("Expected the mentions to keep their relationship_id, found %d", stillPointing)
 	}
 
-	// And the read path stops offering them under that person, because the entries are
-	// still there but the person is not.
 	var remaining []models.Relationship
 	db.Where("user_id = ?", 1).Find(&remaining)
 	if len(remaining) != 1 || remaining[0].ID != other.ID {
@@ -719,11 +688,6 @@ func TestDeleteRelationshipDetachesMentions(t *testing.T) {
 	}
 }
 
-// The two numbers the delete dialog depends on are the same number: `mention_count`, read
-// when the dialog opens, and `mentions_detached`, returned when it is confirmed. Both count
-// the entries the journal *shows*, so the sentence the user reads is true of what they see.
-// Before this was pinned, the summary had no count at all and the response counted rows on
-// entries the user had already deleted.
 func TestMentionCountsCoverOnlyTheEntriesTheJournalShows(t *testing.T) {
 	db := setupSQLiteDB(t)
 	lucie := seedStack(t, db, 1, "Lucie", "2026-01-10", "2026-03-01")
@@ -738,8 +702,6 @@ func TestMentionCountsCoverOnlyTheEntriesTheJournalShows(t *testing.T) {
 		t.Fatalf("Failed to supersede the seeded entry: %v", err)
 	}
 
-	// The snapshot count is the reason both aggregates are DISTINCT: two snapshots joined
-	// against three mentions is six rows, and a plain COUNT would report six of each.
 	w := call(t, http.MethodGet, "/relationships", 1, "", relationshipRoutes)
 	if w.Code != http.StatusOK {
 		t.Fatalf("Expected 200 but got %d (body: %s)", w.Code, w.Body.String())

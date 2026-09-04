@@ -8,12 +8,6 @@ import { nativeAudio } from '../../mobile/journalPlugin';
 
 vi.mock('axios');
 
-/**
- * The Android runtime behind the C2 seam, with the plugin faked (C4).
- *
- * The one thing that matters here is what crosses the bridge: handles, never samples.
- */
-
 const context = () => buildContext({ relationships: [{ ID: 1, name: 'Lucie' }], triggers: [] });
 
 const nativeClip = (plugin, handle = 'clip-1') => ({

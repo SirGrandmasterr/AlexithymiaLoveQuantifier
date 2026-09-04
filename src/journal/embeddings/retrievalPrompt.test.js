@@ -9,34 +9,6 @@ import { activeFeelings } from '../../constants/journal';
 import contexts from '../inference/golden/contexts.json';
 import transcripts from '../inference/golden/transcripts.json';
 
-/**
- * **The guard the G2 prompt makes item 3 conditional on** — *"only behind a golden-suite test
- * that retrieval never flips a clear case. Otherwise the model learns to echo."*
- *
- * ---
- *
- * **What this proves, stated first, because the limit matters more than the result.**
- *
- * "Flips" is a statement about a model's output, and a prompt change can flip a case in
- * exactly three ways: it can take away a word the right answer needs, it can put a wrong word
- * in front of the model, or it can change what the model was told to do. This file runs the
- * whole proposal golden suite — all 120 cases, in German and in English — and asserts that a
- * retrieval-influenced context does none of the three, however adversarial the retrieval is.
- *
- * That is a **structural** guarantee and it is exhaustive over the failure modes a prompt has.
- * What it is not is proof that no model is ever swayed by an *ordering*; only a model can
- * answer that, this machine has never loaded one (the ledger's G1 note 5), and
- * `scripts/journal-eval/retrieval.mjs --influence` is where it is measured on a machine that
- * has. The report in `product_vision/eval/` says the same thing in the same words.
- *
- * **The design decision underneath is that retrieval contributes no feeling.** The feeling
- * vocabulary is closed, is already in the prompt in full, and is the thing being asked for;
- * putting the feelings of similar past entries in front of the model is precisely the echo
- * the design document warns about, and there is no vocabulary consistency to be won in
- * exchange because the ids are fixed. So `retrievalVocabulary` reads `doc.triggers` and
- * `doc.people` and never `doc.feelings`, and the third test below is what holds that.
- */
-
 /** A case whose right answer is not in doubt: `ambiguity: "none"` and words it must have. */
 const clearCases = transcripts.filter(row => (
     row.expect?.ambiguity === 'none' && (row.expect.must_include?.length ?? 0) > 0
@@ -45,12 +17,6 @@ const clearCases = transcripts.filter(row => (
 /** The fixture user's own vocabulary, as `buildContext` takes it. */
 const vocabularyFor = (name) => buildContext(contexts[name]);
 
-/**
- * The most hostile retrieval this feature can produce: a query vector that points at
- * whichever past entry has the *least* to do with the case, so the words moved to the front
- * of the prompt are the wrong ones. Anything the golden suite survives under this it survives
- * under a retrieval that works.
- */
 const docs = suiteDocuments();
 const adversarial = toIndexVector([1, 0]);
 const vectors = new Map(docs.map(doc => [doc.id, { vector: adversarial }]));
@@ -61,9 +27,6 @@ const influenced = (context) => retrievalVocabulary({
     vectors,
     people: context.people,
     triggers: context.triggers,
-    // Deliberately answers with words that are in the fixture user's vocabulary, so the
-    // reordering is real rather than a no-op — which is what makes the tests below say
-    // something.
     relationshipName: () => context.people[context.people.length - 1] ?? '',
     triggerLabel: () => context.triggers[context.triggers.length - 1] ?? ''
 });
@@ -75,9 +38,7 @@ describe('retrieval-influenced prompts (the item 3 guard)', () => {
         expect(clearCases.some(row => row.language === 'en')).toBe(true);
     });
 
-    /* -------------------------------------------------------------------------------- */
-    /* 1. It cannot take a word away                                                      */
-    /* -------------------------------------------------------------------------------- */
+    /* 1. It cannot take a word away */
 
     it('leaves every clear case every trigger label its answer needs', () => {
         const lost = [];
@@ -113,9 +74,7 @@ describe('retrieval-influenced prompts (the item 3 guard)', () => {
         expect(lost).toEqual([]);
     });
 
-    /* -------------------------------------------------------------------------------- */
-    /* 2. It cannot put a new word in                                                     */
-    /* -------------------------------------------------------------------------------- */
+    /* 2. It cannot put a new word in */
 
     it('adds no word the user has not confirmed, in either language', () => {
         ['en', 'de'].forEach(name => {
@@ -138,9 +97,7 @@ describe('retrieval-influenced prompts (the item 3 guard)', () => {
         });
     });
 
-    /* -------------------------------------------------------------------------------- */
-    /* 3. It cannot change what the model was told to do                                  */
-    /* -------------------------------------------------------------------------------- */
+    /* 3. It cannot change what the model was told to do */
 
     it('changes nothing in the prompt but the order of two lists', () => {
         ['en', 'de'].forEach(name => {

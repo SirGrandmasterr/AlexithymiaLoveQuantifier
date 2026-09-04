@@ -59,19 +59,12 @@ describe('what a device can do', () => {
     });
 
     it('does not require WebGPU for the transcriber — that is the Full tier model', () => {
-        // §5.5's tier table reads "no WebGPU on the web → text-only"; its own desktop table
-        // says the Light-tier transcriber runs on "WASM otherwise (slow but functional)".
-        // The second is the one this code follows, and the design document now says so.
         expect(detectTier(capable({ navigator: { mediaDevices: { getUserMedia: () => { } }, deviceMemory: 8 } }))).toBe(TIERS.light);
     });
 
     it('is full only where WebGPU actually hands over an adapter', async () => {
         const view = capable();
 
-        // The property alone is not the answer, and D3 measured a browser where it lied:
-        // `navigator.gpu` present, `crossOriginIsolated` true, an RTX 3080 behind WebGL2 —
-        // and `requestAdapter()` returning `null` for every option. A device promised the
-        // Full tier on that basis downloads 3.4 GB and throws at the first check-in.
         view.navigator.gpu = { requestAdapter: async () => null };
         setWebGpuAvailable(null);
         expect(detectTier(view)).toBe(TIERS.light);       // unasked reads as Light
@@ -133,9 +126,6 @@ describe('the user override', () => {
     });
 
     it('refuses one that would claim more than the device has, and says so', () => {
-        // A pinned `full` on a machine with no WebGPU would make the settings screen promise
-        // a model that cannot load. §9.7's "overridable" is there so somebody on a hot laptop
-        // can choose to do less, not so the app can be talked into claiming more.
         expect(effectiveTier(TIERS.light, TIERS.full)).toEqual({
             tier: TIERS.light, override: null, refused: TIERS.full
         });
@@ -188,9 +178,7 @@ describe('voiceAvailability', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* C4: Android, from the plugin's memory report                                          */
-/* ------------------------------------------------------------------------------------ */
+/* C4: Android, from the plugin's memory report */
 
 describe('the tier on Android, from what ActivityManager reports', () => {
     const gib = (n) => n * 1024 ** 3;

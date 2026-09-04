@@ -28,15 +28,6 @@ import { setNativeTierReport } from '../journal/inference/tier';
 
 vi.mock('axios');
 
-/**
- * The Journal section of the profile screen (§9.7).
- *
- * Three settings, not eight. Voice, suggestions, embeddings, transcripts and language are
- * described in `JOURNAL_COPY.settings` and must **not** be on this screen until the features
- * behind them exist — a toggle for something the app cannot do makes a Vault claim false
- * (invariant 2e), and a test is the only thing that keeps that from arriving by accident.
- */
-
 const mockProfile = () => axios.get.mockResolvedValue({
     data: { name: 'Sam', email: 'sam@example.test', age: 30, mbti_type: 'INFP', profile_picture: '' }
 });
@@ -67,9 +58,6 @@ describe('the Journal settings section', () => {
         expect(control('ask-who')).toBeInTheDocument();
         expect(document.querySelectorAll('[data-question]')).toHaveLength(optionalQuestions().length);
 
-        // Absent here for one reason now, not two: voice, transcripts, language and — since
-        // D2 — suggestions are the voice block, which a plain jsdom run cannot render because
-        // it is not a secure context with a microphone. The Android block below renders it.
         [
             JOURNAL_COPY.settings.voice.label,
             JOURNAL_COPY.settings.suggestions.label,
@@ -103,10 +91,6 @@ describe('the Journal settings section', () => {
         expect(document.querySelector('[data-embeddings-size]')).toBeNull();
     });
 
-    /**
-     * jsdom has no IndexedDB, which is exactly the device this rule is about: the toggle may
-     * only be turned on where an index could exist, so here it is refused and says so.
-     */
     it('refuses to turn on where there is nowhere to keep an index, and names the refusal', async () => {
         await renderProfile();
         await userEvent.click(control('embeddings'));
@@ -141,11 +125,6 @@ describe('the Journal settings section', () => {
     });
 
     it('carries §9.7\'s row in full, now that both halves of it exist', () => {
-        // G1 narrowed this to *"Similar-entry suggestions"*, because a toggle may not
-        // promise a screen the build does not have (invariant 2e). G2 built that screen —
-        // `/journal/search`, behind this same switch — so the row is whole again, and this
-        // is still the guard: if search were ever removed, the label would have to shrink
-        // with it and this test is what would say so.
         expect(JOURNAL_COPY.settings.embeddings.label).toBe('Similar-entry suggestions and search');
         expect(JOURNAL_COPY.settings.embeddings.description).toContain('search what you have written');
     });
@@ -269,9 +248,7 @@ describe('the Journal settings section', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* The copy rail                                                                          */
-/* ------------------------------------------------------------------------------------ */
+/* The copy rail */
 
 const walkStrings = (value) => {
     if (typeof value === 'string') return [value];
@@ -280,23 +257,12 @@ const walkStrings = (value) => {
     return [];
 };
 
-/**
- * What this section is allowed to say: `JOURNAL_COPY`, the question vocabulary, and the two
- * sentences whose numbers are filled in at render time.
- *
- * The filled versions have to be listed because `fillCopy` produces a string the walk over
- * the template cannot match — which is the point of templates rather than functions (A5): the
- * template is what the forbidden-word test reads, and this is what the screen shows.
- */
 const allowed = new Set([
     ...walkStrings(JOURNAL_COPY),
     ...RITUAL_QUESTIONS.flatMap(question => [question.text, question.note]),
     fillCopy(JOURNAL_COPY.settings.ritual.description, { time: DEFAULT_RITUAL_TIME }),
     fillCopy(JOURNAL_COPY.settings.questions.description, { max: MAX_OPTIONAL_QUESTIONS }),
     fillCopy(JOURNAL_COPY.settings.questions.atLimit, { max: MAX_OPTIONAL_QUESTIONS }),
-    // C3's two, for every tier name, because which one renders depends on what the test
-    // environment reports about itself — jsdom has no MediaRecorder, so it reads
-    // `text-only`, and a change to that should not be able to slip a bare string in.
     ...Object.values(JOURNAL_COPY.settings.tier.names).flatMap(tier => [
         fillCopy(JOURNAL_COPY.settings.tier.detected, { tier }),
         fillCopy(JOURNAL_COPY.settings.tier.pinned, { tier })
@@ -340,9 +306,7 @@ describe('no bare strings in the Journal section (Appendix B item 3)', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* C4: on Android                                                                        */
-/* ------------------------------------------------------------------------------------ */
+/* C4: on Android */
 
 const platformState = vi.hoisted(() => ({ native: false }));
 
@@ -351,10 +315,6 @@ vi.mock('../mobile/platform', async (importOriginal) => ({
     isNative: () => platformState.native
 }));
 
-/**
- * F2 — the nightly reminder follows the ritual toggle. Faked with a store rather than a spy
- * for `ritualReminder.test.js`'s reason: what matters is what is pending afterwards.
- */
 const notifications = vi.hoisted(() => {
     const state = { pending: new Map(), permission: 'granted' };
     return {
@@ -427,9 +387,6 @@ describe('on Android', () => {
         expect(control('suggestions')).toBeInTheDocument();
         expect(control('suggestions')).toHaveAttribute('aria-pressed', 'true');
         expect(screen.getByText(JOURNAL_COPY.settings.suggestions.description)).toBeInTheDocument();
-        // Invariant 2e, on the profile screen. Until D3 this said that nothing on this
-        // device proposes anything — the sentence a toggle called *suggestions* owes its
-        // reader when there is no model behind it. There is one now, and the line names it
         // and its licence rather than leaving the label to imply what it likes.
         expect(screen.getByText(fillCopy(JOURNAL_COPY.settings.suggestions.model, {
             label: PROPOSAL_MODEL.label, licence: PROPOSAL_MODEL.licence
@@ -451,9 +408,6 @@ describe('on Android', () => {
             ...allowed,
             ...TRANSCRIPTION_LANGUAGES,
             fillCopy(JOURNAL_COPY.settings.tier.memory, { gb: 8 }),
-            // Two filled templates: the model line under the suggestions toggle and the
-            // download line, both built from `JOURNAL_COPY` with names and sizes dropped in.
-            // The template is in the walk; the model's name and the byte count are not copy.
             fillCopy(JOURNAL_COPY.settings.suggestions.model, {
                 label: PROPOSAL_MODEL.label, licence: PROPOSAL_MODEL.licence
             })
@@ -463,9 +417,7 @@ describe('on Android', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* F2 — the nightly reminder follows the toggle (§3.6)                                    */
-/* ------------------------------------------------------------------------------------ */
+/* F2 — the nightly reminder follows the toggle (§3.6) */
 
 describe('the nightly reminder', () => {
     beforeEach(() => {

@@ -14,17 +14,6 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-/**
- * Whisper's vocabulary and the handful of generation settings that drive decoding, read
- * from two of the thirteen files the download manager already verified (`vocab.json` and
- * `generation_config.json`). Nothing here is hard-coded that the model repository states:
- * the special token ids, the language table and the suppression lists all come from the
- * pinned files, so a re-pinned revision cannot silently disagree with this class.
- *
- * Decoding is GPT-2's byte-level BPE in reverse: each token string is a run of code points
- * that stand for bytes (`bytes_to_unicode`), the bytes are concatenated and read as UTF-8.
- * Special tokens — everything at or above `eos` — never reach the text.
- */
 public final class WhisperTokens {
 
     public final int startOfTranscript;
@@ -92,11 +81,6 @@ public final class WhisperTokens {
         return out;
     }
 
-    /**
-     * GPT-2's `bytes_to_unicode`, inverted: the printable Latin-1 ranges map to
-     * themselves and the 68 remaining bytes are shifted to code points 256 upward, in
-     * byte order.
-     */
     private void buildByteDecoder() {
         java.util.Arrays.fill(byteOfCodePoint, -1);
         boolean[] printable = new boolean[256];

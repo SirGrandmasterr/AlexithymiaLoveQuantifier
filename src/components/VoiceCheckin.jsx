@@ -15,44 +15,8 @@ import { readLanguage, readTierOverride, readVoiceSetting } from '../constants/j
 import { isNative } from '../mobile/platform';
 import { createNativeDownloader, nativeCaptureDeps, primeNativeTier } from '../mobile/journalPlugin';
 
-/**
- * The microphone path: tap, speak, see the words (§4.2, §4.3).
- *
- * It writes down what was said and hands the words to the chip grid the composer already
- * has. **There is no proposal here** — no chip is pre-selected, nothing is inferred, and the
- * runtime's own answer says as much (`ambiguity: "feeling"`, §4.6). D2 puts a card on top of
- * the same seam; this slice is the honest floor underneath it.
- *
- * Three things it takes as props rather than reaching for, so a test needs no microphone, no
- * Cache Storage and no 45 MB of weights: the **recorder**, the **downloader** and the
- * **runtime**. `createVoiceKit()` builds the real trio and is the only place the three meet.
- *
- * The transcript is a `<textarea>`, not a paragraph, because §4.3 makes editing the point:
- * a model mishears names most of all, and `Lucy`/`Lucie` is the error that would create a
- * second relationship if it reached find-or-create unseen. **What the user leaves in the box
- * is what is saved** — the model's own text is never read again after it lands here.
- */
-
-/**
- * The real trio, for a tier. Built once per composer, and never at import time.
- *
- * On Android (C4, D3) the three are the plugin's: C2's recorder unchanged but driven through
- * `nativeCaptureDeps`, so the samples stay on the native side and `clip.audio` is a handle;
- * the downloader over the plugin's weight store; and the native runtime, which sends handles
- * across the bridge and gets a proposal back. Nothing above this function knows which trio it
- * holds. `native` and `plugin` are injectable for the tests only.
- *
- * **The tier decides all three** (§5.5), and that is the D3 change. A Full-tier device
- * downloads one model and runs one pass over the audio; a Light-tier device downloads two and
- * runs them in sequence; a text-only device never gets here, because the screen offers a
- * keyboard instead. `tierModels` owns which, and the download line is built from the same
- * list rather than from a second opinion about it.
- */
 export const createVoiceKit = (options = {}) => {
     const native = options.native ?? isNative();
-    // The tier this device is on, with the user's pin applied — the same answer
-    // `useVoiceAvailability` shows on screen, read here rather than passed down so that a
-    // kit and the sentence describing it cannot disagree. A test hands one in.
     const tier = options.tier || effectiveTier(detectTier(), readTierOverride()).tier;
     const models = options.models || tierModels(tier, { native });
 
@@ -95,25 +59,8 @@ export const createVoiceKit = (options = {}) => {
     };
 };
 
-/**
- * What this screen may offer: a microphone, a keyboard, or a sentence saying why there is
- * no microphone.
- *
- * Read once per mount rather than watched. All four inputs — the device's own capabilities,
- * the pinned tier, the voice setting and discretion mode — change on a navigation or a
- * settings visit, not under a screen that is sitting still, and a `storage` listener for
- * that would be four moving parts to save one remount.
- */
 export const useVoiceAvailability = () => {
     const { discreet } = useDiscretion();
-    // On Android the tier is the plugin's memory report, primed by the app shell at
-    // launch. Should this screen mount before that read has landed, it evaluates again
-    // when it does — the one moving part, and the reason `detectTier()` is not read
-    // straight into the memo below.
-    // Two facts have to be asked for rather than read: the plugin's memory report on
-    // Android, and the browser's WebGPU **adapter** on the web — `navigator.gpu` existing is
-    // not the same question (D3 measured a browser where it lied). Both are cached after the
-    // first answer, so this settles once per session and not once per mount.
     const [primed, setPrimed] = useState(
         () => (isNative() ? nativeTierReport() !== null : webGpuAvailable() !== null)
     );
@@ -132,10 +79,6 @@ export const useVoiceAvailability = () => {
             voiceOn: readVoiceSetting(canTranscribe(detected)),
             discreet
         });
-        // `primed` travels with the answer because one caller has to wait for it rather
-        // than render around it: the launcher shortcut (§9.2) decides between the microphone
-        // and the keyboard *once*, on arrival, and a screen that answered before the plugin's
-        // memory report landed would arm the wrong one.
         return { ...availability, detected, language: readLanguage(), primed };
     }, [discreet, primed]);
 };
@@ -148,13 +91,6 @@ const useStore = (store) => useSyncExternalStore(
 
 const secondsLeft = (ms) => Math.max(0, Math.ceil(ms / 1000));
 
-/**
- * The level meter: eight bars, lit from the middle out.
- *
- * Deliberately not a number. §4.2 asks for a meter so the screen cannot be mistaken for
- * idle; a decibel reading would be a measurement the user has no use for, and this app does
- * not show numbers it did not ask someone to author.
- */
 const LevelMeter = ({ level }) => {
     const lit = Math.min(8, Math.round(level * 40));
     return (
@@ -170,13 +106,6 @@ const LevelMeter = ({ level }) => {
     );
 };
 
-/**
- * The download offer, and the only place the size is promised.
- *
- * Size and cancel are on screen **before** anything moves (§5.6), and a checksum failure is
- * the end of the attempt rather than a warning to click past: nothing is cached, and the
- * copy says whose problem it is to fix.
- */
 const ModelDownload = ({ downloader, label, size, onReady }) => {
     const progress = useStore(downloader);
 
@@ -240,13 +169,6 @@ const ModelDownload = ({ downloader, label, size, onReady }) => {
     );
 };
 
-/**
- * @param onProposal D2: the whole `propose` envelope, after the words were handed over. The
- *   composer decides whether a card is shown on it; this screen only ever reports it.
- * @param hidden D2: true while the proposal card is on screen. The recorder stays mounted
- *   — *Say it again* needs it — and nothing here is drawn, because the card carries the
- *   transcript itself.
- */
 export default function VoiceCapture({
     kit, context, transcript, onTranscript, onNoisy, onKeyboard, onProposal, hidden = false
 }) {
@@ -271,13 +193,6 @@ export default function VoiceCapture({
         return () => { cancelled = true; };
     }, [downloader]);
 
-    /**
-     * Transcribe as soon as a take lands, and exactly once per take.
-     *
-     * Keyed on the clip ids rather than on a boolean: *add more* produces a second clip on
-     * the same card, and the whole take is transcribed again so the words read as one note
-     * rather than two halves stitched in the UI.
-     */
     useEffect(() => {
         if (capture.state !== 'ready' || capture.clips.length === 0) return;
 
@@ -295,9 +210,6 @@ export default function VoiceCapture({
             .then(result => {
                 if (result.ok) {
                     onTranscript(result.proposal.transcript, result.proposal.language);
-                    // The proposal travels beside the words, already through D1's filter.
-                    // Whether it becomes a card is the composer's decision (the *Show
-                    // suggestions* setting), not this screen's.
                     if (onProposal) onProposal(result);
                 } else {
                     setProblem(JOURNAL_COPY.voice.notWritten);

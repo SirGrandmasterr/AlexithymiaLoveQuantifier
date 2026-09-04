@@ -1,27 +1,3 @@
-/**
- * What a run is *of* — the exact thing the report has to name.
- *
- * §5.7 gates the *default model of each tier*, and the D4 prompt asks the report to name
- * "the exact model builds, quantisations, runtimes and devices". None of those four is a
- * property of a model on its own: Gemma 4 E2B as a 2.6 GB LiteRT-LM bundle on a phone and
- * the same weights as 3.4 GB of q4f16 ONNX under transformers.js are two different things
- * that can pass and fail the gate differently. A **candidate** is that whole tuple, named
- * once, so a report cannot be written about "Gemma".
- *
- * The revisions below are not typed twice: `pins.mjs` reads them out of the Makefile, which
- * is where §5.6 says the pins live. A candidate that names a model set the Makefile does not
- * carry is a candidate nobody can fetch, and `resolveCandidate` says so.
- *
- * Two candidates in this table are **hypotheses rather than defaults** — `desktop-e4b` and
- * `light-android-platform`. They exist because §12.5 leaves their questions open and D4 is
- * the session that answers them, and each carries the `open_question` it is evidence for.
- */
-
-/**
- * `mode` is what the model is given: `audio` is §5.1's single pass, `text` is the Light
- * tier's second stage and the typed path. `transcriber` is null on the Full tier by
- * definition — that is the bet.
- */
 export const CANDIDATES = {
     'full-android': {
         id: 'full-android',
@@ -48,9 +24,6 @@ export const CANDIDATES = {
         packaging: 'ONNX, q4f16, four sessions',
         modelSet: 'gemma-4-e2b-onnx',
         file: 'onnx-community/gemma-4-E2B-it-ONNX',
-        // The browser path has no grammar (§5.2) and no CLI. `llama-mtmd-cli` over the same
-        // upstream weights is the closest offline stand-in, and the report must say so rather
-        // than let a llama.cpp number stand in silently for a WebGPU one.
         runtime: 'llama-mtmd-cli',
         mode: 'audio',
         transcriber: null,

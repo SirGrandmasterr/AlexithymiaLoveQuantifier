@@ -11,14 +11,6 @@ vi.mock('./store', async (importOriginal) => ({
     clearVectorIndex: vi.fn(async () => {})
 }));
 
-/**
- * *"deleted when you sign out"* — §10.2 says it on the Vault page, so something has to do it.
- *
- * The store's own test proves `clearVectorIndex` empties an index. This proves it is
- * **called**, on the branch that runs when there is no session — which is the half a
- * refactor can quietly drop while every other test stays green.
- */
-
 const tree = (enabled) => (
     <SubjectsProvider enabled={enabled}>
         <JournalProvider enabled={enabled}><div /></JournalProvider>

@@ -7,38 +7,34 @@
 | Tool | Version | Needed for |
 | :--- | :------ | :--------- |
 | Node.js | 20+ (the Docker build uses `node:22-alpine`; CI uses `lts/*`) | Frontend, Vitest, Playwright |
-| Go | 1.24.1+ (`go.mod` declares `go 1.24.1`) | Backend |
+| Go | 1.24.1+ | Backend |
 | Docker + Compose | any current | The containerised path only |
 | PostgreSQL | 15 | **Optional** — omit it and the backend uses SQLite automatically |
 
-You do **not** need a database installed to develop locally. With `DB_HOST` unset the
-backend creates `backend/alexithymia.db` on first run.
+You do **not** need a database installed to develop locally. With `DB_HOST` unset the backend
+creates `backend/alexithymia.db` on first run.
 
 ---
 
 ## 2. Fastest path — no containers, no database
-
-Two terminals:
 
 ```bash
 # Terminal 1 — backend on :8080, SQLite fallback
 cd backend
 go mod download
 JWT_SECRET=dev-only-change-me go run ./cmd/server
-```
 
-> **`JWT_SECRET` is required and the server will not start without it.** Since Phase 5 an
-> unset secret is a fatal startup error rather than a silent empty signing key. On
-> PowerShell: `$env:JWT_SECRET='dev-only-change-me'` once per terminal. Use a real value
-> anywhere that is not your own machine — `openssl rand -hex 32`.
-
-```bash
 # Terminal 2 — frontend on :5173, proxying to :8080
 npm install
 npm run dev
 ```
 
 Open **http://localhost:5173**, sign up, and start analysing.
+
+> **`JWT_SECRET` is required and the server will not start without it** — an unset secret is a
+> fatal startup error rather than a silent empty signing key. On PowerShell:
+> `$env:JWT_SECRET='dev-only-change-me'` once per terminal. Use a real value anywhere that is
+> not your own machine — `openssl rand -hex 32`.
 
 Expected backend log on a clean start:
 
@@ -51,16 +47,8 @@ backfill: 0 relationships, 0 snapshots linked
 Server starting on port 8080...
 ```
 
-Without the secret it stops there instead, which is the intended behaviour:
-
-```
-JWT_SECRET is not set: every token would be signed with an empty key and forgeable by
-anyone. Set it before starting the server, e.g. JWT_SECRET=$(openssl rand -hex 32)
-```
-
 Working-directory note: run the backend **from `backend/`**. Both the SQLite file and the
-`./uploads` directory are resolved relative to the process CWD, so `go run
-./backend/cmd/server` from the repo root would create them at the root instead.
+`./uploads` directory are resolved relative to the process CWD.
 
 ### With Postgres instead
 
@@ -73,16 +61,7 @@ DB_NAME=alexithymia DB_PORT=5432 JWT_SECRET=dev-only-change-me \
   go run ./cmd/server
 ```
 
-On PowerShell:
-
-```powershell
-$env:DB_HOST='localhost'; $env:DB_USER='postgres'; $env:DB_PASSWORD='password'
-$env:DB_NAME='alexithymia'; $env:DB_PORT='5432'; $env:JWT_SECRET='dev-only-change-me'
-go run ./cmd/server
-```
-
-The database named in `DB_NAME` must already exist; `AutoMigrate` creates tables, not
-databases.
+The database named in `DB_NAME` must already exist; `AutoMigrate` creates tables, not databases.
 
 ---
 
@@ -92,12 +71,9 @@ databases.
 docker-compose up --build
 ```
 
-Then open **http://localhost:8080** — the Nginx container, *not* 3000 (the root README's
-`:3000` is wrong; see [Known Issues](11-known-issues.md#readme-drift)).
-
-Everything about this path — port mapping, the Postgres readiness gap, the missing
-`/uploads` proxy — is in [Deployment](09-deployment.md). Rebuild with `--build` whenever
-`package.json` or `go.mod` changes; Compose otherwise reuses cached layers.
+Then open **http://localhost:8082** — the Nginx container. Everything about this path is in
+[Deployment](09-deployment.md). Rebuild with `--build` whenever `package.json` or `go.mod`
+changes; Compose otherwise reuses cached layers.
 
 ---
 
@@ -106,15 +82,13 @@ Everything about this path — port mapping, the Postgres readiness gap, the mis
 | Port | Process | Environment | Reachable from |
 | :--- | :------ | :---------- | :------------- |
 | **5173** | Vite dev server (default; not configured anywhere) | local dev | anywhere |
-| **8080** | Go/Gin — hardcoded in [`main.go:38`](../backend/cmd/server/main.go#L38) | local dev | anywhere |
+| **8080** | Go/Gin — hardcoded in [`main.go`](../backend/cmd/server/main.go) | local dev | anywhere |
 | **8082** | Nginx (host) → container `:80`; `FRONTEND_PORT` in `.env` | Docker | anywhere |
 | **8081** | Go/Gin direct (host) → container `:8080` | Docker | **this machine only** — bound to `127.0.0.1` |
 | **5432** | Postgres | Docker | **containers on the `data` network only** — not published |
 
-The frontend port moved from 8080 to 8082, so it no longer collides with a local `go run
-./cmd/server`. The two Docker entries that used to be reachable from the network are not
-any more: `8081` is loopback-bound, and Postgres has no host mapping at all — reach it with
-`make db-shell` (which goes in through `docker compose exec`, not through a port).
+The frontend port is 8082 so it cannot collide with a local `go run ./cmd/server`. Reach Postgres
+with `make db-shell`, which goes in through `docker compose exec` rather than a port.
 
 ---
 
@@ -124,108 +98,81 @@ The backend is the only process that reads any.
 
 | Variable | Read at | Default | Effect |
 | :------- | :------ | :------ | :----- |
-| `DB_HOST` | `Connect()` | *(unset)* | **The driver switch.** Unset → SQLite `alexithymia.db`; set → Postgres. |
-| `DB_USER` | `Connect()` | — | Postgres user (only when `DB_HOST` is set) |
-| `DB_PASSWORD` | `Connect()` | — | Postgres password |
-| `DB_NAME` | `Connect()` | — | Postgres database name |
-| `DB_PORT` | `Connect()` | — | Postgres port |
-| `JWT_SECRET` | package init of `internal/auth`, re-read by `auth.LoadSecret()` | **none — startup fails** | HS256 signing key. `main()` calls `LoadSecret` before anything else and exits if it is unset or empty. |
+| `DB_HOST` | `Connect()` | *(unset)* | **The driver switch.** Unset → SQLite `alexithymia.db`; set → Postgres |
+| `DB_USER` / `DB_PASSWORD` / `DB_NAME` / `DB_PORT` | `Connect()` | — | Postgres connection details (only when `DB_HOST` is set) |
+| `JWT_SECRET` | package init of `internal/auth`, re-read by `auth.LoadSecret()` | **none — startup fails** | HS256 signing key. `main()` calls `LoadSecret` before anything else and exits if it is unset or empty |
 
-Notes:
-
-- There is **no `.env` support** — no `godotenv`, no `--env-file` in Compose. Values come
-  from the real process environment, and under Docker from the `environment:` block in
-  [`docker-compose.yml:22-28`](../docker-compose.yml#L22-L28) (`JWT_SECRET=supersecretkey`,
-  committed).
+- The Go process reads the **real environment** — there is no `godotenv`. Under Compose the
+  values come from `.env` through `${VAR:?}` interpolation in
+  [`docker-compose.yml`](../docker-compose.yml), which fails the stack rather than defaulting.
+  Copy [`.env.example`](../.env.example) to `.env` to start.
 - `JWT_SECRET` is captured **before `main()` runs**, so it cannot be changed at runtime and
-  cannot be set from inside a Go test.
-- **An unset `JWT_SECRET` does not fail** — HS256 signs with the empty key and everything
-  appears to work while tokens are forgeable. Always set it, even locally.
+  cannot be set from inside a Go test — `t.Setenv` + `auth.LoadSecret()` is the pattern.
 - Postgres TLS is off (`sslmode=disable`, hardcoded) and the port is not configurable.
 
 ---
 
 ## 6. Makefile targets
 
-[`Makefile`](../Makefile) — thin npm wrappers, the three test suites, and the Docker stack
-plus its schema and database chores. `make help` prints the list.
+[`Makefile`](../Makefile) — thin npm wrappers, the test suites, and the Docker stack plus its
+schema and database chores. `make help` prints the list.
 
 | Target | Runs |
 | :----- | :--- |
-| `make install` | `npm install` |
-| `make setup` | `install`, then a "run make dev" hint |
-| `make dev` | `npm run dev` |
-| `make build` | `npm run build` (→ `dist/`) |
-| `make preview` | `npm run preview` |
-| `make all` | `install build` |
-| `make clean` | **`rm -rf node_modules package-lock.json`** — deletes the lockfile, so the next install may resolve different versions. Prefer `rm -rf node_modules` alone. |
-| `make test-frontend` | `npm run test` → `vitest run` |
-| `make test-backend` | `cd backend && go test ./...` |
-| `make test-e2e` | `npx playwright test --project=chromium` |
-| `make test` | all three in sequence |
+| `make install` / `dev` / `build` / `preview` / `all` | the corresponding npm scripts |
+| `make clean` | **`rm -rf node_modules package-lock.json`** — deletes the lockfile, so the next install may resolve different versions. Prefer `rm -rf node_modules` alone |
+| `make test-frontend` / `test-backend` / `test-e2e` / `test` | the three suites, and all three in sequence |
+| `make journal-eval` / `journal-audio-check` | the model gate ([Testing §6](08-testing.md)) |
 | `make up` | `docker compose up -d --build`, then waits for Postgres and runs `migrate-check` |
-| `make down` | `docker compose down` (keeps the volume) |
-| `make logs` | follows the backend container's log |
+| `make down` / `logs` | `docker compose down` (keeps the volume); follow the backend log |
 | `make migrate` | applies `AutoMigrate` + the relationship backfill to the compose Postgres |
 | `make migrate-check` | reports missing tables/columns and exits 1; **writes nothing** |
-| `make migrate-local` / `make migrate-check-local` | the same two against the SQLite fallback, via a local Go toolchain |
-| `make db-wait` | blocks until Postgres accepts connections (up to 60s) |
-| `make db-shell` | `psql` inside the database container |
-| `make db-schema` | `\d+` for all three tables |
-| `make db-backup` | `pg_dump` → `backups/alexithymia-<timestamp>.sql` (gitignored) |
-| `make db-restore FILE=…` | replays a dump taken by `db-backup` |
+| `make migrate-local` / `migrate-check-local` | the same two against the SQLite fallback |
+| `make db-wait` / `db-shell` / `db-schema` | block until Postgres accepts connections; `psql` inside the container; `\d+` for every table |
+| `make db-backup` / `db-restore FILE=…` | `pg_dump` → `backups/alexithymia-<timestamp>.sql` (gitignored), and replay |
 | `make db-reset CONFIRM=yes` | **drops every table**, backs up first, then re-migrates |
+| `make models-fetch` | downloads and verifies the pinned model weights into the volume |
 | `make build-android` | builds the debug APK **entirely in Docker** → `dist-android/`; no local JDK or Android SDK |
-| `make android-init` | one-time local setup for live reload: `npm install`, `cap add android`, overlay, `cap sync` |
-| `make dev-android` | live reload onto a device/emulator; needs local `adb` |
-| `make run-android` | `build-android`, then install and launch via `adb` |
-| `make android-logs` | `adb logcat` filtered to Capacitor and the WebView console |
+| `make android-init` / `dev-android` / `run-android` / `android-logs` | live-reload setup, live reload, install-and-launch, filtered `adb logcat` |
 | `make bundle-android KEYSTORE=…` | release AAB, signed with `jarsigner` |
 | `make clean-android` | removes `android/`, `dist-android/`, `.gradle/`, and the Docker cache mount |
 
-The Android targets are documented in full in [The Android App](12-android-app.md). Override
-the server address compiled in as the default with `ANDROID_API_URL=http://host:port`.
+The Android targets are documented in [The Android App](12-android-app.md). Override the server
+address compiled in as the default with `ANDROID_API_URL=http://host:port`.
 
-The Makefile uses Unix `rm`, `seq`, `date`, `ls`, and `cp`. On Windows it now finds them
-itself: when `C:\Program Files\Git\bin\sh.exe` exists, the Makefile pins `SHELL` to it and
-appends Git's `usr/bin` to `PATH`, so `make` works from PowerShell and `cmd` as well as from
-Git Bash. Both assignments are inside `ifeq ($(OS),Windows_NT)` and do nothing elsewhere.
+**Windows.** The Makefile uses Unix `rm`, `seq`, `date`, `ls` and `cp`, and finds them itself:
+when `C:\Program Files\Git\bin\sh.exe` exists it pins `SHELL` to it and appends Git's `usr/bin`
+to `PATH`, both inside `ifeq ($(OS),Windows_NT)`.
 
-Why both are needed, since one looks redundant: Make has a fast path that hands any recipe
-line **without shell metacharacters** straight to `CreateProcess` rather than to `SHELL`. So
-`ls -1 dist-android` bypasses the pinned shell entirely and fails with
+Both assignments are needed, though one looks redundant: Make has a fast path that hands any
+recipe line **without shell metacharacters** straight to `CreateProcess` rather than to `SHELL`.
+So `ls -1 dist-android` bypasses the pinned shell and fails with
 `process_begin: CreateProcess(NULL, ls -1 dist-android, ...) failed`, while the near-identical
-`ls -1 dist-android || true` succeeds because `||` forces the shell route. Setting `SHELL`
-fixes the second kind of line; extending `PATH` fixes the first.
+`ls -1 dist-android || true` succeeds because `||` forces the shell route. Setting `SHELL` fixes
+the second kind of line; extending `PATH` fixes the first.
 
 `PATH` is **appended, not prepended** — ahead of `System32`, Git's `usr/bin` would shadow
-Windows' own `find.exe` and `sort.exe` for every recipe.
+Windows' own `find.exe` and `sort.exe` for every recipe. WSL's `System32\bash.exe` is
+deliberately **not** used: recipes would run against a different filesystem and Docker context
+than the shell you started from.
 
-If Git is installed somewhere other than the default location, the detection finds nothing and
-Make keeps its default behaviour, which is already correct inside Git Bash. WSL's
-`C:\Windows\System32\bash.exe` is deliberately **not** used: recipes would run against a
-different filesystem and a different Docker context than the shell you started from.
-
-`make test-e2e` requires the dev server **and** the backend already running — the note in
-the Makefile says so, and [`playwright.config.ts`](../playwright.config.ts) has its
-`webServer` block commented out.
+`make test-e2e` requires the dev server **and** the backend already running.
 
 ### Migrations
 
-The server still migrates itself on boot — [`database.Connect()`](../backend/internal/database/database.go)
-calls `Open()` then `Migrate()`, and the Makefile targets call the same `Migrate()` through
-[`backend/cmd/migrate`](../backend/cmd/migrate/main.go). There is no second code path and
-no migration files: the models are the schema, as before.
+The server migrates itself on boot, and the Makefile targets call the same `Migrate()` through
+[`backend/cmd/migrate`](../backend/cmd/migrate/main.go). There is no second code path and no
+migration files: the models are the schema.
 
-What is new is that the step is *addressable*. `make migrate-check` answers "does this
-database match the models?" without writing, naming the missing table or column outright —
-`make up` runs it after every start, so drift is reported at boot rather than surfacing
-later as a 500 from whichever endpoint happened to read the missing column first.
+What is addressable is the *check*. `make migrate-check` answers "does this database match the
+models?" without writing, naming the missing table or column outright — `make up` runs it after
+every start, so drift is reported at boot rather than surfacing later as a 500 from whichever
+endpoint happened to read the missing column first.
 
 The check is deliberately one-directional: it reports what the models have and the database
-lacks. A leftover column from a deleted field is not flagged, because `AutoMigrate` never
-drops one either. Type and nullability changes are also out of scope — GORM handles those
-differently per engine, so a check claiming to cover them would be lying.
+lacks. A leftover column from a deleted field is not flagged, because `AutoMigrate` never drops
+one either. Type and nullability changes are out of scope — GORM handles those differently per
+engine, so a check claiming to cover them would be lying.
 
 ---
 
@@ -234,43 +181,38 @@ differently per engine, so a check claiming to cover them would be lying.
 ```
 AlexithymiaLoveQuantifier/
 ├── docs/                       ← this documentation
+├── product_vision/             the phase-6 spec, the invariants, and eval/
 ├── backend/                    Go service (see 05-backend.md)
 ├── src/                        React app (see 06-frontend.md)
-│   ├── components/             one file per screen + AnalysisTimeline
-│   ├── App.jsx  main.jsx  index.css  setupTests.js
-│   └── assets/
-├── public/                     served verbatim by Vite (vite.svg)
-├── tests/
-│   ├── example.spec.ts         Playwright scaffold — hits playwright.dev
-│   └── e2e/user_journey.spec.ts  the real E2E journey
-├── .github/workflows/         playwright.yml, android-release.yml, deploy.yml (see 09 §7)
-├── index.html                  SPA shell (title still "temp_app")
-├── vite.config.js              Vite + Vitest + dev proxy
-├── tailwind.config.js  postcss.config.js  eslint.config.js
-├── playwright.config.ts
-├── src/mobile/                 Android platform layer (see 12-android-app.md)
+│   ├── components/             one file per screen
+│   ├── constants/              the taxonomy, the journal's vocabulary and copy
+│   ├── context/                SubjectsContext, JournalContext
+│   ├── journal/                recorder, inference/, embeddings/
+│   ├── mobile/                 Android platform layer (see 12-android-app.md)
+│   └── auth/                   session storage, renewal, interceptors
+├── plugins/alq-journal/        the native Android plugin
+├── scripts/journal-eval/       the model gate's harness
+├── tests/e2e/                  the Playwright journey
+├── .github/workflows/          playwright.yml, android-release.yml, deploy.yml
 ├── android-config/             committed native files, overlaid onto the generated project
 ├── android/                    GENERATED by `cap add`, gitignored — never hand-edit
 ├── capacitor.config.json       appId, androidScheme, CapacitorHttp
 ├── Dockerfile                  frontend: node build → nginx
-├── Dockerfile.android          containerised APK/AAB build (no local Android SDK needed)
-├── nginx.conf                  SPA fallback + /api proxy
+├── Dockerfile.android          containerised APK/AAB build
+├── nginx.conf                  SPA fallback + /api proxy + CSP
 ├── docker-compose.yml          frontend + backend + postgres
 ├── Makefile
-├── README.md                   project overview (partially stale)
+├── README.md                   quick start; the detail is in docs/
 ├── Setup Guide.md              historical scaffold-from-scratch guide
 └── TestImplementationDetails.txt  source prose for the seven categories
 ```
 
-Two files are historical rather than operational:
-
-- **`Setup Guide.md`** documents creating the project from a bare Vite template and
-  pasting code out of a browser canvas. It predates the Go backend entirely (it never
-  mentions Go, JWT, or Postgres) and its "app lives in `src/App.jsx`" instruction no
-  longer matches reality. Keep it for provenance; do not follow it.
-- **`TestImplementationDetails.txt`** is *not* a test document despite the name. It is the
-  authored prose for the seven categories, later transcribed into the `CATEGORIES`
-  constant. It is the editorial source of truth for that copy.
+Two files are historical rather than operational. **`Setup Guide.md`** documents creating the
+project from a bare Vite template; it predates the Go backend entirely and its "app lives in
+`src/App.jsx`" instruction no longer matches reality — keep it for provenance, do not follow it.
+**`TestImplementationDetails.txt`** is *not* a test document despite the name: it is the authored
+prose for the seven categories, later transcribed into `CATEGORIES`, and it is the editorial
+source of truth for that copy.
 
 ---
 
@@ -289,13 +231,11 @@ npx vitest             # watch mode
 cd backend
 go run ./cmd/server
 go test ./...
-go build -o server ./cmd/server
-gofmt -l .             # should print nothing
+gofmt -l .             # CRLF files are listed here; that is pre-existing
 go vet ./...
 
 # e2e (needs both servers up)
 npx playwright test --project=chromium
-npx playwright test tests/e2e/user_journey.spec.ts
 npx playwright show-report
 ```
 
@@ -309,21 +249,17 @@ production build against a live API.
 
 1. **Run the backend from `backend/`.** Otherwise `alexithymia.db` and `uploads/` land in
    whatever directory you started from.
-2. **`backend/alexithymia.db` is tracked by git.** Signing up locally dirties the working
-   tree. Check `git status` before committing, and never commit a database containing real
-   credentials. See [Known Issues](11-known-issues.md#the-development-sqlite-database-is-committed-to-git).
+2. **`backend/alexithymia.db` is not gitignored.** Signing up locally creates it and dirties the
+   working tree; a `git add .` would commit dev users and their bcrypt hashes. See
+   [Known Issues](11-known-issues.md#the-development-sqlite-database-is-not-gitignored).
 3. **`go test ./...` writes files.** `upload_test.go` leaves images in
-   `backend/internal/handlers/uploads/` because its cleanup glob does not match the
-   handler's naming scheme. Four such files are already committed.
-4. **Tokens are not validated client-side.** After a token expires (24 h) the dashboard
-   still renders but stays empty, with only a console error. Clear
-   `localStorage['token']` (or use Logout) to recover.
-5. **Changing a `CATEGORIES` id orphans existing data.** Stored `stats` keys are not
-   migrated; renaming `eros` → `passion` makes every historical `eros` value invisible and
-   render as 0. Ids are effectively permanent.
-6. **Colour classes must stay literal strings** or Tailwind purges them; see
-   [Frontend §3.1](06-frontend.md#31-categories-lines-6117).
-7. **Hovering a card stack blocks page scrolling** — by design (`{ passive: false }` wheel
-   capture), but it surprises people testing on trackpads.
-8. **Signup does not log you in.** The form returns to the login view; that is intended
-   behaviour, not a bug.
+   `backend/internal/handlers/uploads/` because its cleanup glob does not match the handler's
+   naming scheme.
+4. **Changing a `CATEGORIES` id orphans existing data.** Stored `stats` keys are not migrated;
+   renaming `eros` → `passion` makes every historical `eros` value invisible. Ids are effectively
+   permanent — the same is true of the journal's feeling and question ids.
+5. **Colour classes must stay literal strings** or Tailwind purges them; see
+   [Frontend §3.1](06-frontend.md#31-categories--now-in-srcconstantscategoriesjs).
+6. **Hovering a card stack blocks page scrolling** while there is a version to scrub to — by
+   design (`{ passive: false }` wheel capture), but it surprises people testing on trackpads.
+7. **Signup does not log you in.** The form returns to the login view; that is intended.

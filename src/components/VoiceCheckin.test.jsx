@@ -16,9 +16,7 @@ import { WHISPER_TINY, modelSize } from '../journal/inference/models';
 
 vi.mock('axios');
 
-/* ------------------------------------------------------------------------------------ */
-/* Fakes for the three things the kit holds                                               */
-/* ------------------------------------------------------------------------------------ */
+/* Fakes for the three things the kit holds */
 
 /** A recorder store with the same surface as the real one, driven by hand. */
 const fakeRecorder = () => {
@@ -94,9 +92,7 @@ const renderCapture = (kit, props = {}) => render(
     </DiscretionProvider>
 );
 
-/* ------------------------------------------------------------------------------------ */
-/* 1. The words                                                                           */
-/* ------------------------------------------------------------------------------------ */
+/* 1. The words */
 
 describe('the transcript', () => {
     it('writes down what was said, once a take lands', async () => {
@@ -123,12 +119,6 @@ describe('the transcript', () => {
     });
 
     it('renders the words as an editable box, and the edit is what the caller is given', async () => {
-        // §4.3, and the reason it is a textarea rather than a quote: a model mishears names
-        // most of all, and Lucy/Lucie is exactly the error that would create a second
-        // relationship if it reached find-or-create unseen.
-        // Held in state by a wrapper, because the contract under test is the round trip:
-        // what the user leaves in the box is what the caller ends up holding. A component
-        // rendered with a frozen prop would only prove that keystrokes fire a callback.
         const kit = kitWith();
         let latest = 'Lucy called';
         const Wrapper = () => {
@@ -176,9 +166,7 @@ describe('the transcript', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 2. The noisy-take flag                                                                 */
-/* ------------------------------------------------------------------------------------ */
+/* 2. The noisy-take flag */
 
 describe('the noisy-take hint', () => {
     it('renders when the meter flagged the take, beside the words', async () => {
@@ -212,9 +200,7 @@ describe('the noisy-take hint', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 3. The download manager                                                                */
-/* ------------------------------------------------------------------------------------ */
+/* 3. The download manager */
 
 describe('the download manager', () => {
     it('shows the size before anything downloads, and downloads nothing on its own', async () => {
@@ -255,9 +241,7 @@ describe('the download manager', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 4. Which button the journal offers                                                     */
-/* ------------------------------------------------------------------------------------ */
+/* 4. Which button the journal offers */
 
 describe('the way in', () => {
     it('is a microphone where voice is on, and a keyboard where it is not', async () => {
@@ -278,9 +262,7 @@ describe('the way in', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 5. The payload                                                                         */
-/* ------------------------------------------------------------------------------------ */
+/* 5. The payload */
 
 describe('what a spoken check-in saves', () => {
     const picked = [{ id: 'rapport', intensity: 2, uncertain: false, about: [] }];
@@ -301,9 +283,6 @@ describe('what a spoken check-in saves', () => {
             picked, tags: [], note: '', transcript: 'Lucie called', language: 'en', keepTranscript: false
         });
 
-        // `false` is written, unlike an absent key: here it is a statement the user made in
-        // settings, and it is the difference between "nothing was said" and "what was said
-        // was not kept" (invariant 14).
         expect(request.payload.transcript_kept).toBe(false);
         expect(request.payload).not.toHaveProperty('transcript');
         expect(request.payload.source).toBe('voice');
@@ -320,9 +299,7 @@ describe('what a spoken check-in saves', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 6. Discretion                                                                          */
-/* ------------------------------------------------------------------------------------ */
+/* 6. Discretion */
 
 describe('discretion mode', () => {
     const renderJournalFab = () => {
@@ -360,9 +337,7 @@ describe('discretion mode', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 7. The copy rail                                                                       */
-/* ------------------------------------------------------------------------------------ */
+/* 7. The copy rail */
 
 describe('no bare strings (Appendix B item 3)', () => {
     it('says nothing the forbidden-word walk cannot reach', async () => {
@@ -377,9 +352,6 @@ describe('no bare strings (Appendix B item 3)', () => {
         ]);
 
         const words = [...container.querySelectorAll('*')]
-            // The transcript box is excluded, and that is the point rather than an
-            // exception: what is inside it is the **user's own speech**, which no copy
-            // rail may govern. It is the same carve-out D1's filter has to make.
             .filter(element => element.tagName !== 'TEXTAREA')
             .flatMap(element => [...element.childNodes])
             .filter(node => node.nodeType === Node.TEXT_NODE)
@@ -391,9 +363,7 @@ describe('no bare strings (Appendix B item 3)', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 8. The Android kit (C4)                                                               */
-/* ------------------------------------------------------------------------------------ */
+/* 8. The Android kit (C4) */
 
 describe('the Android kit', () => {
     const nativeKit = (options = {}) => {

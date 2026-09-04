@@ -36,42 +36,11 @@ import { detectTier, effectiveTier, TIERS } from '../journal/inference/tier';
 import RitualVoice from './RitualVoice';
 import { createVoiceKit } from './VoiceCheckin';
 
-/**
- * The nightly ritual: five to nine binary questions, one card at a time, finishable
- * half-asleep in under a minute.
- *
- * **What it must never do is count.** A night nobody answers writes no row, and there is
- * nothing here that could notice one — no "last night", no total, no place a missed night
- * could leave a mark. That is not restraint in the copy, it is the absence of the data
- * structure that would make the copy possible (§3.6).
- *
- * **The swipe contract is deliberately not `CardStack`'s** (Frontend §3.4). The stack lives on
- * a scrolling page, so it takes the horizontal axis and hands vertical to the page — two
- * gestures on one axis cannot be fixed with a better threshold, only by moving one of them.
- * This screen has no second gesture to move: it is full-viewport and it does not scroll, so
- * the card is allowed all three directions and takes both axes outright. The rule behind both
- * decisions is the same one (invariant 2g): a control may claim an axis only where nothing
- * else on the screen wants it.
- *
- * Every gesture has a button and a key beside it. A swipe nobody is told about is a feature
- * nobody has, and at bedtime the person using this may not be in a state to discover one.
- */
-
-/* ------------------------------------------------------------------------------------ */
-/* The gesture                                                                            */
-/* ------------------------------------------------------------------------------------ */
+/* The gesture */
 
 /** Commit at ~30 % of the card's width (§3.4). Below it the card springs back. */
 const COMMIT_FRACTION = 0.3;
 
-/**
- * The floor under that fraction, in pixels.
- *
- * A layout that has not measured yet reports a width of zero, and 30 % of zero is a card
- * that commits on the first pixel of a tap — which is exactly the half-asleep tap §3.4 says
- * must record nothing. The floor is what makes the threshold a real one before the first
- * paint, and it is below 30 % of any card this screen actually draws.
- */
 const MIN_COMMIT_PX = 48;
 
 /** How far a drag has to lean past the other axis before it counts as that direction. */
@@ -82,13 +51,6 @@ const commitThreshold = (element) => {
     return Math.max(MIN_COMMIT_PX, width * COMMIT_FRACTION);
 };
 
-/**
- * Which of the three answers a released drag means, or `null` for "spring back".
- *
- * Exported so the rule can be tested as arithmetic rather than only through a DOM: the
- * thing worth pinning is that a tap is `null`, and a tap is the case a gesture test is
- * least likely to reproduce faithfully.
- */
 export const gestureIntent = (dx, dy, threshold) => {
     const up = -dy;
     if (up > threshold && up > Math.abs(dx) + AXIS_MARGIN_PX) return 'skip';
@@ -96,19 +58,8 @@ export const gestureIntent = (dx, dy, threshold) => {
     return null;
 };
 
-/* ------------------------------------------------------------------------------------ */
-/* The requests                                                                           */
-/* ------------------------------------------------------------------------------------ */
+/* The requests */
 
-/**
- * The `kind: "ritual"` row (§6.3).
- *
- * `asked` is every question the deck put on screen; `answers` holds only the ones that were
- * answered. **A skipped question is absent, never `false`** (invariant 14) — and `asked` is
- * the only thing that can tell a question nobody answered from one that was never shown, so
- * it is recorded even though it is derivable from tonight's settings, which tomorrow's are
- * not.
- */
 export const buildRitualRequest = ({
     asked, answers, dayWord, mentions = [], durationMs, at, day, ids, source = null
 }) => {
@@ -120,15 +71,8 @@ export const buildRitualRequest = ({
         duration_ms: durationMs
     };
 
-    // §3.7: a ritual answered by speaking carries `source: "voice"` and is otherwise
-    // identical to a swiped one. Absent for the swipes rather than `"swipe"`, so every row
-    // written before D3 keeps meaning exactly what it meant, and the server — which reads
-    // named keys and lets the rest travel through (§6.4) — needs no change at all.
     if (source) payload.source = source;
 
-    // Absent when the closing card was skipped, and carrying no `uncertain`: the ritual has
-    // no affordance for "I am unsure of this word", so writing `false` would be recording a
-    // statement nobody made. `readRitual` reads its absence as null, which draws the same.
     if (dayWord) payload.day_word = { id: dayWord };
 
     return {
@@ -144,19 +88,6 @@ export const buildRitualRequest = ({
     };
 };
 
-/**
- * The day word's second home: a `checkin` row at the ritual's own `at`, with
- * `source: "ritual_word"`.
- *
- * The duplication is the point (§6.3). The day graph and the mention logic read check-ins;
- * writing the word as one means neither of them ever has to know that rituals exist, and the
- * ritual row keeps its own copy so the night reads whole in an export.
- *
- * It carries **no `intensity`**. The closing card is one tap on one word — there is no
- * strength in it to record, and inventing a middle number would be the app authoring a value
- * the user did not (invariant 15). `readCheckin` already reads an absent intensity as `null`
- * rather than zero, and the server accepts the absence for the same reason.
- */
 export const buildDayWordRequest = ({ dayWord, at, day, now, ids }) => ({
     client_id: ids.dayWord,
     kind: 'checkin',
@@ -174,16 +105,8 @@ export const buildDayWordRequest = ({ dayWord, at, day, now, ids }) => ({
     supersedes_id: null
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* The card                                                                               */
-/* ------------------------------------------------------------------------------------ */
+/* The card */
 
-/**
- * One card, and the only element on this route that owns a touch axis.
- *
- * The tilt follows the finger so the direction is legible before release — at bedtime the
- * feedback has to arrive before the commitment does.
- */
 const Card = ({ children, onCommit }) => {
     const cardRef = useRef(null);
     const drag = useRef(null);
@@ -210,9 +133,6 @@ const Card = ({ children, onCommit }) => {
         setOffset(null);
 
         const intent = gestureIntent(dx, dy, commitThreshold(cardRef.current));
-        // `null` is a tap, or a drag that did not travel far enough. Both spring back and
-        // record nothing — the card is not a button, and a half-asleep tap must not answer
-        // a question (§3.4).
         if (intent) onCommit(intent);
     };
 
@@ -238,12 +158,6 @@ const Card = ({ children, onCommit }) => {
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerCancel}
             style={{
-                // Both axes, and only here. The claim is conditional on this route staying
-                // non-scrolling: there is nothing under the card for a vertical drag to
-                // scroll, which is the one condition invariant 2g lets a control take
-                // everything under. **If this screen ever grows a scrollable region, the
-                // card gives up the vertical axis (`touch-action: pan-y`) and skip becomes a
-                // button only** — a swipe-up that fights the page is worse than no swipe-up.
                 touchAction: 'none',
                 transform: offset ? `translate(${dx}px, ${dy}px) rotate(${tilt}deg)` : undefined,
                 transition: offset ? 'none' : 'transform 180ms ease-out'
@@ -306,9 +220,7 @@ const Progress = ({ index, total }) => (
     </div>
 );
 
-/* ------------------------------------------------------------------------------------ */
-/* The screen                                                                             */
-/* ------------------------------------------------------------------------------------ */
+/* The screen */
 
 export default function RitualCards() {
     const navigate = useNavigate();
@@ -324,17 +236,6 @@ export default function RitualCards() {
     const [index, setIndex] = useState(0);
     const [answers, setAnswers] = useState({});
 
-    /**
-     * §3.7's one breath, on the Full tier only.
-     *
-     * The offer is on the first card and nowhere else: it is an alternative to starting the
-     * deck, not a thing to reach for halfway through it. `spoken` turns it off for the rest
-     * of the night once it has been used or declined, so a person who came back to the cards
-     * is not asked again.
-     *
-     * The kit is built lazily and only where it could be used, so a Light-tier phone builds
-     * no recorder and opens no model — the same rule the check-in composer follows.
-     */
     const [voiceTier] = useState(() => effectiveTier(detectTier(), readTierOverride()).tier);
     const [spoken, setSpoken] = useState(false);
     const canSpeak = voiceTier === TIERS.full
@@ -351,30 +252,16 @@ export default function RitualCards() {
     );
     const [who, setWho] = useState([]);
     const [dayWord, setDayWord] = useState(null);
-    // §3.7: "a ritual answered by voice carries `source: "voice"` and is otherwise identical
-    // to one answered by swipes". `null` for the swipes, so the ordinary row is unchanged
-    // and no reader has to know this field exists.
     const [source, setSource] = useState(null);
     const [saving, setSaving] = useState(false);
     const [saveError, setSaveError] = useState(null);
     const [saved, setSaved] = useState(null);
 
     const startedAt = useRef(Date.now());
-    // Minted once and reused by every retry, so a save that failed halfway replays as the
-    // same two rows rather than as two more (§7.2). The moment is fixed here too: the ritual
-    // and its day word share one `at`, and a retry must not move it.
     const pending = useRef(null);
 
     const asked = useMemo(() => deck.map(question => question.id), [deck]);
 
-    /**
-     * The deck as steps, with the *Who?* card spliced in behind a yes.
-     *
-     * Derived rather than stored, so the card appears the moment the answer exists and the
-     * index that was about to advance lands on it. It is spliced next to the question it
-     * belongs to rather than appended at the end, because "who was that" is a question about
-     * something the user is still holding in mind.
-     */
     const steps = useMemo(() => {
         const list = [];
         deck.forEach(question => {
@@ -389,14 +276,6 @@ export default function RitualCards() {
 
     const step = steps[index] ?? null;
 
-    /**
-     * One selection tick per commit, and none in discretion mode.
-     *
-     * `detent` already silences its *sound* under discretion; the haptic channel is not
-     * silenced there, because a vibration in your own hand is not overheard. Here the whole
-     * call is guarded anyway: §3.4 asks for no feedback at all in that mode, and a phone
-     * buzzing once a second on a bedside table is the thing discretion is for.
-     */
     const tick = useCallback(() => {
         if (!discreet) detent();
     }, [discreet]);
@@ -429,9 +308,6 @@ export default function RitualCards() {
             await createEntry(buildRitualRequest({
                 asked, answers, dayWord: word, mentions, durationMs, at, day, ids, source
             }));
-            // Second, and only if there is one. A day word with no ritual behind it would be
-            // an orphan; a ritual whose second write failed still reads whole, because the
-            // row keeps its own copy of the word.
             if (word) await createEntry(buildDayWordRequest({ dayWord: word, at, day, now, ids }));
 
             setSaved({ day });
@@ -534,11 +410,6 @@ export default function RitualCards() {
                             deck={deck}
                             context={voiceContext}
                             onAnswers={(spokenAnswers) => {
-                                // The answers the person confirmed, and nothing else. The
-                                // deck then continues from the *Who?* card if there is one
-                                // to show, or from the day word — the questions they did not
-                                // mention stay unanswered, which is §3.7's own rule and
-                                // invariant 14's.
                                 setAnswers(spokenAnswers);
                                 setSpoken(true);
                                 setSource('voice');
@@ -551,10 +422,6 @@ export default function RitualCards() {
                         />
                     </div>
                 )}
-                {/* The card takes the space, the controls sit at the bottom of it. Anchoring
-                    them low is not decoration: the acceptance test for this screen is one
-                    thumb on a 360 dp phone, and a Yes button in the middle of a 800 dp
-                    viewport is a two-handed control. */}
                 <div className="flex-1 min-h-0 flex items-center justify-center">
                 <Card onCommit={commit}>
                     {step?.kind === 'question' && (
@@ -565,9 +432,6 @@ export default function RitualCards() {
                             >
                                 {step.text}
                             </p>
-                            {/* The two answers written under the question, in the direction
-                                each one lives in, so the gesture is legible without being
-                                taught (§3.4). */}
                             <p className="flex items-center gap-6 text-sm font-light text-slate-400">
                                 <span>← {JOURNAL_COPY.ritual.no}</span>
                                 <span>{JOURNAL_COPY.ritual.yes} →</span>
@@ -588,9 +452,6 @@ export default function RitualCards() {
                                         type="button"
                                         data-who={person.ID}
                                         aria-pressed={who.includes(person.ID)}
-                                        // The chip is masked, the stored label is not — see
-                                        // `mentions` above. The `aria-label` keeps the real
-                                        // name, as discretion mode does everywhere.
                                         aria-label={person.name}
                                         onClick={() => toggleWho(person.ID)}
                                         className={`px-3 py-2 min-h-[44px] rounded-xl border text-sm transition-colors ${who.includes(person.ID)
@@ -647,10 +508,6 @@ export default function RitualCards() {
 
                 <div className="flex flex-col items-center">
                     <SkipLink onSkip={() => commit('skip')} />
-                    {/* The hint stands under every card but the closing one. That card draws
-                        twenty-one chips and is the tallest thing this route has; on a 320 dp
-                        screen it needs the room more than the sentence does, and the route
-                        has to fit without scrolling or the card loses its axis claim. */}
                     {step?.kind !== 'word' && (
                         <p className="text-xs font-light text-slate-300 text-center max-w-xs">
                             {JOURNAL_COPY.ritual.skipHint}
@@ -683,15 +540,6 @@ export default function RitualCards() {
     );
 }
 
-/**
- * The full-viewport frame, over the header and the bottom bar rather than between them.
- *
- * It is `fixed inset-0` for one reason and it is not aesthetics: the touch-axis claim on the
- * card is only legitimate while nothing on the screen scrolls, and a route rendered inside
- * `App`'s scrolling column would inherit a page that does. Below the app lock's layer and
- * above the composer's, because the lock outranks everything and the composer cannot be open
- * here.
- */
 const Shell = ({ children, onClose, progress }) => (
     <div className="fixed inset-0 z-[70] bg-slate-50 overflow-hidden flex flex-col pt-safe pb-safe">
         <div className="flex items-center justify-between px-4 py-2 sm:py-3 flex-shrink-0">
@@ -714,15 +562,8 @@ const Shell = ({ children, onClose, progress }) => (
     </div>
 );
 
-/* ------------------------------------------------------------------------------------ */
-/* The web prompt line (§3.6)                                                             */
-/* ------------------------------------------------------------------------------------ */
+/* The web prompt line (§3.6) */
 
-/**
- * Session storage, not local: tomorrow is a new day and the line is allowed to say its one
- * sentence again. The same mechanism and the same reasoning as `CadenceNudge`'s `SEEN_KEY`,
- * with the civil day as the value so a session that spans a rollover does not stay retired.
- */
 const PROMPT_SEEN_KEY = 'alq:journal-ritual-seen';
 
 export const readRitualPromptSeen = () => {
@@ -741,19 +582,6 @@ export const markRitualPromptSeen = (day) => {
     }
 };
 
-/**
- * Whether the ritual owns the dashboard's nudge slot tonight, and whether its line is showing.
- *
- * **The two nudges never stack** (§3.6, invariant 2c). Two calm sentences one above the other
- * are a to-do list, which is the thing this app refuses to be — so ownership of the slot is a
- * single decision and the cadence banner simply waits for the next session. `owns` stays true
- * after the line has been answered, which is what makes it a *session* handover rather than a
- * gap the cadence banner slides into the moment the ritual is done.
- *
- * The one edge, stated because it is a choice and not an oversight: a ritual completed
- * without ever being prompted — from the journal, or from Android's shortcut in F2 — hands
- * the slot back, because nothing this session ever claimed it.
- */
 export const useRitualPrompt = (now = new Date()) => {
     const { entries } = useJournal();
     // Read once per mount, like `CadenceNudge`: the line must not reappear the moment its

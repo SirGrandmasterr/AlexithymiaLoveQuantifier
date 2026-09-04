@@ -10,9 +10,6 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// setupBackfillDB gives each test its own database. The package's other helper shares one
-// in-memory database across every caller, which would let one backfill test see another's
-// rows.
 func setupBackfillDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
@@ -34,9 +31,6 @@ func setupBackfillDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-// seedLegacySubject writes a snapshot the way a pre-Phase-4 server would have: a name, no
-// relationship. Raw SQL because the model can no longer express an unlinked row as an
-// intentional state.
 func seedLegacySubject(t *testing.T, db *gorm.DB, userID uint, name string, softDeleted bool) {
 	t.Helper()
 
@@ -49,8 +43,6 @@ func seedLegacySubject(t *testing.T, db *gorm.DB, userID uint, name string, soft
 	}
 }
 
-// TestBackfillGroupsByTrimmedNamePerUser is the migration's core promise: the stacks a user
-// saw before the upgrade are exactly the stacks they see after it.
 func TestBackfillGroupsByTrimmedNamePerUser(t *testing.T) {
 	db := setupBackfillDB(t)
 
@@ -126,8 +118,6 @@ func TestBackfillIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestBackfillIncludesSoftDeletedSnapshots keeps a restored row coherent with its siblings
-// instead of stranding it in a stack of its own.
 func TestBackfillIncludesSoftDeletedSnapshots(t *testing.T) {
 	db := setupBackfillDB(t)
 
@@ -152,8 +142,6 @@ func TestBackfillIncludesSoftDeletedSnapshots(t *testing.T) {
 	}
 }
 
-// TestBackfillReusesExistingRelationships covers the half-migrated case: some rows were
-// linked by the write path before the backfill ever ran.
 func TestBackfillReusesExistingRelationships(t *testing.T) {
 	db := setupBackfillDB(t)
 

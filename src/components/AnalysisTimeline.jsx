@@ -17,11 +17,6 @@ import { CATEGORIES, byDateDesc } from '../constants/categories';
 const HOUR = 3600 * 1000;
 const DAY = 24 * HOUR;
 
-/**
- * Renders one data point for a category. A skipped category has no value at that
- * snapshot, so nothing is drawn (and `connectNulls={false}` leaves the gap visible);
- * a score flagged unsure gets a dashed outline instead of a solid one.
- */
 export const makeDotRenderer = (categoryId) => (props) => {
     const { cx, cy, payload, key } = props;
     if (cx == null || cy == null) return <g key={key} />;
@@ -49,13 +44,6 @@ export const makeDotRenderer = (categoryId) => (props) => {
 export const hasMilestone = (snapshot) =>
     (snapshot.tags || []).length > 0 || Boolean((snapshot.description || '').trim());
 
-/**
- * Shapes a stack for the chart. Undated snapshots have no position on a real time axis,
- * so they are excluded and counted rather than silently placed at the origin.
- *
- * Snapshots sharing a date would stack on one x-position, so duplicates are nudged
- * forward 12h **for display only** — the stored dates are untouched.
- */
 export const buildTimelineData = (versions) => {
     const dated = (versions || []).filter(v => v.date);
     const undatedCount = (versions || []).length - dated.length;

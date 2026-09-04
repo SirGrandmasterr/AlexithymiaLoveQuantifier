@@ -17,15 +17,6 @@ import { VECTOR_KEY } from './store';
 
 vi.mock('axios');
 
-/**
- * §5.8's remaining four uses, driven end to end (G2): the past-entry chips, recall, the
- * namesake ordering, and the provenance every one of them writes or refuses to.
- *
- * Everything runs against `createFakeEmbedder`, so **no weight file is opened** — and every
- * assertion about what was *written* is made on the request body, because that is the only
- * place "nothing was saved on its own" and "no vector left this device" can be checked.
- */
-
 const relationships = [
     { ID: 5, name: 'Lucie', snapshot_count: 1 },
     { ID: 7, name: 'Alex Weber', snapshot_count: 0 },
@@ -94,12 +85,6 @@ const echoPost = () => axios.post.mockImplementation((url, body) => Promise.reso
     data: { ID: 99, user_id: 1, superseded_at: null, ...body, mentions: [] }
 }));
 
-/**
- * The card resolves people and triggers **once**, in a `useState` initialiser (D2), which is
- * right in the app — it is opened from a screen whose lists are already loaded — and would
- * make every assertion below meaningless if the card mounted against two empty arrays. This
- * holds it back until the two fetches have landed, which is the state the app opens it in.
- */
 const WhenLoaded = ({ children }) => {
     const { relationships: loaded } = useSubjects();
     const { triggers, loading } = useJournal();
@@ -126,9 +111,7 @@ beforeEach(() => {
     window.localStorage.clear();
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 1. "Words you chose before" — §5.8's second use                                        */
-/* ------------------------------------------------------------------------------------ */
+/* 1. "Words you chose before" — §5.8's second use */
 
 describe('the past-entry chips', () => {
     const transcript = 'Wieder ein langer Tag, und ich bin ziemlich durch.';
@@ -247,10 +230,6 @@ describe('the past-entry chips', () => {
         const offered = body.payload.retrieval.offered.feelings.find(row => row.id === 'tiredness');
         expect([...offered.entries].sort()).toEqual(['past-1', 'past-2']);
 
-        // The model's own block is untouched and still says what the *model* said. `accepted`
-        // is everything that was saved, additions included (§6.3), so *tiredness* is in it —
-        // and `proposed` is what makes the difference readable: the model never said it, and
-        // `payload.retrieval` is what says where it came from instead.
         expect(body.payload.proposal.proposed).toEqual(['irritation']);
         expect(body.payload.proposal.accepted).toContain('tiredness');
         expect(body.payload.proposal.accepted).not.toContain('irritation');
@@ -313,9 +292,7 @@ describe('the past-entry chips', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 2. Recall — §5.8's third use                                                           */
-/* ------------------------------------------------------------------------------------ */
+/* 2. Recall — §5.8's third use */
 
 describe('search', () => {
     const entries = [
@@ -426,9 +403,6 @@ describe('search', () => {
     });
 
     it('stops working when the index is gone: the screen says so and names the switch', async () => {
-        // A device that *could* keep an index but is not keeping one — the sentence has to
-        // name the switch. jsdom has no IndexedDB of its own, and without this stand-in the
-        // screen would correctly show the other sentence, which the test below covers.
         const store = globalThis.indexedDB;
         globalThis.indexedDB = {};
 
@@ -476,9 +450,7 @@ describe('search', () => {
     });
 });
 
-/* ------------------------------------------------------------------------------------ */
-/* 3. Namesakes — §5.8's fifth use                                                        */
-/* ------------------------------------------------------------------------------------ */
+/* 3. Namesakes — §5.8's fifth use */
 
 describe('namesake candidates', () => {
     const transcript = 'Mit Alex an der Kletterwand, dreimal probiert und dann saß es.';

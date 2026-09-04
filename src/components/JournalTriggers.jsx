@@ -25,32 +25,7 @@ import {
     timeOfDay
 } from '../constants/journal';
 
-/**
- * `/journal/triggers` — the vocabulary the user grew, and the two corrections it needs.
- *
- * **There is no triggers endpoint and there is not going to be one** (§7.1). The list is
- * `GET /api/journal/entries?kind=trigger`, which the provider already holds; a rename is a
- * `POST` with `supersedes_id` and a new `label`; a merge is the same `POST` with
- * `merged_into` in its payload. A journal row is a statement made at a moment, so changing
- * one is a new statement — giving the vocabulary its own verbs would be a second way to
- * write history that the export, the import and `readTrigger` would each have to learn.
- *
- * **There is no delete either, and that is not an oversight.** A trigger a check-in still
- * references cannot be removed without stranding the reference: the export would omit the
- * row and the import would refuse the file for naming a trigger it does not contain. Rename
- * covers "this is called the wrong thing" and merge covers "this is the same as that", which
- * is every reason a user has to reach for a delete here.
- *
- * The detail is a disclosure inside the row rather than a route of its own: §9.1 gives the
- * vocabulary one screen, and the entries that name a trigger are what that screen is for.
- *
- * **Discretion blurs labels and transcripts** — a trigger label is a word about the user's
- * life, and it is treated as one.
- */
-
-/* ------------------------------------------------------------------------------------ */
-/* The pieces                                                                             */
-/* ------------------------------------------------------------------------------------ */
+/* The pieces */
 
 const Empty = ({ message }) => (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 sm:p-12 text-center">
@@ -106,13 +81,6 @@ const TriggerEntry = ({ entry, liveId, resolve }) => {
     );
 };
 
-/**
- * Rename — a correction row carrying the new label.
- *
- * Nothing already written moves. Every check-in keeps pointing at the id it was written
- * with, and `readTrigger` walks that id forward to this row, which is why the body says the
- * new name shows everywhere rather than that anything was rewritten.
- */
 export const RenameTriggerDialog = ({ trigger, onClose }) => {
     const { createEntry } = useJournal();
     const [label, setLabel] = useState(trigger.label ?? '');
@@ -183,15 +151,6 @@ export const RenameTriggerDialog = ({ trigger, onClose }) => {
     );
 };
 
-/**
- * Merge — a correction whose payload names the survivor.
- *
- * The dialog states the count and that it is one-way, in the same shape
- * `MergeRelationshipDialog` states its own: the sentence appears once a target is chosen,
- * because "this cannot be undone" is only a sentence about something once there is
- * something. A user who finds out afterwards has no way back, and nothing stored knows
- * which of the merged entries had belonged to which trigger, so there is no undo to build.
- */
 export const MergeTriggerDialog = ({ trigger, others, count, onClose }) => {
     const { createEntry } = useJournal();
     const { blurClass } = useDiscretion();
@@ -396,37 +355,13 @@ const TriggerRow = ({ trigger, summary, others, resolve }) => {
     );
 };
 
-/* ------------------------------------------------------------------------------------ */
-/* The screen                                                                             */
-/* ------------------------------------------------------------------------------------ */
+/* The screen */
 
-/**
- * Most-named first, then by label — `byMentionsThenName`'s rule on the People view, for its
- * reason: the count is what the screen is about and the label keeps two equal rows still.
- */
 const byEntriesThenLabel = (a, b) => (
     (b.summary.count - a.summary.count)
     || String(a.trigger.label || '').localeCompare(String(b.trigger.label || ''))
 );
 
-/**
- * *“Looks similar to…”* — §5.8's first use, second half.
- *
- * The point of the whole slice is here: without it a free-text vocabulary fragments into
- * *work*, *my job*, *the office* and *Arbeit*, and every later count groups on noise. What
- * this does about it is offer pairs. **It merges nothing.** The button opens the same
- * `MergeTriggerDialog` the row's own *Merge into…* opens, with the same radio to pick, the
- * same count, and the same sentence saying out loud that a merge is one-way — because the
- * suggestion changes which pair is easy to find, and must not change what a tap does.
- *
- * A pair only appears when a **structural** fact agrees with the geometry (rule 3): the two
- * words have been used around the same person, or around the same third trigger. Two words
- * an embedding thinks are alike, with nothing in the user's own history connecting them, are
- * exactly the case this refuses — see `similar.js`.
- *
- * There is no number on screen and none to put there: `similarTriggerPairs` returns labels
- * and ids, having thrown its ordering away.
- */
 const SimilarPairs = ({ pairs, rows }) => {
     const { blurClass } = useDiscretion();
     const [merging, setMerging] = useState(null);
@@ -492,17 +427,6 @@ export default function JournalTriggers() {
     // Counts of the whole record, not of whichever month the day view last loaded.
     useEffect(() => { loadAll(); }, [loadAll]);
 
-    /**
-     * One id in, the id that is live now out — a merge chain of any depth resolved to the
-     * trigger that speaks for it (§6.3).
-     *
-     * This screen resolves more ids than any other — `loadAll()` above means it walks every
-     * check-in in the history, once per trigger — so the thing that has to be hoisted is the
-     * **index**, not this closure. It is, in `JournalContext`, memoised on `triggerEntries`;
-     * `resolveTrigger` closes over it and this callback only stops the arrow function being
-     * rebuilt. An earlier version of this comment claimed hoisting the binding was enough,
-     * which it never was: `readTrigger` given an array rebuilds the index on every call.
-     */
     const resolve = useCallback((id) => resolveTrigger(id).live, [resolveTrigger]);
 
     const rows = useMemo(() => (

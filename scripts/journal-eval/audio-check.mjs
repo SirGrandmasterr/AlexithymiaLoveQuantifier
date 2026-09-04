@@ -1,19 +1,3 @@
-/**
- * `make journal-audio-check` — what is on disk, what is missing, and what is wrong with it.
- *
- *     node scripts/journal-eval/audio-check.mjs [--write-lock] [--all]
- *
- * Run it as the recordings arrive. It answers four questions, in the order they matter:
- *
- *   1. Does every speaker directory have consent? (§5.7; a directory without it is refused)
- *   2. Which of the 240 clips exist, and which do not?
- *   3. Are the ones that exist the right format — 16 kHz, mono, PCM?
- *   4. Have any changed since the last look? (`--write-lock` records the answer)
- *
- * Nothing here loads a model, and it works on a machine with no ffmpeg: the WAV header is
- * parsed directly (`audio.mjs`), because "your clips are 44.1 kHz" is most useful on the
- * evening of the recording session and least useful a week later.
- */
 import { stat } from 'node:fs/promises';
 import { AUDIO_DIR, CONDITIONS, LOCK_FILE, discoverClips, probeClip, readLock, readSpeakers, readSuite, writeLock } from './audio.mjs';
 import { repoRoot } from './paths.mjs';
@@ -25,13 +9,6 @@ const parseArgs = (argv) => ({
 
 const relative = (path) => path.slice(repoRoot.length + 1).replace(/\\/g, '/');
 
-/**
- * `'derived'` when `prepare-audio.sh --noise` made this clip, `'recorded'` when it did not.
- *
- * The sidecar is the whole of the evidence, which is a deliberately weak claim: `'recorded'`
- * means "nothing here says it was synthesised", not "somebody went to a café". The report
- * prints the split so a reader can weigh the noisy numbers accordingly.
- */
 const noiseOrigin = async (clipPath) => {
     const sidecar = clipPath.replace(/\.[^.]+$/, '.noise.txt');
     try {
@@ -70,9 +47,6 @@ const main = async () => {
 
     const problems = [];
 
-    // The two files have to agree about what the suite is. A case with no row has no WER
-    // ceiling and would be scored against nothing; a row with no case is a clip nobody will
-    // ever be asked to record. `npm test` catches this too — this is the copy an operator sees.
     const rowFor = new Set(recordings.clips.map(row => row.case));
     transcripts.filter(entry => !rowFor.has(entry.id)).forEach(entry => problems.push(
         { level: 'suite', what: entry.id, why: 'no row in recordings.json — it would have no WER ceiling' }
@@ -102,11 +76,6 @@ const main = async () => {
                     file: relative(clip.path), bytes: probe.bytes, sha256: probe.sha256,
                     format: probe.format, sample_rate: probe.sampleRate ?? null,
                     channels: probe.channels ?? null, seconds: probe.seconds ?? null,
-                    // Whether this noisy clip was recorded in a room or derived from the clean
-                    // take. `prepare-audio.sh --noise` leaves a `.noise.txt` beside every clip
-                    // it makes, so its absence means this script did not make it — which is the
-                    // stronger evidence, and the report should be able to say how much of the
-                    // noisy set is which.
                     noise: condition === 'clean' ? null : await noiseOrigin(clip.path)
                 };
 
@@ -174,9 +143,6 @@ const main = async () => {
         out('Run again with --write-lock to record these hashes, which is what makes a report reproducible.');
     }
 
-    // A missing clip is the normal state of this suite until somebody records it, so it is
-    // not an error. A clip that is present and unusable is: an operator who ran this command
-    // wants a non-zero exit to notice, and CI would want the same if this ever ran there.
     return shown.length ? 1 : 0;
 };
 

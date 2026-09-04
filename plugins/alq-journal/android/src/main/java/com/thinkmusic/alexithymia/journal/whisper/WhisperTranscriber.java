@@ -13,35 +13,6 @@ import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtException;
 import ai.onnxruntime.OrtSession;
 
-/**
- * Whisper tiny, on the device, through ONNX Runtime — the same two pinned ONNX files the
- * web build loads through transformers.js (C3), driven by hand because there is no
- * transformers.js on Android and the audio must not leave the native side to reach one.
- *
- * What it does, in order: the log-mel spectrogram ({@link LogMel}), one encoder pass, one
- * decoder pass on the start token alone to detect the language when none was pinned, then
- * greedy decoding with the merged decoder's KV cache. The cache protocol is the one this
- * export actually has, measured rather than assumed: the first pass carries the whole
- * prompt with `use_cache_branch = false` and empty pasts; every later pass carries one
- * token with `use_cache_branch = true`; and in the cache branch the encoder-side `present`
- * tensors come back **empty** (shape `[0, 6, 1, 64]`), so the ones from the first pass are
- * kept and fed again — feeding the empty ones back breaks the cross-attention outright.
- *
- * It transcribes, never translates, and it applies the two suppression lists the model
- * repository publishes (`suppress_tokens` always, `begin_suppress_tokens` on the first
- * generated token only), which is what keeps the output to words rather than the
- * non-speech tokens Whisper otherwise emits on silence.
- *
- * **One departure from a bare greedy loop, stated so a later session can remove it:** a
- * tail that repeats itself — the same one-to-eight-token span three times running — stops
- * the loop and keeps a single copy. Whisper tiny falls into exactly that loop on poor
- * audio, and on a phone every looped token is time and heat spent on nothing. It removes
- * only words the model already repeated; it never adds one. The web path has no such
- * guard, and D4's golden suite is where the two get compared on real recordings.
- *
- * Nothing here is Android-specific. The JVM harness recorded in the C4 ledger entry runs
- * this class unchanged against the pinned files and the Python prototype's tokens.
- */
 public final class WhisperTranscriber implements AutoCloseable {
 
     /** The words and the language they were read in. */
@@ -110,12 +81,6 @@ public final class WhisperTranscriber implements AutoCloseable {
         headDim = foundDim;
     }
 
-    /**
-     * Transcribe one clip of 16 kHz mono float samples.
-     *
-     * @param audio        up to thirty seconds; longer input is cut, shorter is padded
-     * @param languageCode a two-letter pin, or null to let the model decide
-     */
     public Result transcribe(float[] audio, String languageCode) throws OrtException {
         float[] features = logMel.compute(audio);
 
@@ -184,9 +149,6 @@ public final class WhisperTranscriber implements AutoCloseable {
         }
     }
 
-    /**
-     * One decoder pass. Returns the logits of the last position and advances the cache.
-     */
     private float[] step(OnnxTensor encoderHidden, int[] ids, Cache cache, boolean useCache) throws OrtException {
         long[][] idRows = new long[1][ids.length];
         for (int i = 0; i < ids.length; i++) idRows[0][i] = ids[i];
@@ -225,10 +187,6 @@ public final class WhisperTranscriber implements AutoCloseable {
         return best;
     }
 
-    /**
-     * The loop guard. If the last `span` tokens have just been produced three times in a
-     * row, return the count that keeps one copy; otherwise -1.
-     */
     static int repeatedTail(int[] out, int count) {
         for (int span = 1; span <= MAX_REPEAT_SPAN; span++) {
             int needed = span * REPEATS_TO_STOP;
@@ -255,12 +213,6 @@ public final class WhisperTranscriber implements AutoCloseable {
         return out;
     }
 
-    /**
-     * The decoder's KV cache: one tensor per `past_key_values.*` input, replaced from the
-     * matching `present.*` output after every step — except the encoder-side ones, which
-     * this export returns empty in the cache branch and which therefore keep their first
-     * value.
-     */
     private static final class Cache implements AutoCloseable {
         final Map<String, OnnxTensor> tensors = new HashMap<>();
         private final OrtEnvironment env;

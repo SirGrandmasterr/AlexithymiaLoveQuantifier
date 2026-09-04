@@ -21,16 +21,8 @@ import { JournalProvider } from './context/JournalContext';
 import { DiscretionProvider, useDiscretion } from './context/DiscretionContext';
 import { EmbeddingProvider } from './journal/embeddings/EmbeddingContext';
 import { isNative } from './mobile/platform';
-// Imported for its side effect as much as its exports: the module sets
-// `axios.defaults.baseURL` at evaluation time, which must happen before any component can
-// issue a request — the same ordering constraint, and the same reason, as `applyToken`.
 import { hasConfiguredServer } from './mobile/serverUrl';
 import useNativeShell from './mobile/useNativeShell';
-// The session's storage, renewal and 401 handling. Imported for its side effects as much as
-// its exports: reading the stored token applies the auth header at module scope, and the
-// module installs both axios interceptors on import. Neither can wait for an effect — child
-// effects commit before their parent's, so the dashboard's first fetch would already have
-// gone out. See the header comment there.
 import {
     readAccessToken,
     applyToken,
@@ -49,15 +41,6 @@ applyToken(initialToken);
 export default function App() {
     const [token, setTokenState] = useState(initialToken);
 
-    // A 401 no longer means the session is over: the interceptors in `auth/session.js` renew
-    // and replay the request. This runs only when renewal has become impossible — the
-    // refresh token expired after two months away, or the server revoked it.
-    //
-    // What it does then is drop the token, and that is the whole behaviour. There is no
-    // overlay and no error: every route below already sends a tokenless visitor to Landing
-    // or `/login`, so the app lands in exactly the state of someone who never signed in.
-    // It used to hold the token and put a prompt on top, which left a signed-out user
-    // looking at a signed-in app that answered 401 to everything behind the dialog.
     useEffect(() => subscribeSessionLost(() => {
         clearSession();
         setTokenState(null);
@@ -82,22 +65,8 @@ export default function App() {
             {/* The lock is outermost: when it is engaged nothing behind it renders at all. */}
             <AppLock>
                 <DiscretionProvider>
-                    {/* One subject list for every screen: the dashboard and the timeline route
-                        read the same state, so an edit in one is never stale in the other. */}
-                    {/* `enabled` is the reload key as well as the switch: a lost session sets
-                        the token to null and signing back in sets it again, so the fetch
-                        effect re-runs on its own. The explicit `reloadKey` this used to pass
-                        existed for re-authenticating *in place*, behind an overlay, and there
-                        is no longer such a path. */}
                     <SubjectsProvider enabled={!!token}>
-                        {/* Inside the subject list, not beside it: the journal names people
-                            and reads them from `useSubjects()` rather than fetching a second
-                            copy of the list (invariant 17). */}
                         <JournalProvider enabled={!!token}>
-                            {/* Inside the journal, not beside it: the index is built from the
-                                trigger vocabulary and the check-ins that provider already
-                                holds, and it is off on every device until someone turns it
-                                on (§5.8). It reads no state of its own and posts nothing. */}
                             <EmbeddingProvider>
                                 <Shell token={token} onLogout={handleLogout} onLogin={handleLogin} />
                             </EmbeddingProvider>
@@ -109,19 +78,12 @@ export default function App() {
     );
 }
 
-/**
- * Split out so the navbar can read discretion state — a hook cannot be called in the same
- * component that renders its provider.
- */
 function Shell({ token, onLogin, onLogout }) {
     const { discreet, toggle } = useDiscretion();
 
     // Hardware back button, status bar, soft keyboard. No-ops on web.
     useNativeShell();
 
-    // A packaged app has no origin to infer the API from, so a fresh install opens on this
-    // instead of on a screen whose every request is going to fail. It is not dismissible
-    // until a server is chosen: there is nothing behind it that would work.
     const [serverModalOpen, setServerModalOpen] = useState(() => isNative() && !hasConfiguredServer());
 
     return (
@@ -150,9 +112,6 @@ function Shell({ token, onLogin, onLogout }) {
                     path="/vault"
                     element={token ? <Vault /> : <Navigate to="/login" />}
                 />
-                {/* The journal. `/journal/:day` is last only for reading order — a static
-                    segment outranks a dynamic one, so `/journal/ritual` is the ritual and
-                    never a day called "ritual". */}
                 <Route
                     path="/journal"
                     element={token ? <Journal /> : <Navigate to="/login" />}
@@ -192,17 +151,12 @@ function Shell({ token, onLogin, onLogout }) {
                 />
             </Routes>
 
-            {/* Signed out there is nowhere to navigate to, so the bar would be three dead
-                targets. It appears with the session, as the desktop header's links do. */}
             {token && <MobileBottomNav discreet={discreet} onToggleDiscretion={toggle} />}
 
             <ServerSettingsModal
                 open={serverModalOpen}
                 dismissible={hasConfiguredServer()}
                 onClose={() => setServerModalOpen(false)}
-                // The old token was signed by a different server's `JWT_SECRET`; keeping it
-                // would mean a 401 on the first request and a confusing bounce to Landing.
-                // Ending the session here makes the cause legible.
                 onSaved={() => onLogout()}
             />
         </div>

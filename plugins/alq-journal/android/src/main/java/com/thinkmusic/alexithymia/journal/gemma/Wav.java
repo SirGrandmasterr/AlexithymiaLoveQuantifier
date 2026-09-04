@@ -4,20 +4,6 @@ import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
-/**
- * The recorder's samples, as the bytes LiteRT-LM's audio front-end reads.
- *
- * The whole app carries audio as {@code float[]} at 16 kHz mono, because that is what the
- * capture layer produces and what Whisper's spectrogram takes (§4.2). LiteRT-LM's
- * {@code Content.AudioBytes} takes a byte array, and what it decodes is a RIFF/WAVE file —
- * measured on 2026-09-02 by handing it one and watching its mel filterbank run. So this class
- * exists, and it is forty lines of header rather than a dependency.
- *
- * <p><b>16-bit PCM, and the rounding matters slightly.</b> A float sample is scaled by 32767
- * and clamped, not by 32768: −1.0 and +1.0 then map to −32767 and +32767, which is symmetric
- * and cannot overflow to the wrong sign on the positive rail. The error against a
- * 32768-scaling is one part in 32767 on the loudest sample of a note nobody is measuring.
- */
 public final class Wav {
 
     private Wav() { }

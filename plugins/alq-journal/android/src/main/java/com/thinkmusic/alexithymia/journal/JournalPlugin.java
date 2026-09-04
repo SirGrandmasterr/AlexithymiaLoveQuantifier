@@ -31,32 +31,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
- * The Emotional Journal's native plugin — deliberately narrow (§5.5, §12.2).
- *
- * Its whole surface is five capabilities: **record**, **transcribe**, **propose** (a stub
- * until D3), **embed** (a stub until G1), and **report memory and tier** — plus the weight
- * store that `transcribe` cannot work without. Everything above it is the one React app:
- * the recorder state machine, the settings, the copy, the card, the decision of which tier
- * a device is on. This class holds samples, model files and an ONNX session, and nothing
- * that decides what the journal *means*.
- *
- * **The permission policy, in code rather than in a comment.** The `RECORD_AUDIO`
- * permission is declared here through Capacitor's alias, which gives JavaScript
- * `checkPermissions` and `requestPermissions`; the recorder calls them on the first tap of
- * the microphone and never at launch (`android-config/.../AndroidManifest.xml`, CHANGE 5).
- * `startCapture` then refuses to open the device unless the state is *granted*, so no code
- * path — and no future caller — can record without having asked. There is no foreground
- * service and no background capture: the activity pausing aborts any capture in progress.
- *
- * **Audio never crosses the bridge.** `startCapture` / `stopCapture` hand JavaScript a
- * handle; the floats stay in {@link ClipStore} until `releaseClip` zero-fills them, and
- * `transcribe` takes the handles. A killed process takes every clip with it (§4.2).
- *
- * Methods that do real work (`transcribe`, `fetchModel`) run on one worker thread and
- * resolve their call from it; Capacitor delivers the result to the WebView whichever
- * thread it comes from.
- */
 @CapacitorPlugin(
     name = "AlqJournal",
     permissions = { @Permission(strings = { Manifest.permission.RECORD_AUDIO }, alias = JournalPlugin.MICROPHONE) }
@@ -112,9 +86,7 @@ public class JournalPlugin extends Plugin {
         store = new ModelStore(new File(getContext().getFilesDir(), "models"));
     }
 
-    /* ---------------------------------------------------------------------------------- */
     /* 1. Record                                                                           */
-    /* ---------------------------------------------------------------------------------- */
 
     @PluginMethod
     public void startCapture(PluginCall call) {
@@ -222,9 +194,7 @@ public class JournalPlugin extends Plugin {
         if (toAbort != null) toAbort.abort();
     }
 
-    /* ---------------------------------------------------------------------------------- */
     /* 2. Transcribe                                                                       */
-    /* ---------------------------------------------------------------------------------- */
 
     @PluginMethod
     public void transcribe(PluginCall call) {
@@ -328,17 +298,8 @@ public class JournalPlugin extends Plugin {
         }
     }
 
-    /* ---------------------------------------------------------------------------------- */
     /* 3. Propose — Gemma 4 E2B through LiteRT-LM (D3)                                     */
-    /* ---------------------------------------------------------------------------------- */
 
-    /**
-     * Open the model without asking it anything.
-     *
-     * The settings screen calls this after a download so that the first check-in is not also
-     * the first slow load. It is the only method here allowed to be slow for no visible
-     * reason, which is why it exists separately from {@link #propose}.
-     */
     @PluginMethod
     public void loadProposer(PluginCall call) {
         File bundle;
@@ -367,16 +328,6 @@ public class JournalPlugin extends Plugin {
         });
     }
 
-    /**
-     * One pass: a clip or a transcript in, one JSON object out (§5.1, §5.2).
-     *
-     * The schema comes down from JavaScript and so does the prompt. That is the division the
-     * whole plugin is built on — this class holds memory and file handles, and
-     * {@code src/journal/inference/} decides what the journal means. The answer is returned
-     * as the model's own string: parsing and validating it are {@code parse.js} and
-     * {@code validate.js}, and a plugin that pre-digested it would be a second validator
-     * nobody tests.
-     */
     @PluginMethod
     public void propose(PluginCall call) {
         String system = call.getString("system", "");
@@ -400,9 +351,6 @@ public class JournalPlugin extends Plugin {
             return;
         }
 
-        // The samples are read out of the clip store here, on the calling thread, so that a
-        // clip released between the call and the worker picking it up is reported as missing
-        // rather than proposed over as silence.
         byte[] wav = null;
         List<String> handleList = strings(handles);
         if (!handleList.isEmpty()) {
@@ -436,9 +384,6 @@ public class JournalPlugin extends Plugin {
                 call.resolve(out);
             } catch (Exception e) {
                 Log.w(TAG, "the proposal failed: " + e.getMessage());
-                // The engine is closed rather than kept. A failure inside LiteRT-LM can leave
-                // a session the next call would inherit, and reopening costs seconds where
-                // inheriting one costs a wrong proposal.
                 closeProposer();
                 call.reject("the proposal failed", CODE_FAILED, e);
             }
@@ -478,9 +423,7 @@ public class JournalPlugin extends Plugin {
         }
     }
 
-    /* ---------------------------------------------------------------------------------- */
     /* 4. Embed — a stub, and honest about it                                              */
-    /* ---------------------------------------------------------------------------------- */
 
     @PluginMethod
     public void embed(PluginCall call) {
@@ -488,18 +431,14 @@ public class JournalPlugin extends Plugin {
         call.reject("no embedding model in this build", CODE_UNAVAILABLE);
     }
 
-    /* ---------------------------------------------------------------------------------- */
     /* 5. Report memory and tier                                                           */
-    /* ---------------------------------------------------------------------------------- */
 
     @PluginMethod
     public void tier(PluginCall call) {
         call.resolve(TierProbe.report(getContext()));
     }
 
-    /* ---------------------------------------------------------------------------------- */
     /* The weight store beneath `transcribe`                                               */
-    /* ---------------------------------------------------------------------------------- */
 
     @PluginMethod
     public void fetchModel(PluginCall call) {
@@ -608,9 +547,7 @@ public class JournalPlugin extends Plugin {
         return out;
     }
 
-    /* ---------------------------------------------------------------------------------- */
     /* Lifecycle                                                                           */
-    /* ---------------------------------------------------------------------------------- */
 
     /** Nothing records in the background — the activity pausing ends any capture. */
     @Override
@@ -618,12 +555,6 @@ public class JournalPlugin extends Plugin {
         abortAnyCapture();
     }
 
-    /**
-     * An ONNX session is ~100 MB a hidden app has no use for, and Gemma is gigabytes; the
-     * next take reopens both. This is the same rule as the proposer's idle timer, arriving
-     * from the other direction — the timer covers an app left open and this covers one put
-     * away, and neither is enough on its own.
-     */
     @Override
     protected void handleOnStop() {
         closeTranscriber();

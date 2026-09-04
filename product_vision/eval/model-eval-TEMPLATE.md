@@ -51,8 +51,9 @@ Not a summary of the tables — the tables are already there. What is worth writ
 
 ### Decisions
 
-One line each, and each one repeated in [`../06-progress.md`](../06-progress.md) and in
-§12.5 of the design document. The four the harness leaves headed:
+One line each, and each one repeated in the Phase 6 ledger
+(`git show 49e2266:product_vision/06-progress.md`) and in §12.5 of the design document. The
+four the harness leaves headed:
 
 | Question | Answer | Evidence |
 | :--- | :--- | :--- |
