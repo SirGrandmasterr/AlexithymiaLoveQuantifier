@@ -85,6 +85,12 @@ graph TD
   user picks words from a closed vocabulary and a strength for each — and the rule is the same
   one. Nothing is written that the user did not confirm with a tap, including a person, a
   trigger label, or a feeling.
+  *"No hidden math" reaches similarity too, since 6-G:* the journal can compare the words you
+  have used before and say *"you've called this 'work' before"*, and it may **never** show a
+  number for how alike they are — not a score, not a percentage, not a count. The numbers live
+  on the one device that made them, are never sent or exported, and are deleted at sign-out;
+  and a suggestion is only offered when something the user actually confirmed agrees with it,
+  meaning the same person or the same trigger. It proposes; the merge is still a tap.
 - **The user authors every number, and every label.** Suggestion bands never constrain the
   slider; deltas describe, never prescribe. A model's proposal arrives dashed and is discarded
   unless it is tapped.

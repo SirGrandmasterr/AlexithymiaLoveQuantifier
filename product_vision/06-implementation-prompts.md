@@ -80,7 +80,7 @@ docs disagree, fix the docs in the same change.
 | :--- | :-- |
 | `product_vision/06-emotional-journal.md` | The design. Read the sections your prompt names, in full. Do not implement from the prompt alone — the prompt is a scope fence around the design, not a replacement for it. |
 | `product_vision/06-progress.md` | The ledger. What actually shipped in the sessions before yours, and what they warn you about. **Read it before planning.** |
-| `docs/10-agent-guide.md` §2 and §3 | Twenty-six hard invariants and sixteen silent-failure traps (the counts were stale at twenty-two and twelve until 2026-08-23). Several bite in every session. |
+| `docs/10-agent-guide.md` §2 and §3 | Twenty-six hard invariants and **twenty-one** silent-failure traps (the counts were stale at twenty-two and twelve until 2026-08-23, at sixteen until 2026-09-04, and at twenty until G1 the same day). Several bite in every session. |
 | `product_vision/README.md` | The roadmap invariants every phase must preserve. |
 
 Then read the specific files your prompt lists. Read whole files, not greps, for any file you
@@ -118,13 +118,20 @@ are going to modify.
 
 ### 2.4 Local environment facts, verified 2026-08-22
 
-- **Baseline is green.** `npm test` → **44 files, 1258 tests**, passing in ~30 s on this
-  machine (as of F1, 2026-09-04; it was 43 / 1226 at D4, 39 / 1096 at D3, 35 / 1016 at D2, 34 / 971 at D1, 33 / 815 at C4, 26 / 684 at C2, 22 files / 511 at the 6-A closeout
+- **Baseline is green.** `npm test` → **51 files, 1411 tests**, passing in ~31 s on this
+  machine (as of G1, 2026-09-04; it was 46 / 1293 at F2, 44 / 1258 at F1, 43 / 1226 at D4, 39 / 1096 at D3, 35 / 1016 at D2, 34 / 971 at D1, 33 / 815 at C4, 26 / 684 at C2, 22 files / 511 at the 6-A closeout
   and 14 files / 201 before Phase 6, and the "~70 s" this line used to claim was never right
   here). Android sessions also `make build-android`, which needs Docker Desktop **running**
   — it was stopped when C4 began — and whose Gradle error is only readable if the output is
   kept in a file: piped through `tail`, the recipe's exit code is `tail`'s and the failure
   scrolls away.
+- **`make build-android` fills the disk, and on 2026-09-04 it finished the job.** G1 ran it on
+  a machine with a few gigabytes left and came back to `C:` at **931 G of 931 G, zero free**:
+  the next `grep` died with *No space left on device* mid-edit. Docker was holding 53 GB of
+  build cache and 18 GB of images. `docker builder prune -f` reclaimed 20.6 GB **inside the
+  Docker VM and not on the host** — Docker Desktop's disk image does not shrink on its own, so
+  the host stayed at zero and the free space has to be reclaimed by compacting it (or from
+  elsewhere) by hand. **Check free space before you build, not after.**
   `cd backend && go test ./...` → passing, handlers ~10 s. If either is red *before* you change
   anything, stop and report it; do not build on a red baseline.
 - **`gofmt -l .` is never empty, and that is not a formatting problem.** Every CRLF file in the
@@ -223,7 +230,7 @@ Twenty-eight sessions. The **Slice** column maps back to the design document's �
 | **E1** | Encryption alignment | 6-E | Journal rows in the docs/13 envelope | A4 + docs/13 P0 |
 | **F1** | The outbox | 6-F | Offline journal writes, idempotent retry | A7 |
 | **F2** | Android depth | 6-F | Ritual notification, launcher shortcut, haptics | A8, C4 |
-| **G1** | The embedding index and trigger normalisation | 6-G | EmbeddingGemma, the device-local index, *"same thing?"* | D4, U1 |
+| **G1** | The embedding index and trigger normalisation | 6-G | EmbeddingGemma, the device-local index, *"same thing?"* | D4, ~~U1~~ (waived) |
 | **G2** | Retrieval: past entries, search, and the Vault line | 6-G | `from: "retrieval"` chips, semantic recall, new Vault entry | G1 |
 | **Z** | Phase closeout | — | Final doc sweep, roadmap invariants, security review | all |
 
@@ -2583,6 +2590,14 @@ anywhere"* gains the sentence §10.3 specifies.
 ### G1 — The embedding index and trigger normalisation
 
 *Only if U1 said people reuse triggers. The single biggest win, or nothing at all.*
+
+> **Shipped 2026-09-04, under the U1 waiver.** The gate this prompt opens with was never
+> closed: U1 has not been run, so there is no report saying whether people reuse triggers, and
+> the operator instructed on 2026-09-04 that the slice be built regardless — the same waiver
+> C2 onward ran under. A later session reading this prompt should not read "the single biggest
+> win" as a finding. **G2 is unaffected by the waiver in one respect and not the other:** it
+> can be built the same way, but §5.8's retrieval golden set is still outstanding and G1 did
+> not produce one, because G1 offers labels rather than entries.
 
 ▼▼▼ COPY FROM HERE ▼▼▼
 

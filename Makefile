@@ -81,7 +81,7 @@ GRADLE_TASK ?= assembleDebug
         migrate migrate-check migrate-local migrate-check-local help \
         android-init build-android bundle-android dev-android run-android \
         android-install android-logs clean-android \
-        models-fetch \
+        models-fetch models-install-terms \
         journal-eval journal-audio-check journal-eval-scripts
 
 # Default target
@@ -358,6 +358,35 @@ GEMMA_E2B_LITERTLM_REV := b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1
 GEMMA_E2B_LITERTLM_URL := https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/$(GEMMA_E2B_LITERTLM_REV)
 GEMMA_E2B_LITERTLM_DIR := litert-community/gemma-4-E2B-it-litert-lm
 
+# The index's model: EmbeddingGemma 300m, ONNX, q4, for transformers.js (§5.8, session G1).
+#
+# One graph beside one .onnx_data of weights, like every other ONNX row here, plus the
+# tokeniser and the three small config files transformers.js reads.
+#
+# **q4 and not q8.** §5.8's model paragraph promises "under 200 MB of RAM quantised", which
+# is Google's number for the 4-bit build; the q8 export (`model_quantized`) is 309 MB of
+# weights and would make that sentence false. fp16 is not an option at all - EmbeddingGemma's
+# activations do not support it, which the upstream model card states and §5.8 repeats.
+#
+# **218,739,216 bytes with the terms, 219 MB, measured 2026-09-04** - inside §5.8's estimated
+# "~200-300 MB (verify)", which the design document now carries as a measurement instead.
+EMBEDDING_GEMMA_REV := 5090578d9565bb06545b4552f76e6bc2c93e4a66
+EMBEDDING_GEMMA_URL := https://huggingface.co/onnx-community/embeddinggemma-300m-ONNX/resolve/$(EMBEDDING_GEMMA_REV)
+EMBEDDING_GEMMA_DIR := onnx-community/embeddinggemma-300m-ONNX
+
+# The Gemma Terms of Use, which is **not** a manifest row, and the one file in the volume
+# that is not fetched from anywhere.
+#
+# EmbeddingGemma is not Apache 2.0: Section 3.1 of the Gemma terms requires a copy of the
+# terms to accompany any Distribution, and serving these weights from the operator's own
+# machine is Distribution (§5.6). Every other licence here is pinned by URL and SHA-256 -
+# these cannot be, because Google publishes them as an HTML page that is not byte-stable
+# (two fetches seconds apart on 2026-09-04 hashed differently). So the copy lives in this
+# repository, `models-install-terms` below puts it in the volume beside the weights, and
+# src/journal/inference/models.test.js hashes the file and asserts the sum the app carries.
+GEMMA_TERMS_FILE := licences/gemma-terms-of-use.txt
+GEMMA_TERMS_DEST := $(EMBEDDING_GEMMA_DIR)/GEMMA_TERMS_OF_USE.txt
+
 # One row per file: set|path-under-the-volume|url|sha256
 MODEL_MANIFEST := \
 	whisper-tiny|$(WHISPER_TINY_DIR)/LICENSE.txt|$(APACHE_20_URL)|$(APACHE_20_SHA) \
@@ -390,7 +419,14 @@ MODEL_MANIFEST := \
 	gemma-4-e2b-onnx|$(GEMMA_E2B_ONNX_DIR)/onnx/vision_encoder_q4f16.onnx|$(GEMMA_E2B_ONNX_URL)/onnx/vision_encoder_q4f16.onnx|e0a4e48e519ade4eeddbb4cdadb812a7251aea871f7fb5f50576615fd3af22a3 \
 	gemma-4-e2b-onnx|$(GEMMA_E2B_ONNX_DIR)/onnx/vision_encoder_q4f16.onnx_data|$(GEMMA_E2B_ONNX_URL)/onnx/vision_encoder_q4f16.onnx_data|0835071d2c79c105f8e1b549b7f8dd8c9af07fa95f01ead2e7add280602d3c6d \
 	gemma-4-e2b-litertlm|$(GEMMA_E2B_LITERTLM_DIR)/LICENSE.txt|$(APACHE_20_URL)|$(APACHE_20_SHA) \
-	gemma-4-e2b-litertlm|$(GEMMA_E2B_LITERTLM_DIR)/gemma-4-E2B-it.litertlm|$(GEMMA_E2B_LITERTLM_URL)/gemma-4-E2B-it.litertlm|181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c
+	gemma-4-e2b-litertlm|$(GEMMA_E2B_LITERTLM_DIR)/gemma-4-E2B-it.litertlm|$(GEMMA_E2B_LITERTLM_URL)/gemma-4-E2B-it.litertlm|181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c \
+	embeddinggemma|$(EMBEDDING_GEMMA_DIR)/config.json|$(EMBEDDING_GEMMA_URL)/config.json|6e1f06404b7163e0325ed2ea3e6781cde50f4a50b31780a95ad0d30e8404d77b \
+	embeddinggemma|$(EMBEDDING_GEMMA_DIR)/tokenizer.json|$(EMBEDDING_GEMMA_URL)/tokenizer.json|4dda02faaf32bc91031dc8c88457ac272b00c1016cc679757d1c441b248b9c47 \
+	embeddinggemma|$(EMBEDDING_GEMMA_DIR)/tokenizer_config.json|$(EMBEDDING_GEMMA_URL)/tokenizer_config.json|3ca953eea6c3c9fcda9cf3df22949ff18b216f7c74bd6459230f3f1013953f3a \
+	embeddinggemma|$(EMBEDDING_GEMMA_DIR)/special_tokens_map.json|$(EMBEDDING_GEMMA_URL)/special_tokens_map.json|2f7b0adf4fb469770bb1490e3e35df87b1dc578246c5e7e6fc76ecf33213a397 \
+	embeddinggemma|$(EMBEDDING_GEMMA_DIR)/added_tokens.json|$(EMBEDDING_GEMMA_URL)/added_tokens.json|50b2f405ba56a26d4913fd772089992252d7f942123cc0a034d96424221ba946 \
+	embeddinggemma|$(EMBEDDING_GEMMA_DIR)/onnx/model_q4.onnx|$(EMBEDDING_GEMMA_URL)/onnx/model_q4.onnx|ad1dfee81a70f7944b9b9d1cc6e48075b832881cf33fab2f2b248be78f3f0043 \
+	embeddinggemma|$(EMBEDDING_GEMMA_DIR)/onnx/model_q4.onnx_data|$(EMBEDDING_GEMMA_URL)/onnx/model_q4.onnx_data|599962c3143b040de2dd05e5975be3e9091dd067cacc6a8f7186e3203bab9e02
 
 models-fetch:
 	@test -n "$(MODELS)" || { echo "MODELS is empty. Usage: make models-fetch MODELS=\"whisper-tiny\""; exit 1; }
@@ -409,6 +445,28 @@ models-fetch:
 		-e MANIFEST="$(MODEL_MANIFEST)" \
 		-v $(MODELS_VOLUME):/models \
 		$(MODELS_IMAGE) sh -s
+	@$(MAKE) --no-print-directory models-install-terms
+
+# The one file in the volume that is not fetched from anywhere: the Gemma Terms of Use
+# that must accompany EmbeddingGemma (§5.6, and Section 3.1 of the terms themselves).
+#
+# It is a separate target rather than a manifest row because it has no pinnable URL - see
+# GEMMA_TERMS_FILE above - and it is piped in on stdin for exactly the reason the script
+# above is: a -v with a host path is rewritten by MSYS from Git Bash. `tr` strips CR so the
+# bytes in the volume are the LF form whatever this repo was cloned as, which is the form
+# models.test.js hashes and the app's manifest pins.
+#
+# A no-op unless embeddinggemma was among the sets asked for: installing a licence for a
+# model that is not there would be the same kind of untrue as omitting one that is.
+models-install-terms:
+	@case " $(MODELS) " in \
+		*" embeddinggemma "*) \
+			test -f $(GEMMA_TERMS_FILE) || { echo "ERROR: $(GEMMA_TERMS_FILE) is missing; EmbeddingGemma may not be served without it" >&2; exit 1; }; \
+			tr -d '\r' < $(GEMMA_TERMS_FILE) | docker run --rm -i \
+				-v $(MODELS_VOLUME):/models \
+				$(MODELS_IMAGE) sh -c 'mkdir -p "$$(dirname /models/$(GEMMA_TERMS_DEST))" && cat > /models/$(GEMMA_TERMS_DEST)'; \
+			echo "installed $(GEMMA_TERMS_DEST)  (Gemma Terms of Use, from $(GEMMA_TERMS_FILE))" ;; \
+	esac
 
 
 # ---------------------------------------------------------------------------

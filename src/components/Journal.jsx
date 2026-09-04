@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Activity, ChevronLeft, ChevronRight, CloudOff, Info, Loader2, NotebookPen, Trash2 } from 'lucide-react';
 import { useJournal } from '../context/JournalContext';
 import { useDiscretion } from '../context/DiscretionContext';
@@ -17,6 +17,8 @@ import {
     JOURNAL_COPY,
     JOURNAL_ROOT,
     PEOPLE_PATH,
+    RECORD_PARAM,
+    RECORD_PARAM_VALUE,
     TRIGGERS_PATH,
     UNCLEAR_FEELING_ID,
     civilDay,
@@ -651,6 +653,7 @@ const EmptyDay = ({ day, today, firstRun }) => (
 export default function Journal() {
     const { day: dayParam } = useParams();
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
     const {
         entries, entriesForDay, pendingForDay, triggers, loading, loadError, dismissLoadError,
         loadRange, refresh
@@ -685,6 +688,30 @@ export default function Journal() {
     }, [day, loadRange]);
 
     useEffect(() => { setOpenedCheckin(null); }, [day]);
+
+    /**
+     * The launcher's *Check in* shortcut, arriving as `?record=1` (§9.2).
+     *
+     * It **arms** the composer and stops there: the microphone where this device offers one,
+     * the keyboard where it does not — the same choice the button and the FAB make — and the
+     * recording begins on the confirming tap inside the sheet. A long-press on a home screen
+     * is too easy to make by accident to be allowed to open a microphone by itself, and
+     * §4.2's position is that this app records only while the button is lit.
+     *
+     * It waits for `voice.primed` because on Android the tier is the plugin's memory report
+     * and it lands a moment after mount; deciding before it does would arm the keyboard on a
+     * phone that has a transcriber. The parameter is then consumed, so that closing the sheet
+     * — or a reload, or a back gesture — does not re-open it.
+     */
+    useEffect(() => {
+        if (searchParams.get(RECORD_PARAM) !== RECORD_PARAM_VALUE || !voice.primed) return;
+
+        setComposing(voice.showMicrophone ? 'voice' : 'chips');
+
+        const next = new URLSearchParams(searchParams);
+        next.delete(RECORD_PARAM);
+        setSearchParams(next, { replace: true });
+    }, [searchParams, setSearchParams, voice.primed, voice.showMicrophone]);
 
     // The third of §9.5's three flush signals, and the only one that is a gesture. It calls
     // the provider's `refresh`, which flushes the outbox on every fetch that comes back — so

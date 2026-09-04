@@ -544,7 +544,14 @@ subjects and a second copy of a chip is a second place its colours can drift.
   keeps it open with its message (trap 4 applied to a dialog).
 - **The composer's two launchers live here**: `CheckinButton` shares the month strip's row so
   it lands where the dashboard puts *New Analysis*, and `CheckinFab` floats over the bottom
-  bar. See §2e.
+  bar. See §2e. **A third arrives from outside the app**: Android's launcher shortcut opens
+  `/journal?record=1` (§9.2), and one effect here reads that parameter, opens the composer the
+  way the FAB would — the microphone where the device offers one, the keyboard where it does
+  not — and then removes the parameter from the URL so closing the sheet does not re-open it.
+  It **arms**, and the recording starts on the confirming tap inside the sheet; and it waits
+  for `voice.primed`, because on Android the tier is the plugin's memory report and it lands a
+  moment after mount, so deciding earlier would arm the keyboard on a phone that has a
+  transcriber. See [Android §3.4](12-android-app.md).
 - **The two vocabulary links are in the header**, under the day nav: *People* and *Triggers*.
   The bottom bar has one journal slot and the day is what it opens (§9.2), so this is the
   only way in to either screen.
@@ -1526,9 +1533,9 @@ including the What Changed screen. The only rendering difference in the whole ap
 
 ## 3c. `/vault` — export, import, and the trust page
 
-[`Vault.jsx`](../src/components/Vault.jsx). The page has six claims on it and each one has
-to be true of the code as written. **Two of them are now conditional on what this device
-has been asked to do**, read from the same `localStorage` key the settings screen writes —
+[`Vault.jsx`](../src/components/Vault.jsx). The page has seven claims on it and each one has
+to be true of the code as written. **Three of them are now conditional on what this device
+has been asked to do**, read from the same `localStorage` keys the settings screen writes —
 so the page describes the build *and this machine*, not the build's ambitions:
 
 | Claim | Why it holds |
@@ -1539,6 +1546,8 @@ so the page describes the build *and this machine*, not the build's ambitions:
 | "One small model writes the words down and a second one suggests tags" — *voice on, Light tier* | A third variant, and not a stylistic one: the Light tier really is two models (§5.1, §5.5) — Whisper tiny for the words, Gemma 4 E2B in text mode for the tags — and `createLightRuntime` composes them behind one `propose`. Saying *"one model"* on a device running two would be false in the direction this page exists to get right, so `aiClaimFor(tier)` picks the paragraph and `Vault.test.jsx` asserts both verbatim. Both name every model and its licence, which is what §5.6 asks of a page that redistributes weights |
 | "Nothing a model proposes is saved on its own" — *voice on, both tiers* | The save body is built by `confirmedPicked` from the card's **confirmed** state — a dashed chip has no path to it — and the server validates ids, not opinions; the model's proposal travels beside the body as provenance and is never read as input. `ProposalCard.test.jsx`'s first test asserts dashed is not saved, and D3's mutation check recorded what breaks when the rule is removed. The same holds on the ritual's confirm card, where a question the note did not mention is **absent** from `answers` rather than `false` — `RitualVoice.test.jsx` asserts the absence by key, not by value |
 | "Transcription and suggestions run on the device" | The runtime is a same-origin asset and the weights a same-origin download; there is no code path to a remote transcriber or a remote proposer, no remote fallback exists at all (§12.2 defers one explicitly), and the Web Speech API is [rejected outright](../product_vision/06-emotional-journal.md) because Chrome sends audio to Google. Demonstrated rather than argued: on the deployed stack a full model load and a 30 s transcription produced **zero off-origin requests** (C3, 2026-08-31), and D3 fetched and verified all sixteen Gemma files — 3,401,460,010 bytes — from a browser on that stack with **`localhost:8082` as the only host in `performance.getEntriesByType('resource')`** (2026-09-02). **On Android (C4, D3)** the same pinned files run inside the app's own process — Whisper through ONNX Runtime, Gemma through LiteRT-LM — and the plugin's only URL is `<server>/models/<path>` |
+| "Similar-entry numbers never leave this device" — *index on* | The index is a client-only cache the server has no endpoint for (§5.8 rule 1). There is no route to post one, no field in the §7.2 request shape that could carry one, and no `axios` import anywhere under `src/journal/embeddings/`. Demonstrated rather than argued: `normalisation.test.jsx` walks **every** request body the card and the Triggers view produce — accepting a suggestion, declining one, merging a pair — and fails on a typed array, on any run of sixteen or more numbers, and on any field named `vector`, `embedding`, `dims` or `entry_client_id`; a self-test plants each of those to prove the walk looks. The reason it is worth this much machinery is in §5.8: **embeddings are invertible** — vec2text recovers 92 % of 32-token inputs exactly — so a vector column would be a transcript column under another name. The other half of the promise is *"deleted when you sign out"*: `JournalContext` empties the index on the branch that runs with no session, the same branch that drops the outbox, and `logout.test.jsx` asserts the call rather than trusting the wiring |
+| "Nothing is merged or renamed unless you tap it" — *index on* | Similarity **proposes and never writes** (§5.8 rule 2). Accepting *"you've called this 'work' before"* makes the check-in reference a trigger the user already has instead of minting a new one — which is what §4.5b step 1 would have done had the label matched exactly — and writes no correction row: the test asserts no `merged_into` and no `corrects` in any body. The Triggers view's *looks similar to…* opens the same `MergeTriggerDialog` the row's own action opens, with the same radio and the same one-way sentence, so the suggestion changes which pair is easy to find and not what a tap does. Rule 2's other half — **never a number** — is the return type: `similarTriggerOffers` hands back `{ clientId, label }` with the similarity thrown away, and `journal.test.js` walks `JOURNAL_COPY.similar` for digits |
 | "Does it listen? Only while the record button is lit" | The recorder opens the device inside `start()` and nowhere else, releases it at every stop, and the two numbers in the sentence are interpolated from `MAX_CLIP_MS` and `SILENCE_HOLD_MS` rather than retyped |
 | "The database is not encrypted" | It is not, and saying so is the point. Since Phase 6 the sentence **names the journal in the journal's own words** — "the words you tapped, what you typed, the people and things you named, your answers to the evening questions, and journal transcripts" — because a reader would not otherwise know that "your notes and scores" covered it. It promises nothing about later: `docs/13` is an unconfirmed option, and a Vault sentence implying a schedule would be the claim, not the schedule, that was wrong |
 | "This locks the screen, it does not encrypt the database" | The app lock is a passphrase hash in `localStorage` and nothing else |
@@ -2479,7 +2488,13 @@ rows above are exercised by mocking `isNative()`.) Reading and writing every key
 route and the journal's first-run card read the same keys.
 
 Unlike the reminders block, this section has no availability gate: the ritual is a screen and
-works everywhere. What is native-only is the *notification* for it, which is F2's.
+works everywhere. What is native-only is the *notification* for it, and since F2 that exists:
+turning the ritual on schedules one local notification at the chosen hour through
+[`ritualReminder.js`](../src/mobile/ritualReminder.js) — asking for `POST_NOTIFICATIONS` at
+that moment and never at launch — moving the hour replaces it, and turning the ritual off
+cancels it. A refused permission costs the reminder and not the setting, which is why nothing
+here reads its answer. On the web the calls are no-ops and §3.6's dashboard line stands in.
+See [docs/12 §3.4](12-android-app.md).
 
 ### Dead controls
 

@@ -1,5 +1,6 @@
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { dueStacks, nudgeSentence } from '../constants/cadence';
+import { RITUAL_NOTIFICATION_ID } from './ritualReminder';
 import { isNative } from './platform';
 
 /**
@@ -74,11 +75,22 @@ export const setRemindersEnabled = async (enabled) => {
     return true;
 };
 
+/**
+ * Everything this channel has pending, and deliberately not everything the app has.
+ *
+ * `getPending()` is the whole device's list for this app, and since F2 there is a second
+ * channel in it: the journal's nightly reminder, one row at `RITUAL_NOTIFICATION_ID`. This
+ * used to cancel the lot, which would have silently unscheduled tonight's ritual every time
+ * the dashboard re-synced the cadence — a bug that would have looked like Android dropping
+ * alarms. Neither channel may cancel the other's work; the ritual's own cancel is by id for
+ * the same reason.
+ */
 const cancelAll = async () => {
     try {
         const pending = await LocalNotifications.getPending();
-        if (pending.notifications.length) {
-            await LocalNotifications.cancel({ notifications: pending.notifications });
+        const ours = pending.notifications.filter(({ id }) => id !== RITUAL_NOTIFICATION_ID);
+        if (ours.length) {
+            await LocalNotifications.cancel({ notifications: ours });
         }
     } catch {
         // A cancel that fails leaves a stale reminder, which is a smaller problem than an

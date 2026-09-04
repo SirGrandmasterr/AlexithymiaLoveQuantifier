@@ -164,6 +164,74 @@ export const GEMMA_E2B_LITERTLM = {
 };
 
 /**
+ * EmbeddingGemma 300m, ONNX, q4 — the index's model (§5.8, G1).
+ *
+ * **Not a tier model and not part of any `tierModels` set.** It is its own opt-in, behind
+ * its own key, downloaded only when the user turns similar-entry suggestions on: a device
+ * that transcribes and proposes has no need of a vector for anything, and a 219 MB download
+ * that arrives because a *different* switch was flipped is the kind of surprise §5.6 spends
+ * a paragraph avoiding.
+ *
+ * **q4 rather than q8, and the reason is a sentence in §5.8 rather than a preference.** The
+ * design's model paragraph says *"under 200 MB of RAM quantised"*, which is Google's own
+ * number for the 4-bit build; `model_quantized` (q8) is 309 MB of weights and would make
+ * that sentence false on the page that quotes it. `fp16` is not an option at all — the
+ * upstream card says EmbeddingGemma's activations do not support it, which is why §5.8
+ * names `q8`/`q4` and stops there.
+ *
+ * **219 MB, measured 2026-09-04** from this revision, against §5.8's estimated *"~200–300 MB
+ * (verify)"* — inside it, and the design document now carries the measurement. `totalBytes()`
+ * recomputes it from the rows rather than trusting the label.
+ *
+ * **`GEMMA_TERMS_OF_USE.txt` is a row here for the same reason Whisper's `LICENSE.txt` is.**
+ * EmbeddingGemma is not Apache: it is under the Gemma Terms of Use, whose Section 3.1
+ * requires a copy of the terms to accompany any Distribution — and serving these weights
+ * from the operator's own machine is Distribution (§5.6). The difference from every other
+ * row is where the bytes come from: Google publishes the terms as an HTML page that is not
+ * byte-stable (two fetches seconds apart on 2026-09-04 hashed differently), so it cannot be
+ * pinned by URL the way a weight file is. The copy lives in `licences/` in this repository,
+ * `make models-fetch` installs it into the volume, and `models.test.js` hashes the file and
+ * asserts the sum below — which is a stronger rail than a URL pin, not a weaker one.
+ */
+export const EMBEDDING_GEMMA_ONNX = {
+    id: 'onnx-community/embeddinggemma-300m-ONNX',
+    revision: '5090578d9565bb06545b4552f76e6bc2c93e4a66',
+    label: 'EmbeddingGemma',
+    licence: 'Gemma Terms of Use',
+    dtype: 'q4',
+    files: [
+        { path: 'onnx-community/embeddinggemma-300m-ONNX/GEMMA_TERMS_OF_USE.txt', bytes: 11530, sha256: '099c2f941f08d38100e72772d025fc555abb440f55e17d4f9799d2caf4e36535' },
+        { path: 'onnx-community/embeddinggemma-300m-ONNX/config.json', bytes: 1765, sha256: '6e1f06404b7163e0325ed2ea3e6781cde50f4a50b31780a95ad0d30e8404d77b' },
+        { path: 'onnx-community/embeddinggemma-300m-ONNX/tokenizer.json', bytes: 20323312, sha256: '4dda02faaf32bc91031dc8c88457ac272b00c1016cc679757d1c441b248b9c47' },
+        { path: 'onnx-community/embeddinggemma-300m-ONNX/tokenizer_config.json', bytes: 1156830, sha256: '3ca953eea6c3c9fcda9cf3df22949ff18b216f7c74bd6459230f3f1013953f3a' },
+        { path: 'onnx-community/embeddinggemma-300m-ONNX/special_tokens_map.json', bytes: 662, sha256: '2f7b0adf4fb469770bb1490e3e35df87b1dc578246c5e7e6fc76ecf33213a397' },
+        { path: 'onnx-community/embeddinggemma-300m-ONNX/added_tokens.json', bytes: 35, sha256: '50b2f405ba56a26d4913fd772089992252d7f942123cc0a034d96424221ba946' },
+        { path: 'onnx-community/embeddinggemma-300m-ONNX/onnx/model_q4.onnx', bytes: 519322, sha256: 'ad1dfee81a70f7944b9b9d1cc6e48075b832881cf33fab2f2b248be78f3f0043' },
+        { path: 'onnx-community/embeddinggemma-300m-ONNX/onnx/model_q4.onnx_data', bytes: 196725760, sha256: '599962c3143b040de2dd05e5975be3e9091dd067cacc6a8f7186e3203bab9e02' }
+    ]
+};
+
+/**
+ * The model behind the index — **EmbeddingGemma 300m**, the way `PROPOSAL_MODEL` is the
+ * model behind the card.
+ *
+ * `id` is the upstream model rather than the export, so a vector written by a browser and a
+ * vector written by a phone can be compared for staleness by the same string. It is the
+ * value that goes in the `model` field of every stored vector (§5.8 rule 1), and a change to
+ * it is what makes every vector on the device stale at once.
+ *
+ * The Vault page names this model and **its terms**, which are not Apache — see §5.6.
+ */
+export const EMBEDDING_MODEL = {
+    id: 'google/embeddinggemma-300m',
+    label: 'EmbeddingGemma',
+    licence: 'Gemma Terms of Use',
+    /** The full width the model emits, before §5.8's Matryoshka truncation. */
+    nativeDims: 768,
+    web: EMBEDDING_GEMMA_ONNX
+};
+
+/**
  * The model that proposes feelings, people and triggers — **Gemma 4 E2B, since D3.**
  *
  * One model with three packagings, and the identity is the thing the user is told about: the
@@ -189,7 +257,8 @@ export const MODELS = {
     whisperTiny: WHISPER_TINY,
     gemmaOnnx: GEMMA_E2B_ONNX,
     gemmaOnnxText: GEMMA_E2B_ONNX_TEXT,
-    gemmaLitertLm: GEMMA_E2B_LITERTLM
+    gemmaLitertLm: GEMMA_E2B_LITERTLM,
+    embeddingGemma: EMBEDDING_GEMMA_ONNX
 };
 
 /**
@@ -200,6 +269,10 @@ export const MODELS = {
  * a Light-tier device downloads both, and the settings screen says both names and one total.
  * The text-only tier needs nothing, which is why it is an empty list rather than a special
  * case every caller has to remember.
+ *
+ * **`EMBEDDING_GEMMA_ONNX` is deliberately absent from every branch** (G1). The index is not
+ * something a tier can run or not run; it is a separate opt-in with a separate 219 MB, and
+ * putting it in this list would download it for a user who only ever asked to speak a note.
  */
 export const tierModels = (tier, { native = false } = {}) => {
     if (tier === 'full') return [native ? GEMMA_E2B_LITERTLM : GEMMA_E2B_ONNX];

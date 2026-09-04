@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
 import { useJournal } from '../context/JournalContext';
 import { useDiscretion } from '../context/DiscretionContext';
+import { useEmbeddings } from '../journal/embeddings/EmbeddingContext';
 import { Modal } from './RelationshipDialogs';
 import {
     AttachedFeelings,
@@ -408,6 +409,81 @@ const byEntriesThenLabel = (a, b) => (
     || String(a.trigger.label || '').localeCompare(String(b.trigger.label || ''))
 );
 
+/**
+ * *“Looks similar to…”* — §5.8's first use, second half.
+ *
+ * The point of the whole slice is here: without it a free-text vocabulary fragments into
+ * *work*, *my job*, *the office* and *Arbeit*, and every later count groups on noise. What
+ * this does about it is offer pairs. **It merges nothing.** The button opens the same
+ * `MergeTriggerDialog` the row's own *Merge into…* opens, with the same radio to pick, the
+ * same count, and the same sentence saying out loud that a merge is one-way — because the
+ * suggestion changes which pair is easy to find, and must not change what a tap does.
+ *
+ * A pair only appears when a **structural** fact agrees with the geometry (rule 3): the two
+ * words have been used around the same person, or around the same third trigger. Two words
+ * an embedding thinks are alike, with nothing in the user's own history connecting them, are
+ * exactly the case this refuses — see `similar.js`.
+ *
+ * There is no number on screen and none to put there: `similarTriggerPairs` returns labels
+ * and ids, having thrown its ordering away.
+ */
+const SimilarPairs = ({ pairs, rows }) => {
+    const { blurClass } = useDiscretion();
+    const [merging, setMerging] = useState(null);
+
+    const rowFor = (clientId) => rows.find(row => row.trigger.live === clientId) ?? null;
+
+    const usable = pairs
+        .map(pair => ({ a: rowFor(pair.a.clientId), b: rowFor(pair.b.clientId) }))
+        .filter(pair => pair.a && pair.b);
+
+    if (usable.length === 0) return null;
+
+    return (
+        <section data-similar-pairs className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 sm:p-5 space-y-3">
+            <div className="space-y-1">
+                <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    {JOURNAL_COPY.similar.pairsHeading}
+                </h2>
+                <p className="text-xs text-slate-400 font-light leading-relaxed max-w-md">
+                    {JOURNAL_COPY.similar.pairsNote}
+                </p>
+            </div>
+
+            <ul className="space-y-2">
+                {usable.map(({ a, b }) => (
+                    <li
+                        key={`${a.trigger.live} ${b.trigger.live}`}
+                        data-similar-pair={`${a.trigger.live} ${b.trigger.live}`}
+                        className="flex flex-wrap items-center justify-between gap-3"
+                    >
+                        <span className={`text-sm font-light text-slate-700 ${blurClass}`}>
+                            {fillCopy(JOURNAL_COPY.similar.pair, { a: a.trigger.label, b: b.trigger.label })}
+                        </span>
+                        <button
+                            type="button"
+                            data-similar-merge={`${a.trigger.live} ${b.trigger.live}`}
+                            onClick={() => setMerging({ a, b })}
+                            className="text-xs font-medium text-slate-500 hover:text-slate-800 underline underline-offset-4 transition-colors"
+                        >
+                            {JOURNAL_COPY.similar.pairAction}
+                        </button>
+                    </li>
+                ))}
+            </ul>
+
+            {merging && (
+                <MergeTriggerDialog
+                    trigger={merging.a.trigger}
+                    others={[merging.b.trigger]}
+                    count={merging.a.summary.count}
+                    onClose={() => setMerging(null)}
+                />
+            )}
+        </section>
+    );
+};
+
 export default function JournalTriggers() {
     const {
         triggers, entries, loading, loadError, dismissLoadError, loadAll, resolveTrigger
@@ -437,6 +513,10 @@ export default function JournalTriggers() {
             .sort(byEntriesThenLabel)
     ), [triggers, entries, resolve]);
 
+    // Empty on every device that has not turned the index on — which is every device by
+    // default, and every device with no provider above this one.
+    const { pairs } = useEmbeddings();
+
     return (
         <Frame>
             <header className="space-y-1">
@@ -451,6 +531,8 @@ export default function JournalTriggers() {
             ) : rows.length === 0 ? (
                 <Empty message={JOURNAL_COPY.triggers.empty} />
             ) : (
+                <>
+                <SimilarPairs pairs={pairs} rows={rows} />
                 <ul data-journal-view="triggers" className="space-y-3">
                     {rows.map(({ trigger, summary }) => (
                         <TriggerRow
@@ -464,6 +546,7 @@ export default function JournalTriggers() {
                         />
                     ))}
                 </ul>
+                </>
             )}
         </Frame>
     );

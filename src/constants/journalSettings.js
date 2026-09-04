@@ -15,10 +15,10 @@
  * **Three more arrived with C3** — voice, keep-transcripts and language, plus the tier
  * override §9.7 did not originally list. The rule the header states still holds and is
  * worth restating rather than deleting: **a key with no reader here is a feature that does
- * not exist yet.** `embeddings` still has no reader, because there is no index that searches;
- * adding one before the feature would put a toggle on the profile screen for something the
- * app cannot do (invariant 2e). `suggestions` gained its reader in D2, with the card it
- * governs.
+ * not exist yet.** `suggestions` gained its reader in D2, with the card it governs, and
+ * `embeddings` gained its in G1 — the last of the nine, and the only one that arrived
+ * *narrower* than §9.7 wrote it: it governs similar-entry suggestions and not search,
+ * because G1 built the first and G2 builds the second.
  *
  * `voice` has a second rule of its own, and it is the one that keeps the Vault page true:
  * **it may only be turned on where the device could actually run it.** The reader below is
@@ -193,3 +193,29 @@ export const writeTierOverride = (tier) => writeJSON(
 export const readSuggestions = () => readJSON(JOURNAL_STORAGE_KEYS.suggestions, true) !== false;
 
 export const writeSuggestions = (on) => writeJSON(JOURNAL_STORAGE_KEYS.suggestions, on !== false);
+
+/* ------------------------------------------------------------------------------------ */
+/* G1: the embedding index                                                                */
+/* ------------------------------------------------------------------------------------ */
+
+/**
+ * Whether this device keeps an embedding index (§5.8). **Off by default**, and off wherever
+ * it could not run — the same shape as `readVoiceSetting`, and for the same reason.
+ *
+ * `capable` is passed in rather than looked up, so this module stays storage and nothing
+ * else; `embeddingsAvailable()` in `journal/embeddings/availability.js` is what decides.
+ *
+ * Reading `false` on a device that cannot build an index is not a lie about the preference:
+ * it is the honest answer to *“is this device turning your entries into numbers”*, which is
+ * the question the Vault page asks this key.
+ */
+export const readEmbeddings = (capable = true) => (
+    capable === true && readJSON(JOURNAL_STORAGE_KEYS.embeddings, false) === true
+);
+
+/** Returns what was actually stored, so a caller can tell a refusal from a change. */
+export const writeEmbeddings = (on, capable = true) => {
+    const next = on === true && capable === true;
+    writeJSON(JOURNAL_STORAGE_KEYS.embeddings, next);
+    return next;
+};

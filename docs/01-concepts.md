@@ -530,15 +530,26 @@ Knowing the negative space prevents wrong assumptions when extending the project
   run Gemma 4 E2B on the device to write a spoken note down and suggest labels for it; the
   suggestion arrives on a card where every chip is dashed until it is confirmed, the save
   payload is built from what was confirmed, and the server validates ids rather than opinions.
-  The love snapshots are untouched by any of it.
+  Since 6-G there is a **second** on-device model behind a **second** switch, off by default:
+  EmbeddingGemma turns the words you have already used into numbers, kept only on that device
+  and deleted when you sign out, so the journal can say *"you've called this 'work' before"*
+  when a new label looks like an old one. It offers; it never merges, never renames, and never
+  shows a number — and it only offers at all when something structural agrees, meaning the same
+  person or the same trigger. The love snapshots are untouched by any of it.
 - **No listening.** The microphone is open only while the record button is active. There is
   no wake word and no background capture, recording stops on a second tap, after two
   seconds of silence or at thirty, and **the audio is never stored** — it lives in memory
   until the words exist and is overwritten the moment they do. A voice is a biometric; a
   transcript is not.
-- **No notifications sent anywhere.** Reminders now exist, but they are in-app only, opt-in
-  per relationship, off by default, and computed in the browser. There is no scheduler, no
-  email, no push, and nothing that runs when the tab is closed.
+- **No notifications sent anywhere.** Reminders now exist, and on Android they are system
+  notifications — but every one of them is scheduled by the app, on the device, from data the
+  device already holds. Opt-in, off by default, and due-ness computed in the browser or the
+  WebView: there is no push service, no token, no email, and no server that knows when
+  anything is due. On the web there is no scheduler at all and nothing runs when the tab is
+  closed. **The nightly ritual's reminder is a local notification with fixed, content-free
+  text, scheduled on the device like the cadence reminders** — one sentence saying the
+  questions are ready, never what they are, because a lock screen is readable by whoever is
+  holding the phone.
 - **No gamification.** No streaks, no badges, no scores about your scoring. See
   [Cadence](#cadence-and-the-two-nudges) for the rules this holds itself to.
 - **No encryption at rest.** The database is a plain file or your Postgres instance.

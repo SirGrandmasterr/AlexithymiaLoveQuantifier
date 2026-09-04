@@ -13,7 +13,14 @@ adding a file here is the same as adding it there.
 ```
 android-config/app/src/main/AndroidManifest.xml            → android/app/src/main/AndroidManifest.xml
 android-config/app/src/main/res/xml/network_security_config.xml → android/app/src/main/res/xml/…
+android-config/app/src/main/res/xml/shortcuts.xml          → android/app/src/main/res/xml/…
+android-config/app/src/main/res/values/shortcuts_strings.xml → android/app/src/main/res/values/…
 ```
+
+Only the manifest is a **whole-file replacement**. The other three are additions: Android
+merges every file under `res/values/`, so the shortcut's two labels live in their own file
+rather than in an overlay of the generated `values/strings.xml`, which Capacitor writes from
+`capacitor.config.json` and which would then have to be re-derived after every upgrade.
 
 ## What is *not* here: the journal plugin
 
@@ -30,9 +37,10 @@ every permission the APK asks for is readable in one file. See
 
 ## Keeping the manifest in step with Capacitor
 
-`AndroidManifest.xml` here is Capacitor 8's template plus the five annotated changes its
+`AndroidManifest.xml` here is Capacitor 8's template plus the six annotated changes its
 header lists (`allowBackup`, `networkSecurityConfig`, `usesCleartextTraffic`,
-`POST_NOTIFICATIONS`, `RECORD_AUDIO`). It is a **whole-file replacement**, not a
+`POST_NOTIFICATIONS`, `RECORD_AUDIO`, and the `android.app.shortcuts` meta-data that makes a
+launcher read `res/xml/shortcuts.xml`). It is a **whole-file replacement**, not a
 patch, which means a Capacitor major upgrade can silently drop whatever the new template
 added.
 

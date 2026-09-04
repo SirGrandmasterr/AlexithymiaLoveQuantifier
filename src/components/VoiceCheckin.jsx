@@ -132,7 +132,11 @@ export const useVoiceAvailability = () => {
             voiceOn: readVoiceSetting(canTranscribe(detected)),
             discreet
         });
-        return { ...availability, detected, language: readLanguage() };
+        // `primed` travels with the answer because one caller has to wait for it rather
+        // than render around it: the launcher shortcut (§9.2) decides between the microphone
+        // and the keyboard *once*, on arrival, and a screen that answered before the plugin's
+        // memory report landed would arm the wrong one.
+        return { ...availability, detected, language: readLanguage(), primed };
     }, [discreet, primed]);
 };
 

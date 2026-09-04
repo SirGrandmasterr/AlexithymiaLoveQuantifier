@@ -1,10 +1,13 @@
 import React from 'react';
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axios from 'axios';
 
 import Profile from './Profile';
-import { PROPOSAL_MODEL, formatBytes, setBytes, setLabel, tierModels } from '../journal/inference/models';
+import {
+    EMBEDDING_GEMMA_ONNX, EMBEDDING_MODEL, PROPOSAL_MODEL,
+    formatBytes, modelSize, setBytes, setLabel, tierModels
+} from '../journal/inference/models';
 import {
     DEFAULT_RITUAL_TIME,
     JOURNAL_COPY,
@@ -17,6 +20,7 @@ import {
 } from '../constants/journal';
 import {
     readAskWho,
+    readEmbeddings,
     readOptionalQuestions,
     readRitualSetting
 } from '../constants/journalSettings';
@@ -63,20 +67,83 @@ describe('the Journal settings section', () => {
         expect(control('ask-who')).toBeInTheDocument();
         expect(document.querySelectorAll('[data-question]')).toHaveLength(optionalQuestions().length);
 
-        // Absent here for two different reasons, and the difference matters: embeddings has
-        // no feature yet (6-G); voice, transcripts, language and — since D2 — suggestions are
-        // the voice block, which a plain jsdom run cannot render because it is not a secure
-        // context with a microphone. The Android block below renders it, and asserts the
-        // suggestions toggle there.
+        // Absent here for one reason now, not two: voice, transcripts, language and — since
+        // D2 — suggestions are the voice block, which a plain jsdom run cannot render because
+        // it is not a secure context with a microphone. The Android block below renders it.
         [
             JOURNAL_COPY.settings.voice.label,
             JOURNAL_COPY.settings.suggestions.label,
-            JOURNAL_COPY.settings.embeddings.label,
             JOURNAL_COPY.settings.keepTranscripts.label,
             JOURNAL_COPY.settings.language.label
         ].forEach(label => {
             expect(screen.queryByText(label)).not.toBeInTheDocument();
         });
+    });
+
+    /**
+     * G1's toggle. It is **not** in the voice block: EmbeddingGemma is its own model, its own
+     * download and its own licence, and a second model folded in under a heading about voice
+     * would be a second download agreed to by agreeing to something else.
+     */
+    it('offers the similar-entry toggle, off by default, with its own licence named', async () => {
+        await renderProfile();
+
+        expect(control('embeddings')).toBeInTheDocument();
+        expect(control('embeddings')).toHaveAttribute('aria-pressed', 'false');
+        expect(readEmbeddings()).toBe(false);
+
+        // The terms are not Apache, and the difference is on screen before the choice.
+        expect(document.querySelector('[data-embeddings-licence]')).toHaveTextContent(
+            fillCopy(JOURNAL_COPY.settings.embeddings.licence, {
+                label: EMBEDDING_MODEL.label, licence: EMBEDDING_MODEL.licence
+            })
+        );
+
+        // Nothing about the size or the download until it is asked for.
+        expect(document.querySelector('[data-embeddings-size]')).toBeNull();
+    });
+
+    /**
+     * jsdom has no IndexedDB, which is exactly the device this rule is about: the toggle may
+     * only be turned on where an index could exist, so here it is refused and says so.
+     */
+    it('refuses to turn on where there is nowhere to keep an index, and names the refusal', async () => {
+        await renderProfile();
+        await userEvent.click(control('embeddings'));
+
+        expect(control('embeddings')).toBeDisabled();
+        expect(control('embeddings')).toHaveAttribute('aria-pressed', 'false');
+        expect(readEmbeddings()).toBe(false);
+        expect(document.querySelector('[data-embeddings-unavailable]')).toHaveTextContent(
+            JOURNAL_COPY.settings.embeddings.unavailable
+        );
+    });
+
+    it('says the size before anything moves, and only once it is turned on', async () => {
+        // A device that has somewhere to keep one. The stub is the whole capability: this
+        // block never opens it, because `EmbeddingProvider` is what holds the index.
+        vi.stubGlobal('indexedDB', { open: () => ({}) });
+
+        await renderProfile();
+        await userEvent.click(control('embeddings'));
+
+        expect(control('embeddings')).toHaveAttribute('aria-pressed', 'true');
+        expect(readEmbeddings()).toBe(true);
+        expect(document.querySelector('[data-embeddings-size]')).toHaveTextContent(
+            fillCopy(JOURNAL_COPY.settings.embeddings.size, {
+                label: EMBEDDING_MODEL.label, size: modelSize(EMBEDDING_GEMMA_ONNX)
+            })
+        );
+        // §5.6: the number is in front of the user while the choice is still theirs.
+        expect(document.querySelector('[data-embeddings-start]')).toBeInTheDocument();
+
+        vi.unstubAllGlobals();
+    });
+
+    it('narrows §9.7 label to what this build does: suggestions, not search', () => {
+        // G2 builds the search and restores the other half of the row. Until then the
+        // toggle may not promise it (invariant 2e).
+        expect(JOURNAL_COPY.settings.embeddings.label).toBe('Similar-entry suggestions');
     });
 
     it('starts with everything off and no time chosen', async () => {
@@ -235,7 +302,18 @@ const allowed = new Set([
         return fillCopy(JOURNAL_COPY.settings.voice.size, {
             label: setLabel(models), size: formatBytes(setBytes(models))
         });
-    }))
+    })),
+    // G1's three filled sentences: the licence line, which is always on screen, and the two
+    // the download offer shows once the toggle is on.
+    fillCopy(JOURNAL_COPY.settings.embeddings.licence, {
+        label: EMBEDDING_MODEL.label, licence: EMBEDDING_MODEL.licence
+    }),
+    fillCopy(JOURNAL_COPY.settings.embeddings.size, {
+        label: EMBEDDING_MODEL.label, size: modelSize(EMBEDDING_GEMMA_ONNX)
+    }),
+    fillCopy(JOURNAL_COPY.settings.embeddings.downloadOffer, {
+        label: EMBEDDING_MODEL.label, size: modelSize(EMBEDDING_GEMMA_ONNX)
+    })
 ]);
 
 const wordsInSection = () => [...section().querySelectorAll('*')]
@@ -268,6 +346,30 @@ vi.mock('../mobile/platform', async (importOriginal) => ({
     ...(await importOriginal()),
     isNative: () => platformState.native
 }));
+
+/**
+ * F2 — the nightly reminder follows the ritual toggle. Faked with a store rather than a spy
+ * for `ritualReminder.test.js`'s reason: what matters is what is pending afterwards.
+ */
+const notifications = vi.hoisted(() => {
+    const state = { pending: new Map(), permission: 'granted' };
+    return {
+        state,
+        plugin: {
+            checkPermissions: vi.fn(async () => ({ display: state.permission })),
+            requestPermissions: vi.fn(async () => ({ display: state.permission })),
+            schedule: vi.fn(async ({ notifications: list }) => {
+                list.forEach(one => state.pending.set(one.id, one));
+            }),
+            cancel: vi.fn(async ({ notifications: list }) => {
+                list.forEach(({ id }) => state.pending.delete(id));
+            }),
+            getPending: vi.fn(async () => ({ notifications: [...state.pending.values()] }))
+        }
+    };
+});
+
+vi.mock('@capacitor/local-notifications', () => ({ LocalNotifications: notifications.plugin }));
 
 vi.mock('../mobile/journalPlugin', async (importOriginal) => ({
     ...(await importOriginal()),
@@ -354,5 +456,78 @@ describe('on Android', () => {
         ]);
         expect(wordsInSection().length).toBeGreaterThan(10);
         expect(wordsInSection().filter(text => !allowedHere.has(text))).toEqual([]);
+    });
+});
+
+/* ------------------------------------------------------------------------------------ */
+/* F2 — the nightly reminder follows the toggle (§3.6)                                    */
+/* ------------------------------------------------------------------------------------ */
+
+describe('the nightly reminder', () => {
+    beforeEach(() => {
+        platformState.native = true;
+        notifications.state.pending.clear();
+        notifications.state.permission = 'granted';
+    });
+    afterEach(() => {
+        platformState.native = false;
+    });
+
+    const pending = () => [...notifications.state.pending.values()];
+
+    it('is scheduled when the ritual is turned on, at the hour on screen', async () => {
+        await renderProfile();
+
+        await userEvent.click(control('ritual'));
+
+        await waitFor(() => expect(pending()).toHaveLength(1));
+        expect(pending()[0].body).toBe(JOURNAL_COPY.ritual.notification);
+        expect(pending()[0].schedule.on).toEqual({ hour: 22, minute: 30 });
+        // Asked for at the moment the user opts in, and never at launch.
+        expect(notifications.plugin.requestPermissions).toHaveBeenCalledTimes(1);
+    });
+
+    it('moves with the hour rather than adding a second one', async () => {
+        localStorage.setItem(JOURNAL_STORAGE_KEYS.ritual, JSON.stringify({ on: true, time: '22:30' }));
+        await renderProfile();
+
+        await userEvent.clear(control('ritual-time'));
+        await userEvent.type(control('ritual-time'), '21:15');
+
+        await waitFor(() => expect(pending()[0]?.schedule.on).toEqual({ hour: 21, minute: 15 }));
+        expect(pending()).toHaveLength(1);
+    });
+
+    it('is cancelled when the ritual is turned off', async () => {
+        localStorage.setItem(JOURNAL_STORAGE_KEYS.ritual, JSON.stringify({ on: true, time: '22:30' }));
+        await renderProfile();
+
+        await userEvent.click(control('ritual'));
+
+        await waitFor(() => expect(pending()).toHaveLength(0));
+        expect(readRitualSetting().on).toBe(false);
+    });
+
+    it('costs the reminder and not the setting when the permission is refused', async () => {
+        notifications.state.permission = 'denied';
+        await renderProfile();
+
+        await userEvent.click(control('ritual'));
+
+        await waitFor(() => expect(control('ritual')).toHaveAttribute('aria-pressed', 'true'));
+        // The ritual is a screen; being reminded of it is the part Android has a say in.
+        expect(readRitualSetting()).toEqual({ on: true, time: DEFAULT_RITUAL_TIME });
+        expect(pending()).toHaveLength(0);
+    });
+
+    it('schedules nothing on the web, where §3.6 gives the dashboard a line instead', async () => {
+        platformState.native = false;
+        await renderProfile();
+
+        await userEvent.click(control('ritual'));
+
+        expect(readRitualSetting().on).toBe(true);
+        expect(notifications.plugin.schedule).not.toHaveBeenCalled();
+        expect(notifications.plugin.requestPermissions).not.toHaveBeenCalled();
     });
 });

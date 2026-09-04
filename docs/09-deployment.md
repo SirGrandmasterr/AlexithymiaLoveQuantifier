@@ -307,7 +307,7 @@ so re-running it is also the integrity check.
 To opt into more than the default:
 
 ```bash
-make models-fetch MODELS="whisper-tiny gemma-4-e2b-onnx gemma-4-e2b-litertlm"
+make models-fetch MODELS="whisper-tiny gemma-4-e2b-onnx gemma-4-e2b-litertlm embeddinggemma"
 ```
 
 The default is `whisper-tiny` — **45,245,009 bytes over 13 files**, the Light-tier floor.
@@ -319,12 +319,19 @@ anything downloads.
 | `whisper-tiny` (default) | The Light tier's transcriber, on both platforms | **45,245,009 B**, 13 files |
 | `gemma-4-e2b-onnx` | The proposal model **in a browser**, through transformers.js | **3,401,460,010 B**, 16 files |
 | `gemma-4-e2b-litertlm` | The proposal model **on Android**, as one LiteRT-LM bundle | **2,588,159,070 B**, 2 files |
+| `embeddinggemma` | The similar-entry index (§5.8), **in a browser only** — there is no native embedding runtime yet | **218,739,216 B**, 8 files — 7 fetched, 1 installed from this repository |
 
 **Fetch only the sets your clients need.** The two Gemma sets are the same model in two
 packagings, and an operator serving only phones has no use for the 3.4 GB of ONNX (nor a
 browser-only deployment for the 2.6 GB bundle). Both together is 6 GB, and it is the right
-answer only where both kinds of client exist. All three numbers above are what `make
-models-fetch` reported on 2026-09-02, not estimates.
+answer only where both kinds of client exist. The first three numbers above are what `make
+models-fetch` reported on 2026-09-02, not estimates; `embeddinggemma` is the sum of its pinned
+rows at revision `5090578d`, read from the upstream repository on 2026-09-04 and not yet
+fetched end to end on this machine.
+
+**`embeddinggemma` is not part of any tier.** A device that transcribes and proposes has no use
+for a vector; the index is a separate switch in the profile (*Similar-entry suggestions*, off by
+default) and this set is only worth fetching for a deployment whose users turn it on.
 
 **A browser without a WebGPU adapter never asks for the Gemma files at all**, and neither does
 a phone below 6 GB or without a 64-bit ABI — those devices are on the Light tier, which needs
@@ -342,7 +349,8 @@ answered with a page of HTML — none of which a check at only one end would see
 | Where the pins live | `MODEL_MANIFEST` in the Makefile: one `set\|path\|url\|sha256` row per file |
 | Where the logic lives | [`scripts/models-fetch.sh`](../scripts/models-fetch.sh) |
 | How it runs | a one-off `alpine:3.20` container with the volume mounted — so it works before the stack has ever been up, and needs no `curl` or `sha256sum` on the host |
-| Licences | fetched and pinned like any other row, and placed **beside** the weights. Whisper tiny is an ONNX export of `openai/whisper-tiny` and is **Apache 2.0**, so `LICENSE.txt` lands next to it. EmbeddingGemma, when a later session adds it, is under the Gemma Terms of Use, which must accompany redistribution. |
+| Licences | placed **beside** the weights, and fetched and pinned like any other row — with one exception. Whisper tiny is an ONNX export of `openai/whisper-tiny` and is **Apache 2.0**, so `LICENSE.txt` lands next to it. **EmbeddingGemma is not Apache**: it is under the [Gemma Terms of Use](https://ai.google.dev/gemma/terms), whose Section 3.1 requires a copy of the terms to accompany any Distribution — and serving these weights from your own machine is Distribution. |
+| The one file that is not fetched | Google publishes the Gemma terms as an **HTML page that is not byte-stable** (two fetches seconds apart on 2026-09-04 hashed differently), so they cannot be pinned by URL the way every weight is. The copy in [`licences/gemma-terms-of-use.txt`](../licences/gemma-terms-of-use.txt) is installed into the volume by `models-install-terms`, which `models-fetch` runs for you when `embeddinggemma` is among the sets. `src/journal/inference/models.test.js` hashes that file and asserts the sum the app carries, so the repository's copy and the app's pin cannot drift. |
 
 #### What a mismatch does
 

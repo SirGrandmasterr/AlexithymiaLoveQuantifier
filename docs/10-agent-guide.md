@@ -169,6 +169,26 @@ Ranked by how much time they waste.
     over `transcript`**, because that is the user's own sentence and a journal that censors
     *bad* out of it is not a record. A test asserts both directions in the same case; if
     you add a filter and the transcript case goes red, the filter is wrong, not the test.
+20. **`LocalNotifications.getPending()` is the whole app's list, not your channel's.** There
+    are two channels now — the check-in cadence and the journal's nightly ritual — and a
+    cancel-then-reschedule written over the pending list unschedules the other one. The
+    cadence sync used to, which would have quietly removed tonight's reminder on every
+    dashboard visit and looked exactly like an OEM battery manager dropping alarms. Each
+    channel owns its ids and cancels only those: `cadenceReminders.js` filters
+    `RITUAL_NOTIFICATION_ID` out, and `ritualReminder.js` cancels by id rather than by
+    listing. A third channel would have to do the same, and there is a test that crosses the
+    two.
+21. **A wrong embedding prompt prefix has no symptom at all.** EmbeddingGemma was trained with
+    two mandatory prefixes — `task: search result | query: ` for a query and
+    `title: none | text: ` for a stored entry, trailing spaces included — and a vector made
+    without them, or with the wrong one, is a different point in a different space. It still
+    has 256 numbers. It still scans, still ranks, still returns a plausible-looking answer, and
+    is quietly worse at everything downstream. Nothing throws and nothing looks broken. So
+    there is exactly one function that builds the string a model sees (`prefixed()` in
+    `src/journal/embeddings/embed.js`), it throws on a `kind` it does not know rather than
+    embedding without a prefix, and `embed.test.js` asserts both strings **character for
+    character** — which is the only place the mistake can be caught. Anything that adds a
+    caller goes through that function; anything that adds a kind adds a prefix beside it.
 
 ---
 

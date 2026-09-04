@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import axios from 'axios';
-import Vault, { AI_CLAIM, OUTBOX_CLAIM, buildCSV, buildJournalCSV, describeBackend } from './Vault';
+import Vault, { AI_CLAIM, OUTBOX_CLAIM, SIMILAR_CLAIM, buildCSV, buildJournalCSV, describeBackend } from './Vault';
 import { JOURNAL_STORAGE_KEYS } from '../constants/journal';
 import { MAX_CLIP_MS, SILENCE_HOLD_MS } from '../journal/recorder';
 import * as tier from '../journal/inference/tier';
@@ -222,9 +222,9 @@ describe('Vault page', () => {
      *
      * Verbatim and not fuzzy on purpose: this page is the one place in the app where the
      * exact words are the feature, and a regex that passes on a paraphrase is a test that
-     * lets the paraphrase ship. §10.2 asks for seven claims across two states; C3 has six of
-     * the seven — the similar-entry answer arrives with 6-G, and adding it now would be
-     * asserting copy for a model that does not exist.
+     * lets the paraphrase ship. §10.2 asks for seven claims across two states, and **G1 is
+     * the seventh**: the similar-entry answer, in the two variants §10.2 wrote as one — see
+     * `SIMILAR_CLAIM` for why the design document's single row became two.
      */
     const claims = async () => {
         renderVault();
@@ -261,9 +261,57 @@ describe('Vault page', () => {
         await claims();
         expect(screen.getByText(/None are running/)).toHaveTextContent(plain(AI_CLAIM.off));
         // The "voice on" paragraphs must not be reachable in this state, and neither must any
-        // part of them: the page describes this device, not what the build can do.
+        // part of them: the page describes this device, not what the build can do. The same
+        // holds for the index, which is off here too — so **no** model is named on this page
+        // in the default state, EmbeddingGemma included.
         expect(screen.queryByText(/Whisper tiny/)).not.toBeInTheDocument();
         expect(screen.queryByText(/Gemma/)).not.toBeInTheDocument();
+    });
+
+    /* -------------------------------------------------------------------------------- */
+    /* G1 — the seventh claim                                                            */
+    /* -------------------------------------------------------------------------------- */
+
+    it('states the similar-entry answer verbatim with the index off — the default', async () => {
+        await claims();
+
+        const answer = document.querySelector('[data-similar-claim]');
+        expect(answer).toHaveAttribute('data-similar-claim', 'off');
+        expect(answer).toHaveTextContent(plain(SIMILAR_CLAIM.off));
+        expect(screen.getByText(/What about the similar-entry suggestions\?/)).toBeInTheDocument();
+        // Nothing on the page claims a second model on a device that has not made one number.
+        expect(answer.textContent).not.toContain('EmbeddingGemma');
+    });
+
+    it('states it verbatim with the index on, naming the model and its terms', async () => {
+        // Both halves have to agree, exactly as `voiceIsOn` asks the tier as well as the key:
+        // a `true` written by a better browser cannot make this page describe an index that
+        // was never built here.
+        vi.stubGlobal('indexedDB', { open: () => ({}) });
+        window.localStorage.setItem(JOURNAL_STORAGE_KEYS.embeddings, 'true');
+
+        await claims();
+
+        const answer = document.querySelector('[data-similar-claim]');
+        expect(answer).toHaveAttribute('data-similar-claim', 'on');
+        expect(answer).toHaveTextContent(plain(SIMILAR_CLAIM.on));
+
+        vi.unstubAllGlobals();
+    });
+
+    it('names EmbeddingGemma and the Gemma terms rather than Apache, which is §5.6 rule', () => {
+        expect(SIMILAR_CLAIM.on).toContain('EmbeddingGemma');
+        expect(SIMILAR_CLAIM.on).toContain('Gemma Terms of Use');
+        expect(SIMILAR_CLAIM.on).toContain('rather than Apache');
+        // The three promises the index has code under: same origin, device-only, cleared.
+        expect(SIMILAR_CLAIM.on).toContain('downloaded once from this server');
+        expect(SIMILAR_CLAIM.on).toContain('kept only on this device');
+        expect(SIMILAR_CLAIM.on).toContain('deleted when you sign out');
+    });
+
+    it('says the key is off in the off variant, which is the clause that cannot be in both', () => {
+        expect(SIMILAR_CLAIM.off).toContain('it is off until you turn it on');
+        expect(SIMILAR_CLAIM.on).not.toContain('it is off until you turn it on');
     });
 
     it('states the Full tier "voice on" paragraph verbatim — one model, named, with its licence', async () => {

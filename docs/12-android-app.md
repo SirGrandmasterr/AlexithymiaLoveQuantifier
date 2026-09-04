@@ -262,6 +262,8 @@ split. Design notes in
 | **Offline read-through cache** | [`offlineCache.js`](../src/mobile/offlineCache.js) | Last-known-good list, shown with its age when the server is unreachable. **Read-only by design** — queueing writes against a find-or-create path with server-assigned ids is a synchronisation feature needing conflict rules this app has never defined. Cleared on logout. |
 | **The journal outbox** — the one exception to that | [`offlineCache.js`](../src/mobile/offlineCache.js) (the store) and [`JournalContext.jsx`](../src/context/JournalContext.jsx) (the queue) | A journal entry saved with no connectivity is kept, marked *not yet synced* in the day view, and posted later. Safe for one reason and only that reason — see below. Same store, own key (`alq:journal-outbox`), cleared on logout. |
 | **Check-in reminders** | [`cadenceReminders.js`](../src/mobile/cadenceReminders.js) | Local notifications only — nothing is sent to a server, preserving the claim in `cadence.js` that due dates never leave the machine. Bound by that file's product rule: the body is `nudgeSentence()` verbatim, **no badge count**, one notification per relationship, scheduled for 10:00. |
+| **The nightly ritual's reminder** | [`ritualReminder.js`](../src/mobile/ritualReminder.js) | The same module shape and the same rules, for the journal's hour (default 22:30). **One** notification, one fixed id, a fixed body that interpolates nothing. See below. |
+| **The launcher shortcut** | [`shortcuts.xml`](../android-config/app/src/main/res/xml/shortcuts.xml) and [`deepLink.js`](../src/mobile/deepLink.js) | A long-press on the home-screen icon offers *Check in*, which opens `/journal?record=1`. Static, so there is no code and no background component behind it. See below. |
 | **Hardware back button** | [`useNativeShell.js`](../src/mobile/useNativeShell.js) | Owned explicitly. Capacitor's default pops WebView history, which walks behind the React Router stack and can strand the app on a blank document. |
 | **Haptics** | `usePullToRefresh`, [`knobFeedback.js`](../src/mobile/knobFeedback.js), `RitualCards.jsx` | One light tap when the refresh gesture arms; one **selection** haptic per committed ritual card, and none at all in discretion mode; a **selection** haptic per dial detent — the API Android tunes for picker wheels, where an `impact` per unit at thumb speed is a buzz rather than a click. Rate-limited to 32ms. |
 | **Silent session renewal** | [`useSessionRenewal`](../src/auth/useSessionRenewal.js) | Renews on `resume`, which is when a token that has sat in the background for a week is most likely to be dead. See §2.3. |
@@ -269,6 +271,68 @@ split. Design notes in
 Deliberately **not** built: swipe-to-delete on cards. Deleting a relationship removes its entire
 history and the app already routes that through a confirm dialog naming the snapshot count. A
 gesture with no confirmation step is the wrong affordance for that action.
+
+#### The nightly reminder, the shortcut, and the two manifest entries behind them
+
+Two ways into the journal that do not begin inside the app. Both are one intent, both open a
+screen the app already has, and neither adds a process: **there is no background service in
+this app, no widget, no wake word and no push channel.** The complete list of what runs when
+the app is closed is one `AlarmManager` alarm owned by the local-notifications plugin.
+
+**The reminder** ([`ritualReminder.js`](../src/mobile/ritualReminder.js), design §3.6 and §9.6):
+
+| | |
+| :- | :- |
+| **What it says** | `JOURNAL_COPY.ritual.notification` — *"Tonight's questions are ready."* — with the feature's own heading as the title, and **nothing interpolated into either, ever**. Not the day, not a count, not a name, not last night's answers. A lock-screen notification is readable by anyone holding the phone, which is a different audience from the one that unlocked it. A unit test asserts the exact string, asserts that two different hours produce a byte-identical body, and lists the notification's fields so a later one that could carry content fails there first. |
+| **When** | The hour in Journal settings, default 22:30, as the plugin's cron-like `schedule: { on: { hour, minute } }`. It re-arms itself, so it survives the app never being opened and follows the phone through a timezone change and the end of summer time. |
+| **How many** | Exactly one, at one fixed id (`RITUAL_NOTIFICATION_ID`). Rescheduling **replaces** it — the plugin keys both its storage and its `PendingIntent` on the id — and turning the ritual off cancels it. A fortnight of unopened nights is one pending row, not fourteen. |
+| **No badge** | For `cadence.js`'s reason: a number on the launcher icon is a count of missed nights by another name, and §3.6 says a missed night is nothing. |
+| **The permission** | `POST_NOTIFICATIONS` is requested when the ritual is switched on in Profile, and never at launch. A refusal costs the reminder and not the feature — the ritual is a screen — and `syncRitualReminder()` at launch only ever *checks*, so nothing prompts on a cold start. |
+| **The two channels** | Cadence and the ritual now share one pending list. Neither may cancel the other's work: `cadenceReminders`' `cancelAll` skips the ritual's id and the ritual cancels by id. Without that, every dashboard visit would have quietly unscheduled tonight's reminder, which on a device looks exactly like Android dropping alarms. |
+| **On the web** | Nothing. §3.6 gives the dashboard one line in the cadence nudge's slot instead, and the two in-app nudges never show at once (`RitualCards.jsx` owns the slot). |
+
+**The shortcut** ([`shortcuts.xml`](../android-config/app/src/main/res/xml/shortcuts.xml),
+design §9.2):
+
+- **Static, not dynamic.** A row in a resource file, resolved by the launcher, right from the
+  first launch and correct on a phone that has never been opened. A dynamic shortcut would
+  mean code publishing it at runtime and keeping it in step.
+- **It opens `/journal?record=1`, which arms and does not start.** The composer comes up with
+  the microphone where the device offers one and the keyboard where it does not — the same
+  choice the header button and the FAB make — and the recording begins on the confirming tap
+  inside the sheet. A long-press on a home screen is too easy to make by accident to be
+  allowed to open a microphone by itself. The day view waits for the tier report before
+  deciding, because on Android that answer lands a moment after mount, and it then consumes
+  the parameter so that closing the sheet does not re-open it.
+- **The intent is explicit** — it names this package and this activity — so no
+  `<intent-filter>` is added for its URL. A filter would publish the scheme to every other app
+  and every browser on the device in exchange for nothing.
+- **Two labels that cannot live in `JOURNAL_COPY`.** A launcher reads them before any
+  JavaScript exists, so they are the only user-visible strings in the app that the
+  forbidden-word walk cannot see. The short one is `JOURNAL_COPY.checkin.open` word for word.
+
+**Where a deep link lands.** Both channels hand one path to
+[`deepLink.js`](../src/mobile/deepLink.js), which accepts **only** the two this app itself
+declared — `/journal/ritual` and `/journal?record=1` — and refuses everything else.
+`MainActivity` is exported because it is the launcher activity, so any installed app can send
+it an intent; which screen opens is not a decision to hand to one. The listener is registered
+by `useNativeShell`, inside `Shell`, which `AppLock` renders **only when the lock is open** —
+so a reminder tapped on a locked phone reaches the lock screen and stops there, and the ritual
+opens once the passphrase is accepted (Capacitor retains an event that has no listener and
+delivers it to the first one to register). That ordering is §9.6's *"the deep-link lands on the
+lock screen first"*, and `deepLink.test.jsx` tests it rather than trusting it.
+
+**The manifest** ([`AndroidManifest.xml`](../android-config/app/src/main/AndroidManifest.xml)):
+
+| Change | Line | Why |
+| :----- | :--- | :-- |
+| CHANGE 4 | `<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />` | Both notification channels, requested at opt-in and never at launch. Its comment now names the ritual beside the cadence. |
+| CHANGE 6 | `<meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />` on `MainActivity` | What makes a launcher read `shortcuts.xml`. It has to sit on the activity that owns the MAIN/LAUNCHER filter. |
+
+Deliberately absent from the manifest and worth stating: no `<service>`, no `<receiver>` of
+this app's own, no `SCHEDULE_EXACT_ALARM`, and no `<intent-filter>` for the shortcut's URL. The
+alarm falls back to an inexact one where the platform requires the permission, which for a
+bedtime reminder is the right trade.
 
 #### The journal outbox: why the exception exists, and how far it goes
 
@@ -313,6 +377,8 @@ Dockerfile.android           containerised APK/AAB build; needs no local Android
 android-config/              committed native files, overlaid onto the generated project
   app/src/main/AndroidManifest.xml
   app/src/main/res/xml/network_security_config.xml
+  app/src/main/res/xml/shortcuts.xml            the launcher's Check in shortcut (§3.4)
+  app/src/main/res/values/shortcuts_strings.xml its two labels
 plugins/alq-journal/         the journal's native plugin — a local Capacitor package (§6)
 android/                     GENERATED, gitignored — never hand-edit
 src/mobile/                  the platform layer
@@ -323,6 +389,8 @@ src/mobile/                  the platform layer
   usePullToRefresh.js        pull-to-refresh over the document scroller
   offlineCache.js            last-known-good subject list; the journal outbox's store
   cadenceReminders.js        local notifications for the check-in rhythm
+  ritualReminder.js          the journal's one nightly local notification
+  deepLink.js                the two paths an intent may name, and nothing else
   journalPlugin.js           the journal plugin's JS side: capture deps, downloader, tier
 src/components/
   MobileBottomNav.jsx        bottom navigation
@@ -434,10 +502,19 @@ being one app (§12.2).
 | **Record** | `startCapture({ maxMs })`, `stopCapture()`, `abortCapture()`, `releaseClip({ handle })`; events `level { rms }` every 50 ms and `captureEnded { handle, … }` when the native cap fires | A **handle** (`clip-3`) and a sample count. The floats stay in the plugin's memory. |
 | **Transcribe** | `transcribe({ handles, language, model: { id, files: [{ path }] } })` → `{ text, language, tokens, durationMs }` | Handles in, words out. |
 | **Propose** | `propose({ handles \| text, system, schema, language, maxTokens, idleUnloadMs, model: { id, bundle }, audio })` → `{ text, durationMs, loadMs }`, plus `loadProposer` and `releaseProposer` | Handles or a transcript in, **the model's own JSON string** out. The prompt and the schema come *down* from `src/journal/inference/`; nothing about what the journal means is decided here. |
-| **Embed** | `embed()` — **rejects `unavailable`** until G1 | — |
+| **Report memory and tier** | `tier()` → `{ totalMemoryBytes, availableMemoryBytes, lowRamDevice, apiLevel, model, manufacturer, androidVersion, cores }` | Numbers. The mapping to `full` / `light` / `text-only` is `tierFromMemory` in [`tier.js`](../src/journal/inference/tier.js), beside the web one, so §5.5's boundaries have one home and one test. |
+| **Embed** | `embed()` — **still rejects `unavailable`, and G1 did not change that** | — |
 
 *Five capabilities, and `propose` stopped being a stub in D3.*
-| **Report memory and tier** | `tier()` → `{ totalMemoryBytes, availableMemoryBytes, lowRamDevice, apiLevel, model, manufacturer, androidVersion, cores }` | Numbers. The mapping to `full` / `light` / `text-only` is `tierFromMemory` in [`tier.js`](../src/journal/inference/tier.js), beside the web one, so §5.5's boundaries have one home and one test. |
+
+> **`embed` is the one that is still a stub, and G1 shipped around it rather than through it.**
+> The similar-entry index (§5.8) is **web-only for now**: `embeddingsAvailable()` in
+> [`availability.js`](../src/journal/embeddings/availability.js) refuses the setting inside the
+> Android shell, so the phone shows the toggle disabled with a sentence saying why rather than
+> a switch that stores `true` and does nothing. Adding it is a Kotlin change with a Gradle
+> build behind it — EmbeddingGemma through ONNX Runtime beside Whisper — and it is written in
+> that file as a **missing runtime** rather than as a platform opinion, so the session that
+> adds one deletes a condition rather than arguing with a rule.
 
 Beneath `transcribe` sits the **weight store** it cannot work without — `fetchModel({ id,
 baseUrl, files: [{ path, bytes, sha256 }] })` with a `fetchProgress` event, `cancelFetch`,
@@ -675,6 +752,9 @@ Honest list, so none of it reads as an oversight:
   generation, and the containerised APK build are all verified; behaviour on real hardware is
   not. That includes the whole of §6: the plugin's Java core was run on a desktop JVM against
   the real model files, the JavaScript half against a fake plugin, and the APK was built — but
-  no one has tapped the microphone on a phone. The device checklist is in the C4 entry of
-  [`product_vision/06-progress.md`](../product_vision/06-progress.md).
+  no one has tapped the microphone on a phone. It also includes everything in §3.4 that only
+  a device has: the journal outbox, the nightly reminder actually arriving at 22:30, and the
+  launcher offering the shortcut on a long-press. All three are covered by tests behind a
+  mocked platform, and none has been seen. The device checklists are in the C4, F1 and F2
+  entries of [`product_vision/06-progress.md`](../product_vision/06-progress.md).
 - **No platform speech recogniser.** §6.7 says why; it is a decision, not a gap.

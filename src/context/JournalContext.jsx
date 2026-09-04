@@ -4,6 +4,7 @@ import { App as CapacitorApp } from '@capacitor/app';
 import { useSubjects } from './SubjectsContext';
 import { isNative } from '../mobile/platform';
 import { clearOutbox, readOutbox, writeOutbox } from '../mobile/offlineCache';
+import { clearVectorIndex } from '../journal/embeddings/store';
 import {
     JOURNAL_COPY,
     JOURNAL_HISTORY_FROM,
@@ -233,6 +234,13 @@ export function JournalProvider({ children, enabled = true, reloadKey = 0 }) {
             outboxRef.current = [];
             setOutboxState([]);
             clearOutbox();
+            // §5.8 rule 1, and §10.2 says it out loud: the embedding index is *"deleted when
+            // you sign out"*. It is the same branch and a stronger version of the same
+            // reason — an unsent check-in is the user's own words, and a vector is those
+            // words recoverable by whoever signs in next, because embeddings are
+            // invertible. Not awaited: nothing on screen waits for a store to empty, and a
+            // store that refuses is not a reason to hold a logout open.
+            clearVectorIndex().catch(() => { /* nothing to do; there is no screen for it */ });
         }
     }, [enabled, refresh, reloadKey]);
 

@@ -2,11 +2,11 @@
 
 Three layers in `make test`, three runners — and, since session D4, a fourth layer that is
 deliberately outside it (§6). Status below was verified by running each suite
-(E2E 2026-07-26; backend 2026-08-22; frontend 2026-09-03).
+(E2E 2026-07-26; backend 2026-08-22; frontend 2026-09-04).
 
 | Layer | Runner | Location | Verified status |
 | :---- | :----- | :------- | :-------------- |
-| Frontend unit | Vitest + Testing Library + jsdom | `src/**/*.test.{js,jsx}`, `scripts/**/*.test.mjs` | ✅ **1226/1226 pass** |
+| Frontend unit | Vitest + Testing Library + jsdom | `src/**/*.test.{js,jsx}`, `scripts/**/*.test.mjs` | ✅ **1411/1411 pass** |
 | Backend unit / integration | `go test` + sqlmock + in-memory SQLite | `backend/internal/**/*_test.go` | ✅ **all packages pass** |
 | End-to-end | Playwright | `tests/` | ❌ **failing** — needs servers that nothing starts |
 | Model gate (§6) | `make journal-eval` | `scripts/journal-eval/` | ⚠️ **runs; no model has been through it** — the golden suite has no recordings yet |
@@ -47,9 +47,11 @@ in `tests/` and fail on `@playwright/test` imports.
 
 ### Coverage today
 
-Forty-three files, 1226 tests, all passing (2026-09-03, session D4). Four of those files and
-70 of those tests are the *arithmetic* under the model gate, in `scripts/journal-eval/`; the
-gate itself is out of band and §6 below says why the line is where it is.
+Fifty-one files, 1411 tests, all passing (2026-09-04, session G1; it was 43 / 1226 at D4,
+44 / 1258 at F1 and 46 / 1293 at F2). **Five of the new files are the embedding index**
+(`src/journal/embeddings/`), and none of them opens a weight file — see the block below. Four of those files and 70 of those tests are the *arithmetic* under the
+model gate, in `scripts/journal-eval/`; the gate itself is out of band and §6 below says why
+the line is where it is.
 
 > **The proposal card is tested on the request body, and its first test is invariant 15.**
 > `ProposalCard.test.jsx` drives the real composer in voice mode with the fake kit from
@@ -342,7 +344,35 @@ longest wait first. `nudgeSentence` is asserted against a forbidden-word list
 (`overdue`, `missed`, `streak`, `should`, `behind`, `!`) — the no-guilt rule is a product
 constraint, so it is tested like one.
 
-[`src/constants/journal.test.js`](../src/constants/journal.test.js) — 134 tests, all pure.
+> **The embedding index, and the four things its suites exist to hold** (G1, §5.8).
+> `src/journal/embeddings/` adds five files and none of them loads EmbeddingGemma: every test
+> injects `createFakeEmbedder`, exactly as the inference suites inject `createFakeRuntime`, and
+> for the same reason — a suite that needs 219 MB to run is a suite that stops being run.
+>
+> - **`embed.test.js`** asserts the two **mandatory prompt prefixes** on the exact string
+>   (`task: search result | query: ` and `title: none | text: `, trailing spaces included) and
+>   that they differ correctly between a query and a stored entry. This is the only place a
+>   wrong prefix can be caught: downstream there is no symptom at all, because the vector still
+>   has 256 numbers, still scans and still ranks — it is just quietly worse at everything.
+> - **`similar.test.js`** asserts **rule 3 as a gate rather than a weight**: a close vector with
+>   no shared person or trigger produces nothing, and *two identical vectors still produce
+>   nothing*, so no similarity can out-vote a missing witness. It also states the scan's budget
+>   — ten thousand 256-dimension vectors, 2.4 ms measured here, asserted under a loose 1 s so a
+>   change that made it quadratic fails by minutes rather than by a hair.
+> - **`normalisation.test.jsx`** drives §5.8's payoff end to end and walks **every request body**
+>   the card and the Triggers view produce — accepting a suggestion, declining one, merging a
+>   pair — failing on a typed array, on any run of sixteen or more numbers, and on any field
+>   named `vector`, `embedding`, `dims` or `entry_client_id`. A self-test plants each of those
+>   first, so the walk is known to look.
+> - **`logout.test.jsx`** asserts the index is *emptied* on the branch that runs with no
+>   session. `store.test.js` proves `clearVectorIndex` empties one; this proves it is called,
+>   which is the half a refactor can drop while every other test stays green.
+>
+> Rule 2 — *never show a number* — is held in two places at once: `journal.test.js` walks
+> `JOURNAL_COPY.similar` for digits, and `similar.js` returns offers with the similarity already
+> thrown away, so there is nothing for a component to interpolate by accident.
+
+[`src/constants/journal.test.js`](../src/constants/journal.test.js) — 138 tests, all pure.
 It carries **the two rails Phase 6 adds**, and they are the reason it exists as much as the
 readers are.
 
@@ -415,7 +445,7 @@ trigger by the id old check-ins still hold; and `markedDays` merging the counts 
 entries written since — while never marking a day whose only entry is a trigger, because
 vocabulary is not an event.
 
-[`src/components/Journal.test.jsx`](../src/components/Journal.test.jsx) — 25 tests, through
+[`src/components/Journal.test.jsx`](../src/components/Journal.test.jsx) — 40 tests, through
 `MemoryRouter` + all three providers. The day: a check-in's feelings by their **labels** (the
 id `rapport` shows as *connectedness*), its person chip under the relationship's current name,
 its trigger chip resolved from the stored id, its context tag, its time and its transcript; an
@@ -522,7 +552,7 @@ every card, every rendered text node must be a string in `JOURNAL_COPY`, a quest
 feeling label, a person's name, or one of the two arrow glyphs. A planted sentence proves the
 filter looks. `Profile.test.jsx` runs the same walk over its Journal section.
 
-[`src/components/Profile.test.jsx`](../src/components/Profile.test.jsx) — 10 tests, the
+[`src/components/Profile.test.jsx`](../src/components/Profile.test.jsx) — 19 tests, the
 Journal settings section (§9.7). The three controls and their defaults; the ritual turning on
 at 22:30 and its hour moving; the hour surviving an off-and-on; the eight optional questions
 each shown with the `note` that says why it is there; the cap at three **stated** before the
@@ -554,6 +584,28 @@ malformed file, and the app-lock honesty copy.
 pass-through when no passphrase is set, that `localStorage` holds a hash and never the
 passphrase, wrong-then-right unlocking, and that the "does not encrypt anything" copy is on
 the lock screen itself.
+
+[`src/mobile/ritualReminder.test.js`](../src/mobile/ritualReminder.test.js) — 16 tests, the
+journal's nightly notification (§3.6, §9.6). The plugin is faked with a **store** rather than
+with spies, because the claims that matter are about state and not about calls: a `vi.fn()`
+can say `schedule` was called twice, and only a pending list keyed by id can say that twice
+produced **one** row. So the fake keeps a `Map`, and the tests assert what is pending
+afterwards — one notification at the chosen hour, replaced when the hour moves, gone when the
+ritual is switched off, absent entirely on the web. The body gets three of its own: the exact
+string, the same string at two different hours on two different nights (no interpolation), and
+the notification's fields listed rather than sampled, so a later one that could carry content
+fails here first. One test crosses the channels — a cadence re-sync must not cancel the
+ritual's pending notification, which is the bug the id filter in `cadenceReminders.js` exists
+to prevent and which on a device would have looked like Android dropping alarms.
+
+[`src/mobile/deepLink.test.jsx`](../src/mobile/deepLink.test.jsx) — 9 tests, the two paths an
+intent may name. Six are the allow-list and the two listeners; the last is the one §9.6 asks
+to be **verified rather than assumed**. With a passphrase set it renders the consumer *inside*
+`AppLock`, fires the notification's tap, and asserts that no listener was ever registered and
+nothing navigated — then unlocks and asserts the retained event arrives. The Capacitor
+behaviour it models is real and worth knowing: `notifyListeners(name, data, true)` holds an
+event that has no listener and delivers it to the first one to register, on both the native
+and the JavaScript side.
 
 [`src/App.test.jsx`](../src/App.test.jsx) — 3 tests covering the login handoff end to end:
 the auth header is present **at the moment the first fetch fires**, login lands on the

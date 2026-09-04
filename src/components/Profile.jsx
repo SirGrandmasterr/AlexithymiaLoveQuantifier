@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { User, Mail, Shield, Save, Upload, Loader2, Info, Bell, NotebookPen } from 'lucide-react';
+import { User, Mail, Shield, Save, Upload, Loader2, Info, Bell, NotebookPen, Download } from 'lucide-react';
 import axios from 'axios';
 import { resolveAssetUrl } from '../mobile/serverUrl';
 import { remindersAvailable, remindersEnabled, setRemindersEnabled } from '../mobile/cadenceReminders';
+import { setRitualReminder } from '../mobile/ritualReminder';
 import {
     DEFAULT_RITUAL_TIME,
     JOURNAL_COPY,
@@ -15,12 +16,14 @@ import {
     readAskWho,
     readKeepTranscripts,
     readLanguage,
+    readEmbeddings,
     readOptionalQuestions,
     readRitualSetting,
     readSuggestions,
     readTierOverride,
     readVoiceSetting,
     writeAskWho,
+    writeEmbeddings,
     writeKeepTranscripts,
     writeLanguage,
     writeOptionalQuestions,
@@ -33,7 +36,11 @@ import {
     canTranscribe, detectTier, effectiveTier, nativeTierReport, nominalMemoryGb, probeWebGpu
 } from '../journal/inference/tier';
 import { createModelSetDownloader } from '../journal/inference/download';
-import { PROPOSAL_MODEL, formatBytes, setBytes, setLabel, tierModels } from '../journal/inference/models';
+import {
+    EMBEDDING_GEMMA_ONNX, EMBEDDING_MODEL, PROPOSAL_MODEL,
+    formatBytes, modelSize, setBytes, setLabel, tierModels
+} from '../journal/inference/models';
+import { embeddingsAvailable } from '../journal/embeddings/availability';
 import { isNative } from '../mobile/platform';
 import { createNativeDownloader, primeNativeTier } from '../mobile/journalPlugin';
 
@@ -305,15 +312,141 @@ const VoiceSettings = () => {
 };
 
 /**
+ * The embedding index (§5.8, G1): one toggle, one download, and the two sentences that have
+ * to be in front of the user before either happens.
+ *
+ * It is its own block rather than a row inside `VoiceSettings` because it is its own opt-in
+ * with its own model and its own licence — EmbeddingGemma is under Google's **Gemma Terms
+ * of Use**, not Apache 2.0 (§5.6), and a second model folded in under a heading about voice
+ * would be a second download the user agreed to by agreeing to something else.
+ *
+ * The same rule the voice toggle follows: **it may only be turned on where it could do
+ * something.** `embeddingsAvailable()` decides, the writer refuses a `true` it was handed
+ * for a device that has nowhere to keep an index, and what the writer stored is what goes on
+ * screen — so a refusal is visible rather than silently undone, and the Vault page cannot
+ * end up describing numbers that were never made here.
+ */
+const EmbeddingSettings = () => {
+    const capable = embeddingsAvailable();
+    const [on, setOn] = useState(() => readEmbeddings(capable));
+    const [onDevice, setOnDevice] = useState(null);
+    const [progress, setProgress] = useState(null);
+
+    const downloader = useMemo(() => createModelSetDownloader([EMBEDDING_GEMMA_ONNX]), []);
+
+    useEffect(() => {
+        let cancelled = false;
+        downloader.isDownloaded().then(has => { if (!cancelled) setOnDevice(has); });
+        const unsubscribe = downloader.subscribe(snapshot => { if (!cancelled) setProgress(snapshot); });
+        return () => { cancelled = true; unsubscribe(); };
+    }, [downloader]);
+
+    const label = EMBEDDING_MODEL.label;
+    const size = modelSize(EMBEDDING_GEMMA_ONNX);
+    const running = progress?.state === 'downloading';
+    const failed = progress?.state === 'error';
+    const done = running && progress.total > 0
+        ? `${Math.round((progress.loaded / progress.total) * 100)}%`
+        : '';
+
+    return (
+        <div className="mt-6" data-embedding-settings>
+            <button
+                type="button"
+                data-setting="embeddings"
+                disabled={!capable}
+                onClick={() => setOn(writeEmbeddings(!on, capable))}
+                aria-pressed={on}
+                className={`w-full sm:w-auto flex items-center justify-between gap-4 px-5 py-3 min-h-[48px] border rounded-xl font-medium transition-all text-sm ${on
+                    ? 'bg-slate-800 text-white border-slate-800'
+                    : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 disabled:opacity-40'
+                    }`}
+            >
+                <span>{JOURNAL_COPY.settings.embeddings.label}</span>
+                <span className={`text-xs ${on ? 'text-slate-300' : 'text-slate-400'}`}>
+                    {on ? JOURNAL_COPY.settings.on : JOURNAL_COPY.settings.off}
+                </span>
+            </button>
+
+            <p className="mt-3 text-xs text-slate-400 font-light leading-relaxed max-w-md">
+                {JOURNAL_COPY.settings.embeddings.description}
+            </p>
+
+            {!capable && (
+                <p className="mt-2 text-xs text-slate-500 font-light" data-embeddings-unavailable>
+                    {JOURNAL_COPY.settings.embeddings.unavailable}
+                </p>
+            )}
+
+            {/* The licence line is not conditional on the toggle: which terms the weights
+                come under is part of deciding, not a detail revealed afterwards. */}
+            <p className="mt-2 text-xs text-slate-400 font-light leading-relaxed max-w-md" data-embeddings-licence>
+                {fillCopy(JOURNAL_COPY.settings.embeddings.licence, {
+                    label, licence: EMBEDDING_MODEL.licence
+                })}
+            </p>
+
+            {capable && on && (
+                <div className="mt-3 space-y-3 max-w-md">
+                    <p className="text-xs text-slate-400 font-light" data-embeddings-size>
+                        {onDevice
+                            ? JOURNAL_COPY.settings.embeddings.downloaded
+                            : fillCopy(JOURNAL_COPY.settings.embeddings.size, { label, size })}
+                    </p>
+
+                    {failed && (
+                        <p role="alert" className="text-xs text-red-700 font-light" data-embeddings-error>
+                            {JOURNAL_COPY.settings.voice.downloadError}
+                        </p>
+                    )}
+
+                    {running && (
+                        <p className="text-xs text-slate-500 font-light flex items-center gap-2" data-embeddings-download="running">
+                            <Loader2 size={14} className="animate-spin text-slate-400 flex-shrink-0" />
+                            {fillCopy(JOURNAL_COPY.settings.embeddings.downloading, { label, done, size })}
+                        </p>
+                    )}
+
+                    {!onDevice && !running && (
+                        <button
+                            type="button"
+                            data-embeddings-start
+                            onClick={async () => { if (await downloader.start()) setOnDevice(true); }}
+                            className="inline-flex items-center gap-2 px-5 py-2.5 min-h-[48px] bg-slate-800 text-white text-sm font-medium rounded-xl hover:bg-slate-900 transition-all"
+                        >
+                            <Download size={16} />
+                            {fillCopy(JOURNAL_COPY.settings.embeddings.downloadOffer, { label, size })}
+                        </button>
+                    )}
+
+                    {onDevice && (
+                        <button
+                            type="button"
+                            data-embeddings-remove
+                            onClick={async () => { await downloader.remove(); setOnDevice(false); }}
+                            className="px-4 py-2 min-h-[44px] bg-white border border-slate-200 text-slate-600 text-sm rounded-xl hover:border-slate-400 transition-all"
+                        >
+                            {JOURNAL_COPY.settings.embeddings.remove}
+                        </button>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
+/**
  * The journal's per-device settings (§9.7), beside *Check-in reminders* and in the same
  * shape, because they are the same kind of thing: a preference this device holds and nothing
  * else ever sees.
  *
- * **Six of the nine, since C3.** Voice, *keep transcripts*, the transcription language and
- * the tier joined the ritual's three. `suggestions` and `embeddings` are still described in
- * `JOURNAL_COPY.settings` and *not* rendered, because there is no model that suggests and
- * no index that searches; a toggle for something the app cannot do would make the Vault's
- * claims false (invariant 2e). **A description is not permission to render a control.**
+ * **All nine, since G1.** Voice, *keep transcripts*, the transcription language and the
+ * tier joined the ritual's three in C3; `suggestions` got its control in D2 with the card it
+ * governs, and `embeddings` gets its here, with the index it governs. The rule that kept
+ * those two off the screen until their features existed still holds and is worth keeping
+ * written down rather than deleting with the last exception to it: **a description is not
+ * permission to render a control**, because a toggle for something the app cannot do makes
+ * the Vault's claims false (invariant 2e).
  *
  * The voice block has a rule the others do not: it is only a toggle where the device could
  * actually run the transcriber. Everywhere else it is a sentence saying why not — which for
@@ -331,9 +464,16 @@ const JournalSettings = () => {
 
     // Written on change rather than on a Save button, like the reminders toggle: these are
     // device preferences, not profile fields, and the form's Save posts to the server.
+    //
+    // The notification follows the key rather than leading it (F2). `setRitualReminder` is a
+    // no-op on the web, asks for POST_NOTIFICATIONS at the moment the ritual is turned on and
+    // never at launch, and cancels when it is turned off or the time moves. A refusal is not
+    // an error and nothing here reads its answer: the ritual is a screen, the setting is the
+    // user's, and being reminded of it is the part Android gets a say in.
     const saveRitual = (next) => {
         setRitual(next);
         writeRitualSetting(next);
+        setRitualReminder(next);
     };
 
     // Read through a ref rather than through the render's copy. Two chips toggled inside one
@@ -469,6 +609,7 @@ const JournalSettings = () => {
             </div>
 
             <VoiceSettings />
+            <EmbeddingSettings />
         </div>
     );
 };

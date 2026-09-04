@@ -4,7 +4,8 @@ import { Archive, Download, Upload, Loader2, ShieldCheck, Lock, Info } from 'luc
 import { useSubjects } from '../context/SubjectsContext';
 import { CATEGORIES } from '../constants/categories';
 import { hashPassphrase, readLockHash, setLockHash, isLockAvailable } from './AppLock';
-import { readVoiceSetting } from '../constants/journalSettings';
+import { readEmbeddings, readVoiceSetting } from '../constants/journalSettings';
+import { embeddingsAvailable } from '../journal/embeddings/availability';
 import { canTranscribe, detectTier, TIERS } from '../journal/inference/tier';
 import { MAX_CLIP_MS, SILENCE_HOLD_MS } from '../journal/recorder';
 import { isNative } from '../mobile/platform';
@@ -92,6 +93,51 @@ export const AI_CLAIM = {
 
 /** Which of the two *voice on* paragraphs describes this device. */
 export const aiClaimFor = (tier) => (tier === TIERS.light ? AI_CLAIM.onLight : AI_CLAIM.on);
+
+/**
+ * §10.2's *"What about the similar-entry suggestions?"* — G1, and **two variants where the
+ * design document wrote one.**
+ *
+ * The split is the same one C3 made for *What about AI features?* and for the same reason:
+ * §10.2's row reads *"A second small model … turns your entries into numbers … It is off
+ * until you turn it on"*, and on a device where it **is** off the first clause is a present
+ * tense about something that is not happening. This page describes *this machine*, so the
+ * off state says what is true of it and names no model, exactly as *"None are running"* does
+ * — and the on state carries §10.2's sentences with only their last clause changed, because
+ * *"it is off until you turn it on"* is the one sentence that cannot be true once it is on.
+ * §10.2 now records both.
+ *
+ * Three things the on paragraph must name, and each is a promise with code under it:
+ *
+ * - **EmbeddingGemma, and its licence.** It is **not** Apache 2.0 like Gemma 4 and Whisper:
+ *   it is under Google's Gemma Terms of Use, and §5.6 requires those terms to travel with
+ *   any copy the operator serves. `make models-fetch` puts the file beside the weights.
+ * - **Downloaded once from this server.** The manifest is `/models/`-relative and
+ *   `connect-src 'self'` would refuse anywhere else.
+ * - **Kept only on this device, and deleted when you sign out.** The index has no server
+ *   endpoint, no export path, and `JournalContext` empties it on the branch that runs with
+ *   no session — the same branch that drops the outbox (§5.8 rule 1).
+ */
+export const SIMILAR_CLAIM = {
+    off: 'None are being made. The journal can find the words you have used before — '
+        + '"you have called this \'work\' before" — with a second small model that runs **on '
+        + 'this device only**; it is off until you turn it on in your profile. Right now '
+        + 'nothing here is turning your entries into numbers.',
+
+    on: 'A second small model — EmbeddingGemma, downloaded once from this server, open '
+        + 'weights under **Google\'s Gemma Terms of Use** rather than Apache — turns your '
+        + 'entries into numbers that this device uses to find entries with similar words: '
+        + '"you have called this \'work\' before". Those numbers are **kept only on this '
+        + 'device**, never sent, never exported, and **deleted when you sign out**. Nothing '
+        + 'is merged or renamed unless you tap it, and it switches off in your profile at '
+        + 'any time.'
+};
+
+/**
+ * Whether an index is being kept **on this device**, which is the only thing this page may
+ * claim. It asks the same two questions the settings screen does, and both have to agree.
+ */
+export const embeddingsAreOn = () => readEmbeddings(embeddingsAvailable());
 
 /** The `**bold**` runs §10.2 writes, rendered without a markdown dependency for two words. */
 const emphasised = (text) => text.split(/\*\*(.+?)\*\*/g).map((part, index) => (
@@ -290,6 +336,10 @@ export default function Vault() {
     // Which paragraph describes this device: one model on the Full tier, two on the Light
     // one. Read once, like every other fact on this page.
     const [voiceTier] = useState(() => detectTier());
+    // Read once on mount, like `voiceOn` above and for the same reason: this page describes
+    // the device as it was when it was opened, and a value that changed under it mid-read
+    // would be a claim nobody could check against what they saw.
+    const [similarOn] = useState(embeddingsAreOn);
     const [passphrase, setPassphrase] = useState('');
 
     useEffect(() => {
@@ -542,6 +592,14 @@ export default function Vault() {
                             <dt className="font-medium text-slate-800">What about AI features?</dt>
                             <dd className="text-slate-600 mt-1" data-ai-claim={voiceOn ? 'on' : 'off'}>
                                 {emphasised(voiceOn ? aiClaimFor(voiceTier) : AI_CLAIM.off)}
+                            </dd>
+                        </div>
+                        <div>
+                            <dt className="font-medium text-slate-800">
+                                What about the similar-entry suggestions?
+                            </dt>
+                            <dd className="text-slate-600 mt-1" data-similar-claim={similarOn ? 'on' : 'off'}>
+                                {emphasised(similarOn ? SIMILAR_CLAIM.on : SIMILAR_CLAIM.off)}
                             </dd>
                         </div>
                         <div>

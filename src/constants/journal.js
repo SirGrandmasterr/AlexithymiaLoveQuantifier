@@ -278,6 +278,25 @@ export const PEOPLE_PATH = `${JOURNAL_ROOT}/people`;
 export const TRIGGERS_PATH = `${JOURNAL_ROOT}/triggers`;
 
 /**
+ * The query the launcher's *Check in* shortcut arrives with, and the day view's reading of it.
+ *
+ * §9.2 gives the shortcut one job: one long-press from the home screen to a check-in, with no
+ * widget and no background process. It **arms** the composer — the microphone where this
+ * device offers one, the keyboard where it does not — and the recording starts on the
+ * confirming tap inside it, never on the launch itself. A shortcut that opened the microphone
+ * would be the app deciding to record, which is the one thing §4.2's "no listening" position
+ * cannot allow, and it would do it from a gesture as easy to make by accident as a long-press
+ * on a home screen.
+ *
+ * The path is a constant here rather than a string in the Android XML alone so that the two
+ * halves cannot drift: `shortcuts.xml` names this value, `deepLink.js` accepts it, and this
+ * module is what both of them agree with.
+ */
+export const RECORD_PARAM = 'record';
+export const RECORD_PARAM_VALUE = '1';
+export const JOURNAL_RECORD_PATH = `${JOURNAL_ROOT}?${RECORD_PARAM}=${RECORD_PARAM_VALUE}`;
+
+/**
  * One person's screen, keyed by `relationship_id` and never by name — which is the whole
  * reason it survives a rename (§9.1, invariant 2a). An id that is not a number answers with
  * the list, on `journalDayPath`'s rule: a path builder never builds a broken path.
@@ -680,8 +699,30 @@ export const JOURNAL_COPY = {
             model: '{label} suggests them, on this device, under the {licence} licence. Every suggestion waits for you to keep it or put it down.'
         },
         embeddings: {
-            label: 'Similar-entry suggestions and search',
-            description: 'A second small model (EmbeddingGemma, under Google\'s Gemma terms) turns your entries into numbers that this device uses to find entries with similar words. Those numbers are kept only on this device, never sent, never exported, and deleted when you sign out.'
+            // **Narrower than §9.7's row, deliberately.** That row reads *“Similar-entry
+            // suggestions and search”*; G1 built the suggestions and G2 builds the search,
+            // and a toggle that promises a search this build does not have would be the
+            // same kind of untrue as a Vault sentence about a model that is not running
+            // (invariant 2e). G2 restores the other half with the screen that earns it.
+            label: 'Similar-entry suggestions',
+            // Verbatim from §10.2's Vault entry, minus its search clause, so the toggle and
+            // the privacy page cannot drift apart.
+            description: 'A second small model (EmbeddingGemma, under Google\'s Gemma terms) turns your entries into numbers that this device uses to find entries with similar words. Those numbers are kept only on this device, never sent, never exported, and deleted when you sign out.',
+            // Said before the download, never after it — §5.6's rule, and the same sentence
+            // shape the voice block uses so the two screens read alike.
+            size: '{label}, {size}. It downloads once and stays on this device.',
+            downloadOffer: 'Download {label} — {size}',
+            downloading: 'Downloading {label} — {done} of {size}.',
+            downloaded: 'On this device.',
+            remove: 'Remove downloaded files',
+            removed: 'Removed. Turning this on again downloads it once more.',
+            // The terms are not Apache and the difference is the user's to know: §5.6 puts
+            // Google's terms file beside the weights on the server, and this names them
+            // where the choice to download is made.
+            licence: '{label} is open weights under the {licence}, which are served from this app beside the files.',
+            // Named rather than hidden: a control that is not offered and says nothing about
+            // why is a control that lies about being absent.
+            unavailable: 'This device has nowhere to keep the numbers, so this stays off here.'
         },
         keepTranscripts: {
             label: 'Keep transcripts',
@@ -761,6 +802,34 @@ export const JOURNAL_COPY = {
             cancel: 'Cancel',
             error: 'Could not merge these triggers.'
         }
+    },
+
+    /**
+     * G1, §5.8. **Every string in this group is held to one extra rule: no digits.**
+     *
+     * Rule 2 says similarity proposes and never shows a number — not a score, not a
+     * percentage, not *“three entries like this”*. The list is not a matter of care:
+     * `journal.test.js` walks this object for digits the way it walks the whole of
+     * `JOURNAL_COPY` for evaluative words, and `similar.js` returns offers with no
+     * similarity on them so there is nothing to interpolate even by accident.
+     *
+     * The register is the design's own: *“entries with similar words”*, *“you've called this
+     * 'work' before”*. Descriptive about the vocabulary, never a claim about the person.
+     */
+    similar: {
+        // Beside *new trigger*, never instead of it: the card offers a word the user already
+        // has, and the user may want neither of them.
+        offer: "You've called this '{label}' before — same thing?",
+        keep: "Use '{label}' instead",
+        // Why this word and not another. It says what was compared, not how closely.
+        note: 'Found by comparing the words on this device.',
+
+        // The Triggers view's half. It offers pairs; the merge is the dialog behind them,
+        // which already says out loud that a merge is one-way.
+        pairsHeading: 'Looks similar to…',
+        pairsNote: 'Words that look alike, and that you have used around the same people. Nothing is merged until you say so.',
+        pair: "'{a}' looks similar to '{b}'",
+        pairAction: 'Merge these…'
     },
 
     dayGraph: {

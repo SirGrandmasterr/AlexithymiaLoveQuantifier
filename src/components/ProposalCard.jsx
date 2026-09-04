@@ -1,6 +1,7 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, Plus, X } from 'lucide-react';
 import { useJournal } from '../context/JournalContext';
+import { useEmbeddings } from '../journal/embeddings/EmbeddingContext';
 import { useSubjects } from '../context/SubjectsContext';
 import { useDiscretion } from '../context/DiscretionContext';
 import { propose, textInput } from '../journal/inference';
@@ -353,11 +354,47 @@ const AboutChip = ({ about, state, picked, onKeepTrigger, onPickUp, onRemove }) 
     );
 };
 
+/**
+ * *“You've called this 'work' before — same thing?”* — §5.8's first use, on the card.
+ *
+ * It appears **beside** the dashed *new trigger* chip and never instead of it: the chip and
+ * its Keep tap are exactly where they were, and this is one more thing the user may tap or
+ * ignore. Declining is not a control here — it is doing nothing, and then keeping the new
+ * trigger the way every other card does.
+ *
+ * There is no score, no *“closest match”*, and no ordering the user is told about: the
+ * offers arrive as labels, in an order `similar.js` chose and did not explain, because rule
+ * 2 says similarity may propose and may not show a number. `journal.test.js` walks this
+ * group of copy for digits.
+ */
+const SimilarTriggerOffers = ({ offers, onUse }) => {
+    const { blurClass } = useDiscretion();
+    if (!offers || offers.length === 0) return null;
+
+    return (
+        <div className="flex flex-wrap items-center gap-2" data-similar-triggers>
+            {offers.map(offer => (
+                <button
+                    key={offer.clientId}
+                    type="button"
+                    data-similar-trigger={offer.clientId}
+                    onClick={() => onUse(offer)}
+                    aria-label={fillCopy(JOURNAL_COPY.similar.keep, { label: offer.label })}
+                    className={`${chipClass} border border-dashed border-slate-300 text-slate-600 hover:border-slate-500 transition-colors ${blurClass}`}
+                >
+                    {fillCopy(JOURNAL_COPY.similar.offer, { label: offer.label })}
+                </button>
+            ))}
+            <span className="text-[11px] text-slate-400 font-light">{JOURNAL_COPY.similar.note}</span>
+        </div>
+    );
+};
+
 /** One proposed feeling: dashed until kept, then its strength, its unsureness, its abouts. */
 const ProposedFeeling = ({
-    feeling, state, moving, pendingTriggers, changing,
+    feeling, state, moving, pendingTriggers, changing, similar = [],
     onToggle, onChange, onCancelChange, onChangeTo, onCycleIntensity, onToggleUncertain, onRemove,
-    onAddAbout, onKeepTrigger, onPickUpAbout, onRemoveAbout, onMoveHere
+    onAddAbout, onKeepTrigger, onPickUpAbout, onRemoveAbout, onMoveHere, onUseSimilar
 }) => {
     const known = feelingById(feeling.id);
     const hex = known?.hex ?? '#94a3b8';
@@ -479,6 +516,14 @@ const ProposedFeeling = ({
                     </button>
                 )}
             </div>
+
+            {similar.map(row => (
+                <SimilarTriggerOffers
+                    key={row.triggerKey}
+                    offers={row.offers}
+                    onUse={(offer) => onUseSimilar(row.triggerKey, offer)}
+                />
+            ))}
 
             {state.ambiguity === 'target' && feeling.about.length === 0 && (
                 <p className="text-[11px] text-slate-500 font-light" data-attach-hint>{copy.attachHint}</p>
@@ -624,6 +669,9 @@ export default function ProposalCard({
     const { relationships } = useSubjects();
     const { triggers } = useJournal();
     const { blurClass, maskName } = useDiscretion();
+    // Off on every device that has not opted in, and off with no provider at all — which is
+    // what lets every card test written before G1 keep passing untouched.
+    const { enabled: embeddingsOn, offersFor } = useEmbeddings();
     const copy = JOURNAL_COPY.proposal;
 
     const [state, setState] = useState(() => cardStateFromProposal(result.proposal, { relationships, triggers }));
@@ -803,6 +851,53 @@ export default function ProposalCard({
             : trigger))
     }));
 
+    /**
+     * The tap on *“you've called this 'work' before”*: the unconfirmed new trigger becomes
+     * the live one, everywhere on the card at once.
+     *
+     * **Nothing is merged.** No trigger row is rewritten and no `merged_into` is written; the
+     * check-in simply references a word the user already has instead of minting a new one,
+     * which is what would have happened if §4.5b step 1 had matched it exactly. Declining is
+     * doing nothing: the dashed *new trigger* chip is still there and still mints its own id
+     * on its own tap.
+     */
+    const useSimilarTrigger = (triggerKey, offer) => setState(previous => {
+        const target = previous.triggers.find(entry => entry.key === triggerKey);
+        if (!target || target.confirmed) return previous;
+
+        const liveKey = `live:${offer.clientId}`;
+        const already = previous.triggers.some(entry => entry.key === liveKey);
+
+        const triggers = [
+            ...previous.triggers.filter(entry => entry.key !== triggerKey),
+            ...(already ? [] : [{
+                key: liveKey, label: offer.label, live: offer.clientId,
+                isNew: false, clientId: null, confirmed: true
+            }])
+        ];
+
+        // A feeling that named both the new word and the live one it turns out to be would
+        // otherwise carry the same trigger twice, which the save body would send twice.
+        const feelings = previous.feelings.map(feeling => {
+            const seen = new Set();
+            return {
+                ...feeling,
+                about: feeling.about
+                    .map(about => (about.kind === 'trigger' && about.trigger === triggerKey
+                        ? { ...about, trigger: liveKey }
+                        : about))
+                    .filter(about => {
+                        if (about.kind !== 'trigger') return true;
+                        if (seen.has(about.trigger)) return false;
+                        seen.add(about.trigger);
+                        return true;
+                    })
+            };
+        });
+
+        return { ...previous, triggers, feelings };
+    });
+
     const keepNewPerson = (personKey) => setState(previous => ({
         ...previous,
         people: previous.people.map(person => (person.key === personKey
@@ -854,6 +949,67 @@ export default function ProposalCard({
     const pendingTriggers = state.triggers
         .filter(trigger => trigger.isNew && trigger.confirmed)
         .map(trigger => ({ clientId: trigger.clientId, live: trigger.clientId, label: trigger.label, isNew: true }));
+
+    /* ---- §5.8's trigger normalisation: what this label has been called before ---------- */
+
+    // `{ triggerKey: [{ clientId, label }] }`, filled asynchronously and empty on every
+    // device that has not turned the index on — which is every device by default. The card
+    // renders identically with it empty, which is what makes this an addition rather than a
+    // dependency.
+    const [similar, setSimilar] = useState({});
+
+    // Two structural facts about the check-in in front of the user, and rule 3's whole
+    // input: the people it names and the triggers it already resolved. A person is counted
+    // as soon as the card has an id for them — confirmed or not — because "this check-in is
+    // about Lucie" is a fact about the sentence, not about a tap that has not happened yet;
+    // nothing is written either way.
+    const witnessContext = useMemo(() => ({
+        people: state.people.map(person => person.relationshipId).filter(id => id != null),
+        triggers: state.triggers.map(trigger => trigger.live).filter(Boolean)
+    }), [state.people, state.triggers]);
+
+    // The labels with no trigger behind them yet — §4.5b step 1 found no exact match, so the
+    // card is about to show *new trigger*. Only these are ever asked about.
+    const unresolved = useMemo(
+        () => state.triggers.filter(trigger => !trigger.confirmed && trigger.label),
+        [state.triggers]
+    );
+
+    useEffect(() => {
+        if (!embeddingsOn || unresolved.length === 0) {
+            setSimilar({});
+            return undefined;
+        }
+
+        let live = true;
+        Promise.all(unresolved.map(async trigger => (
+            [trigger.key, await offersFor(trigger.label, witnessContext)]
+        ))).then(rows => {
+            if (!live) return;
+            setSimilar(Object.fromEntries(rows.filter(([, offers]) => offers.length > 0)));
+        }).catch(() => {
+            // Nothing the user asked for did not happen; the card is unchanged.
+        });
+
+        return () => { live = false; };
+    }, [embeddingsOn, offersFor, unresolved, witnessContext]);
+
+    // One row per unresolved trigger, on the **first** feeling that names it, so a word two
+    // feelings share is offered once rather than twice.
+    const similarRows = useMemo(() => {
+        const rows = new Map();
+        const placed = new Set();
+        state.feelings.forEach(feeling => {
+            feeling.about.forEach(about => {
+                if (about.kind !== 'trigger' || placed.has(about.trigger)) return;
+                const offers = similar[about.trigger];
+                if (!offers || offers.length === 0) return;
+                placed.add(about.trigger);
+                rows.set(feeling.key, [...(rows.get(feeling.key) ?? []), { triggerKey: about.trigger, offers }]);
+            });
+        });
+        return rows;
+    }, [state.feelings, similar]);
 
     const atCap = state.feelings.length >= MAX_FEELINGS_PER_CHECKIN;
     const sentence = ambiguitySentence(state, maskName);
@@ -940,6 +1096,8 @@ export default function ProposalCard({
                         onPickUpAbout={pickUpAbout}
                         onRemoveAbout={removeAbout}
                         onMoveHere={moveHere}
+                        similar={similarRows.get(feeling.key) ?? []}
+                        onUseSimilar={useSimilarTrigger}
                     />
                 ))}
 

@@ -1,12 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import {
     WHISPER_TINY,
+    EMBEDDING_GEMMA_ONNX,
     MODEL_BASE_PATH,
     modelFileUrl,
     totalBytes,
     formatBytes,
-    modelSize
+    modelSize,
+    tierModels
 } from './models';
 
 /**
@@ -19,8 +22,8 @@ import {
  */
 const makefile = readFileSync('Makefile', 'utf8');
 
-/** Every `whisper-tiny|path|url|sha256` row of `MODEL_MANIFEST`, with `$(VAR)` expanded. */
-const manifestRows = () => {
+/** Every `<set>|path|url|sha256` row of `MODEL_MANIFEST`, with `$(VAR)` expanded. */
+const manifestRows = (set = 'whisper-tiny') => {
     const variables = {};
     for (const [, name, value] of makefile.matchAll(/^([A-Z0-9_]+) :?= (.+?)\s*$/gm)) {
         variables[name] = value;
@@ -37,7 +40,8 @@ const manifestRows = () => {
     // `$(APACHE_20_SHA)` rather than writing the hex inline, and a first draft that only
     // accepted 64 hex characters silently dropped it — twelve of thirteen files checked, and
     // the one left out is the licence Apache 2.0 §4(a) requires to travel with the copy.
-    return [...makefile.matchAll(/^\twhisper-tiny\|(\S+?)\|(\S+?)\|(\S+?)\s*\\?\r?$/gm)]
+    const pattern = new RegExp(`^\\t${set}\\|(\\S+?)\\|(\\S+?)\\|(\\S+?)\\s*\\\\?\\r?$`, 'gm');
+    return [...makefile.matchAll(pattern)]
         .map(([, path, url, sha256]) => ({
             path: expand(path), url: expand(url), sha256: expand(sha256)
         }));
@@ -131,5 +135,105 @@ describe('where the files come from', () => {
         const serialized = JSON.stringify(WHISPER_TINY);
         expect(serialized).not.toContain('huggingface');
         expect(serialized).not.toContain('http');
+    });
+});
+
+/* ------------------------------------------------------------------------------------ */
+/* G1 — EmbeddingGemma, and the licence that is not Apache                                */
+/* ------------------------------------------------------------------------------------ */
+
+/**
+ * The same rail, for the index's model — and one row it deliberately cannot cover.
+ *
+ * Seven of EmbeddingGemma's eight files are pinned in `MODEL_MANIFEST` like every other
+ * weight. The eighth is `GEMMA_TERMS_OF_USE.txt`, which has **no pinnable URL**: Google
+ * publishes the Gemma terms as an HTML page that is not byte-stable, and two fetches seconds
+ * apart on 2026-09-04 hashed differently. So the copy lives in `licences/` in this
+ * repository, `make models-install-terms` puts it in the volume beside the weights, and the
+ * test below hashes the file itself. That is a stronger rail than a URL pin, not a weaker
+ * one: it fails on a change to the bytes this repository actually ships.
+ */
+describe('the index model manifest', () => {
+    it('holds the same files and the same sums as the Makefile, in both directions', () => {
+        const rows = manifestRows('embeddinggemma');
+        expect(rows.length).toBeGreaterThan(5);
+
+        const fromMake = Object.fromEntries(rows.map(row => [row.path, row.sha256]));
+        const fromApp = Object.fromEntries(
+            EMBEDDING_GEMMA_ONNX.files
+                // The terms are installed from this repository, not fetched, so they are not
+                // a manifest row — see the block comment above and the `licences/` test below.
+                .filter(file => !file.path.endsWith('GEMMA_TERMS_OF_USE.txt'))
+                .map(file => [file.path, file.sha256])
+        );
+
+        expect(fromApp).toEqual(fromMake);
+    });
+
+    it('pins the revision the Makefile pins, not a branch', () => {
+        expect(makefile).toContain(`EMBEDDING_GEMMA_REV := ${EMBEDDING_GEMMA_ONNX.revision}`);
+        manifestRows('embeddinggemma').forEach(row => {
+            expect(row.url).toContain(EMBEDDING_GEMMA_ONNX.revision);
+        });
+    });
+
+    it('mirrors the repo id in the path, which is what transformers.js resolves', () => {
+        EMBEDDING_GEMMA_ONNX.files.forEach(file => {
+            expect(file.path.startsWith(`${EMBEDDING_GEMMA_ONNX.id}/`)).toBe(true);
+        });
+    });
+
+    it('is 219 MB over eight files, measured 2026-09-04', () => {
+        expect(EMBEDDING_GEMMA_ONNX.files).toHaveLength(8);
+        expect(totalBytes(EMBEDDING_GEMMA_ONNX)).toBe(218_739_216);
+        expect(modelSize(EMBEDDING_GEMMA_ONNX)).toBe('219 MB');
+    });
+
+    it('is not a tier model: no tier downloads it as part of turning voice on', () => {
+        ['full', 'light', 'text-only'].forEach(tier => {
+            [true, false].forEach(native => {
+                expect(tierModels(tier, { native })).not.toContain(EMBEDDING_GEMMA_ONNX);
+            });
+        });
+    });
+
+    it('names no model hub in the table the browser reads', () => {
+        const serialized = JSON.stringify(EMBEDDING_GEMMA_ONNX);
+        expect(serialized).not.toContain('huggingface');
+        expect(serialized).not.toContain('http');
+    });
+});
+
+describe('the Gemma Terms of Use', () => {
+    // The bytes as `make models-install-terms` installs them: `tr -d '\r'`, so the volume
+    // holds the LF form whatever this repository was cloned as.
+    const terms = readFileSync('licences/gemma-terms-of-use.txt', 'utf8').replace(/\r/g, '');
+    const row = EMBEDDING_GEMMA_ONNX.files.find(file => file.path.endsWith('GEMMA_TERMS_OF_USE.txt'));
+
+    it('travels with the weights, because Section 3.1 of the terms requires it to', () => {
+        expect(EMBEDDING_GEMMA_ONNX.licence).toBe('Gemma Terms of Use');
+        expect(row).toBeTruthy();
+        expect(terms).toContain('Gemma Terms of Use');
+        // The Appendix is what makes these the right terms for *this* model.
+        expect(terms).toContain('EmbeddingGemma');
+    });
+
+    it('is the file this repository ships, to the byte', () => {
+        const bytes = Buffer.from(terms, 'utf8');
+        expect(row.bytes).toBe(bytes.length);
+        expect(row.sha256).toBe(createHash('sha256').update(bytes).digest('hex'));
+    });
+
+    it('is installed into the volume by a target `models-fetch` actually runs', () => {
+        expect(makefile).toContain('GEMMA_TERMS_FILE := licences/gemma-terms-of-use.txt');
+        expect(makefile).toContain('models-install-terms');
+        // Not a manifest row: it has no URL to pin, and a placeholder sum would fail the
+        // fetch script's own check rather than being caught here.
+        expect(makefile).not.toContain('embeddinggemma|$(EMBEDDING_GEMMA_DIR)/GEMMA_TERMS_OF_USE.txt');
+    });
+
+    it('says where it came from, so the copy can be checked against the source', () => {
+        expect(terms).toContain('https://ai.google.dev/gemma/terms');
+        expect(terms).toContain('Retrieved  2026-09-04');
     });
 });

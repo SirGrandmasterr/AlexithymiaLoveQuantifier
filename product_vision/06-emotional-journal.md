@@ -3,8 +3,12 @@
 **Status: 6-A and 6-B implemented; 6-C implemented in code, its device checks pending; 6-D in
 progress — D1 (the proposal contract), D2 (the proposal card) and D3 (the real runtimes) shipped
 2026-09-02, with the model measured off-device and not yet run on a phone; D4 (the golden suite
-and the model gate) shipped 2026-09-03 as an instrument with no model through it; 6-F's outbox
-(§9.5) shipped 2026-09-04, and the rest of 6-F, 6-E and 6-G are planned.** As of
+and the model gate) shipped 2026-09-03 as an instrument with no model through it; **6-F is
+implemented in code** — the outbox (§9.5) on 2026-09-04 and the nightly reminder, the launcher
+shortcut, the haptics and the tiers the same day — with every one of its device checks pending;
+**6-G is implemented in part** — G1 (the index, the three rules and trigger normalisation) on
+2026-09-04, with no device check and no native runtime, and G2 (retrieval and search) not
+started; 6-E is planned.** As of
 **2026-09-04**. Written against the code
 on branch `app-improvements` as of 2026-08-21, and revised the same day after review: the
 voice path is built on one audio-native on-device model (Gemma 4 E2B) rather than a
@@ -1117,6 +1121,16 @@ prompt prefixes are mandatory (`task: search result | query: …` for a query, `
 text: …` for a stored entry). 256 dimensions is the planned width — enough for short
 colloquial sentences, a quarter of the storage.
 
+**Shipped in G1, 2026-09-04, and three things it settled.** *First*, **`q4`, not `q8`** — the
+"under 200 MB of RAM" above is Google's number for the 4-bit build, and the q8 export is 309 MB
+of weights, so shipping q8 would have made that sentence false on the page that quotes it.
+*Second*, the prefixes have a **single implementation** (`prefixed()` in
+`src/journal/embeddings/embed.js`) and are asserted on the exact string, because a wrong prefix
+has no symptom: the vector still has 256 numbers, still scans, still ranks, and is quietly worse
+at everything. *Third*, the truncation **re-normalises** — without it the lengths of two
+truncated vectors differ by how much of their mass the discarded tail carried, and cosine stops
+being cosine.
+
 **Rule 1 — vectors live on the device and nowhere else.** Three independent reasons, any one
 of which would suffice:
 
@@ -1132,6 +1146,16 @@ logout), **never exported, never synced**; each device builds its own from the e
 already holds decrypted; a model change re-embeds lazily and the `model` field on each vector
 is what makes a stale vector detectable. The server never learns a vector exists.
 
+**One correction from G1, and it is about the parenthesis.** *"On native, the same store as the
+offline cache"* was written when that cache was expected to be IndexedDB. It is not:
+`src/mobile/offlineCache.js` is `localStorage`, whose quota is around five megabytes of string
+— half of what the sizing directly above this paragraph asks for, before the encoding overhead
+of putting floats in a string. So the index is **IndexedDB on both platforms**
+(`src/journal/embeddings/store.js`): the same *lifetime* as the offline cache, cleared on the
+same logout branch, for the same reason, in a store that can actually hold it. Typed arrays
+survive IndexedDB's structured clone unchanged, which is what makes *"a typed array, not a
+vector database"* literally true of what is on disk rather than an analogy.
+
 **Rule 2 — similarity proposes, never writes, and never shows a number.** The roadmap's
 "no hidden math" invariant applies: anything surfaced is phrased as *"entries with similar
 words"* or *"you've called this 'work' before"*, never as a score, a pattern, or a claim.
@@ -1140,6 +1164,19 @@ words"* or *"you've called this 'work' before"*, never as a score, a pattern, or
 Short colloquial sentences embed badly around negation (*"not angry, just tired"* sits near
 *angry*); fine for recall, dangerous for suggestions. A label or a past entry is offered only
 when the same person or trigger also matches.
+
+**What "also matches" means, decided in G1 and implemented as a hard gate.** For each live
+trigger the client walks the user's own confirmed check-ins and records what that trigger has
+been *seen beside*: the relationship ids on an entry naming it, and the ids of the other
+triggers on that entry (never itself — an entry naming only *work* says nothing about whether
+*work* and anything else are the same thing). A candidate is offered only when that set
+intersects the corresponding set on the other side: the check-in in front of the user, for the
+card's offer; the other trigger's own witnesses, for the Triggers view's pairs. Two empty sets
+are **not** agreement — the absence of evidence is a refusal, because the whole point of the
+rule is that geometry alone may not speak. It is a gate rather than a weight so that no
+similarity, however high, can out-vote it; `similar.test.js` asserts exactly that with two
+identical vectors. A similarity floor exists underneath it (`SIMILARITY_FLOOR`) but is only a
+shortlist device, and is a starting value until the retrieval golden set below exists.
 
 What it is used for, in order of value:
 
@@ -1152,11 +1189,21 @@ What it is used for, in order of value:
 | Namesake candidates | Two relationships called Alex: similarity of the new sentence to each one's past mentions orders the *candidates* in §4.5. | Never a write |
 | *Already known?* | A proposed fact close to an existing one is shown beside it. | Cheap |
 
-**Costs, stated:** a second download (~200–300 MB *(verify)*); a re-embed on model change
-(10,000 × ~20 ms ≈ minutes, lazily); the Gemma Terms of Use (§5.6); and a retrieval golden
-set (*given these entries, query x returns y in the top three*) to keep it honest. It is the
-phase's last slice (§11, 6-G) and it is gated by the user test: if people do not reuse
-triggers and do not search, it is not built.
+**Costs, stated:** a second download — **219 MB, measured 2026-09-04** (218,739,216 bytes over
+eight files at revision `5090578d`, inside the ~200–300 MB this line estimated); a re-embed on
+model change (10,000 × ~20 ms ≈ minutes, lazily); the Gemma Terms of Use (§5.6); and a
+retrieval golden set (*given these entries, query x returns y in the top three*) to keep it
+honest — **still outstanding**, and G2's, since G1 offers labels rather than entries. The scan
+itself was measured too: **2.4 ms median over ten thousand 256-dimension vectors** on the G1
+machine, which is the "milliseconds" this section claims.
+
+It is the phase's last slice (§11, 6-G) and it was gated by the user test: if people do not
+reuse triggers and do not search, it is not built. **That gate was waived rather than closed.**
+The operator waived U1 on 2026-08-31 and confirmed on 2026-09-04 that this slice is built
+anyway, so the sentence above describes a decision nobody has evidence for in either direction
+— see the ledger's *Decisions*. G1 was built on that instruction. Nothing about the design
+changed; what changed is that "the single biggest win" is still an argument rather than a
+finding.
 
 ### 5.9 Parked: feelings from how a voice sounds
 
@@ -1915,7 +1962,8 @@ by one of two variants; one new entry is added.
 | **What does the app send anywhere?** | Nothing. Every request goes to this app's own origin — you can check that in your browser's network tab. There is no analytics, no telemetry, and no third-party script. **If you turn on voice check-ins, the speech and language model files are downloaded once, from this same server, and run here.** |
 | **What about AI features?** — *voice off on this device (the default)* | None are running. The journal can write down a voice note and suggest what it was about using a model that runs **on this device only**; it is off until you turn it on in your profile. Right now nothing here infers, scores, or interprets on your behalf — every number in this app is one you set yourself, and every journal entry is one you wrote or tapped. |
 | **What about AI features?** — *voice on* | One model, and it runs on this device: Gemma 4 E2B, open weights under the Apache 2.0 licence, downloaded once from this server. It **writes down** a voice note — the audio is never saved and never sent — and **suggests** feelings, people and triggers to tag from what was said. It is asked only what you said, never how you sounded. Every suggestion waits for you to confirm, change, or discard it — nothing it proposes is saved on its own, and it never touches your love snapshots. It switches off in your profile at any time. *(On the Light tier the first sentence reads: "One small model writes the words down and a second one suggests tags; both run on this device.")* |
-| **What about the similar-entry suggestions?** *(new, 6-G)* | A second small model (EmbeddingGemma, under Google's Gemma terms) turns your entries into numbers that this device uses to find entries with similar words — *"you've called this 'work' before"*. Those numbers are kept only on this device, never sent, never exported, and deleted when you sign out. It is off until you turn it on. |
+| **What about the similar-entry suggestions?** — *index off (the default)* | None are being made. The journal can find the words you have used before — *"you have called this 'work' before"* — with a second small model that runs **on this device only**; it is off until you turn it on in your profile. Right now nothing here is turning your entries into numbers. |
+| **What about the similar-entry suggestions?** — *index on* | A second small model — EmbeddingGemma, downloaded once from this server, open weights under **Google's Gemma Terms of Use** rather than Apache — turns your entries into numbers that this device uses to find entries with similar words: *"you have called this 'work' before"*. Those numbers are **kept only on this device**, never sent, never exported, and **deleted when you sign out**. Nothing is merged or renamed unless you tap it, and it switches off in your profile at any time. |
 | **Does it listen?** *(new)* | Only while the record button is lit. There is no wake word, no background capture, and recording stops when you tap, after two seconds of silence, or at thirty seconds. |
 | **Is it encrypted?** | No. The database is a plain file (or your Postgres instance); anyone with access to the server can read it. Passwords are hashed, but your notes, scores, **and journal transcripts** are not. Protecting the machine is the protection. |
 
@@ -1926,7 +1974,17 @@ proposes is saved on its own"* holds because the save payload is built from the 
 confirmed state (§4.4) and the server validates ids, not opinions.
 
 *"Similar-entry numbers never leave this device"* holds because the index is a client-only
-cache the server has no endpoint for (§5.8).
+cache the server has no endpoint for (§5.8). **Shipped in G1**, and `docs/06-frontend.md` §3c now
+carries that row and one beside it — *"nothing is merged or renamed unless you tap it"* — each
+with the test that holds it: a walk over every request body the two screens produce, which fails
+on a typed array, on a run of sixteen or more numbers, and on any field named `vector`,
+`embedding`, `dims` or `entry_client_id`.
+
+`Vault.test.jsx`'s claim count is **seven**, as this section asks. The similar-entry row ships as
+**two variants** where the table above wrote one, for the reason the *AI features* row has two:
+*"it is off until you turn it on"* cannot be true on a device where it is on, and *"turns your
+entries into numbers"* cannot be true on one where it is off. The off variant names no model at
+all, so a default device's Vault page still mentions no Gemma anywhere.
 
 Vault.test.jsx's "four privacy claims present verbatim" test becomes seven, in both opt-in
 states and on both tiers.
@@ -1980,11 +2038,29 @@ states and on both tiers.
   one-time weight download from the configured server, over the same cleartext-on-LAN
   trade-off the app already documents.
 
-*Shipped in C4 (2026-09-02).* CHANGE 5 in the manifest carries the permission and both
-reasons; the `allowBackup` comment names the journal's settings and the model files; the
-plugin's only URL is `<server>/models/<path>`, opened with no session token, and the network
-security config is byte-for-byte what it was. [docs/12 §6](../docs/12-android-app.md) has the
-policy in full.
+- The launcher's static shortcut needs two things in this directory and nothing else: the
+  resource itself, `android-config/.../res/xml/shortcuts.xml`, and one `<meta-data
+  android:name="android.app.shortcuts">` on `MainActivity` — the activity that owns the
+  MAIN/LAUNCHER filter, because that is the one a launcher looks at. **No `<intent-filter>` is
+  added for the shortcut's URL**: the intent is explicit, so it is delivered without one, and a
+  filter would publish the scheme to every app and browser on the device for nothing. The
+  shortcut's two labels are the only user-visible strings in the app that cannot live in
+  `src/constants/journal.js`, because a launcher reads them before any JavaScript exists; they
+  are in `res/values/shortcuts_strings.xml` so the generated `strings.xml` stays generated.
+- **No new permission for the nightly reminder.** `POST_NOTIFICATIONS` (CHANGE 4) already
+  covers it, requested at opt-in like the cadence one. `SCHEDULE_EXACT_ALARM` is deliberately
+  **not** requested: the plugin falls back to an inexact alarm where the platform requires it,
+  which for a bedtime reminder is the right trade against a permission that reads as an alarm
+  clock's. Nothing else changes — still no `<service>` and no `<receiver>` of this app's own,
+  which is what makes *"no background process"* a statement about the manifest rather than
+  about intent.
+
+*Shipped in C4 (2026-09-02) and F2 (2026-09-04).* CHANGE 5 in the manifest carries the
+permission and both reasons; CHANGE 6 carries the shortcut's meta-data; the `allowBackup`
+comment names the journal's settings and the model files; the plugin's only URL is
+`<server>/models/<path>`, opened with no session token, and the network security config is
+byte-for-byte what it was. [docs/12 §6](../docs/12-android-app.md) has the policy in full and
+[§3.4](../docs/12-android-app.md) the reminder and the shortcut.
 
 ### 10.6 A note on third parties
 
@@ -2196,7 +2272,7 @@ journal day graph identical before and after; `GET /api/journal/entries` serving
 encrypted rows and `payload` for legacy ones through the same dual-read the subject endpoints
 use.
 
-### 6-F — Android depth · **the outbox shipped 2026-09-04 (F1); the rest is F2**
+### 6-F — Android depth · **implemented 2026-09-04 (F1, F2); nothing run on a phone**
 
 **Outcome:** the ritual's local notification, the launcher shortcut, the outbox (§9.5), tier
 detection through the plugin, haptics on swipe commits, and the weight-download path from the
