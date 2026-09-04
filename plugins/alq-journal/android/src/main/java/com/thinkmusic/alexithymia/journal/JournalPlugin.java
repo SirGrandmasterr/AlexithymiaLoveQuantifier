@@ -519,12 +519,30 @@ public class JournalPlugin extends Plugin {
     public void removeModel(PluginCall call) {
         try {
             closeTranscriber();
+            closeProposer();
             JSObject out = new JSObject();
             out.put("removed", store.remove(specs(call.getArray("files"))));
             call.resolve(out);
         } catch (JSONException e) {
             call.reject("the file list is malformed", ModelStore.Failure.STORAGE);
         }
+    }
+
+    @PluginMethod
+    public void removeAllModels(PluginCall call) {
+        closeTranscriber();
+        closeProposer();
+        boolean removed = store.removeAll();
+        JSObject out = new JSObject();
+        out.put("removed", removed);
+        call.resolve(out);
+    }
+
+    @PluginMethod
+    public void modelStorageInfo(PluginCall call) {
+        JSObject out = new JSObject();
+        out.put("bytes", store.getStorageBytes());
+        call.resolve(out);
     }
 
     private static List<ModelStore.FileSpec> specs(JSArray files) throws JSONException {

@@ -1,5 +1,5 @@
 import { RUNTIME_IDS, INPUT_MODES, InferenceError, FAILURE_KINDS, TASKS, asProposal } from './contract';
-import { WHISPER_TINY, GEMMA_E2B_ONNX, GEMMA_E2B_ONNX_TEXT, PROPOSAL_MODEL, MODEL_BASE_PATH } from './models';
+import { WHISPER_TINY, GEMMA_E4B_ONNX, GEMMA_E4B_ONNX_TEXT, GEMMA_E2B_ONNX, GEMMA_E2B_ONNX_TEXT, PROPOSAL_MODEL, MODEL_BASE_PATH } from './models';
 import { createVerifiedCache } from './download';
 import { createLightRuntime } from './light';
 import { buildPrompt, PROMPT_VERSION } from './prompt';
@@ -156,7 +156,7 @@ export const createWebProposer = (options = {}) => {
     } = options;
 
     const audioNative = tier === TIERS.full;
-    const model = options.model || (audioNative ? GEMMA_E2B_ONNX : GEMMA_E2B_ONNX_TEXT);
+    const model = options.model || (audioNative ? GEMMA_E4B_ONNX : GEMMA_E4B_ONNX_TEXT);
 
     let held = null;
     let loading = null;

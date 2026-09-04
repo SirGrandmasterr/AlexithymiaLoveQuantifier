@@ -87,6 +87,56 @@ export const GEMMA_E2B_LITERTLM = {
     ]
 };
 
+export const GEMMA_E4B_ONNX = {
+    id: 'onnx-community/gemma-4-E4B-it-ONNX',
+    revision: '843f250f23bc91754def1e0f0db390dacd1e6b05',
+    label: 'Gemma 4 E4B',
+    licence: 'Apache 2.0',
+    dtype: {
+        embed_tokens: 'q4f16',
+        decoder_model_merged: 'q4f16',
+        audio_encoder: 'q4f16',
+        vision_encoder: 'q4f16'
+    },
+    files: [
+        { path: 'onnx-community/gemma-4-E4B-it-ONNX/LICENSE.txt', bytes: 11358, sha256: 'cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30' },
+        { path: 'onnx-community/gemma-4-E4B-it-ONNX/config.json', bytes: 5741, sha256: '2033bacb60b38bb3d43be4978c64618e7d8abd7f' },
+        { path: 'onnx-community/gemma-4-E4B-it-ONNX/generation_config.json', bytes: 238, sha256: 'b2b0ab11eaf5317ad648bb48ce64b110532d661a' },
+        { path: 'onnx-community/gemma-4-E4B-it-ONNX/preprocessor_config.json', bytes: 43, sha256: '6418e09c5fdb500f7ad9e86a7de9de7e60317f34' },
+        { path: 'onnx-community/gemma-4-E4B-it-ONNX/processor_config.json', bytes: 1689, sha256: '5465974d23e1eca2c46c2809b26c997946ce0d90' },
+        { path: 'onnx-community/gemma-4-E4B-it-ONNX/chat_template.jinja', bytes: 16317, sha256: '07e50e69a8c445f2c31a089b828e85b2a93942bf' },
+        { path: 'onnx-community/gemma-4-E4B-it-ONNX/tokenizer.json', bytes: 19439251, sha256: '47bd35616c7c782aaca6ccf48c75f3461d5877170984b8836b375107d0a9f566' },
+        { path: 'onnx-community/gemma-4-E4B-it-ONNX/tokenizer_config.json', bytes: 18807, sha256: '8dc6453271e40decb8ebdb68f4f9421d306dd6b3' },
+        { path: 'onnx-community/gemma-4-E4B-it-ONNX/onnx/embed_tokens_q4f16.onnx', bytes: 5619, sha256: 'aa48aa1806eda0ea42b79cd8eea355aebaf3b6ae3b04190bfee7ceef308603a4' },
+        { path: 'onnx-community/gemma-4-E4B-it-ONNX/onnx/embed_tokens_q4f16.onnx_data', bytes: 2017460224, sha256: 'fd0f39c08f7e20a31145c2351a76a408b6c4ab60d15cc33f40e29cf30c0b2451' },
+        { path: 'onnx-community/gemma-4-E4B-it-ONNX/onnx/decoder_model_merged_q4f16.onnx', bytes: 850610, sha256: '43aa27452be3dd7fbb9524257dd66af957add748ddab20ea63ae71923e59aa08' },
+        { path: 'onnx-community/gemma-4-E4B-it-ONNX/onnx/decoder_model_merged_q4f16.onnx_data', bytes: 2074847232, sha256: 'b6aa13eab3ecdf4721293e93c806c279ca0516956187f7aec63ee90ec7216e73' },
+        { path: 'onnx-community/gemma-4-E4B-it-ONNX/onnx/decoder_model_merged_q4f16.onnx_data_1', bytes: 812318720, sha256: '84e1c5f09ba88a5351959e4f73f62bce46f92dc19a7d7c82376ef36771c26a30' },
+        { path: 'onnx-community/gemma-4-E4B-it-ONNX/onnx/audio_encoder_q4f16.onnx', bytes: 260446, sha256: 'abf9f3db89b336579c786704e147747085ccca23f28ecdf33f6736a93e3fbc47' },
+        { path: 'onnx-community/gemma-4-E4B-it-ONNX/onnx/audio_encoder_q4f16.onnx_data', bytes: 172167424, sha256: '814635b03d618d2513d377e051d491d0a5448f1407864fb2535e4b8182f9eced' },
+        { path: 'onnx-community/gemma-4-E4B-it-ONNX/onnx/vision_encoder_q4f16.onnx', bytes: 189126, sha256: '7475ce3d5d98d74003410367cc53f23ddb38891e1847cce0a4535fb6d953c540' },
+        { path: 'onnx-community/gemma-4-E4B-it-ONNX/onnx/vision_encoder_q4f16.onnx_data', bytes: 100762304, sha256: '6cada2b035aed2284ef3a379fb6523906b95da1c1a24af7182161342d1269a52' }
+    ]
+};
+
+export const GEMMA_E4B_ONNX_TEXT = {
+    ...GEMMA_E4B_ONNX,
+    dtype: { embed_tokens: 'q4f16', decoder_model_merged: 'q4f16' },
+    files: withoutEncoders(GEMMA_E4B_ONNX.files)
+};
+
+export const GEMMA_E4B_LITERTLM = {
+    id: 'litert-community/gemma-4-E4B-it-litert-lm',
+    revision: '2eee7ac325f20eb8c9ac1d0e972f7c84663062da',
+    label: 'Gemma 4 E4B',
+    licence: 'Apache 2.0',
+    bundle: 'litert-community/gemma-4-E4B-it-litert-lm/gemma-4-E4B-it.litertlm',
+    files: [
+        { path: 'litert-community/gemma-4-E4B-it-litert-lm/LICENSE.txt', bytes: 11358, sha256: 'cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30' },
+        { path: 'litert-community/gemma-4-E4B-it-litert-lm/gemma-4-E4B-it.litertlm', bytes: 3659530240, sha256: '0b2a8980ce155fd97673d8e820b4d29d9c7d99b8fa6806f425d969b145bd52e0' }
+    ]
+};
+
 /**
  * EmbeddingGemma 300m, ONNX, q4 — the index's model (§5.8, G1).
  *
@@ -135,6 +185,12 @@ export const EMBEDDING_GEMMA_ONNX = {
     ]
 };
 
+/**
+ * The embedding descriptor for the Vault and for the settings screen (§5.8, G1).
+ *
+ * Identifies the model by its label and its upstream id (`google/embeddinggemma-300m`),
+ * records its licence and its native width, and points at `EMBEDDING_GEMMA_ONNX`.
+ */
 export const EMBEDDING_MODEL = {
     id: 'google/embeddinggemma-300m',
     label: 'EmbeddingGemma',
@@ -145,10 +201,10 @@ export const EMBEDDING_MODEL = {
 };
 
 /**
- * The model that proposes feelings, people and triggers — **Gemma 4 E2B, since D3.**
+ * The model that proposes feelings, people and triggers — **Gemma 4 E4B.**
  *
  * One model with three packagings, and the identity is the thing the user is told about: the
- * Vault page names *"Gemma 4 E2B, open weights under the Apache 2.0 licence"* and the
+ * Vault page names *"Gemma 4 E4B, open weights under the Apache 2.0 licence"* and the
  * provenance block on every model-assisted entry records `model` from here. Which file the
  * device opened is a deployment detail; which model answered is not.
  *
@@ -157,26 +213,28 @@ export const EMBEDDING_MODEL = {
  * `runtime` is the field that says which one.
  */
 export const PROPOSAL_MODEL = {
-    id: 'google/gemma-4-E2B-it',
-    label: 'Gemma 4 E2B',
+    id: 'google/gemma-4-E4B-it',
+    label: 'Gemma 4 E4B',
     licence: 'Apache 2.0',
     /** What a browser downloads on each tier, and what a phone downloads on both. */
-    web: { full: GEMMA_E2B_ONNX, light: GEMMA_E2B_ONNX_TEXT },
-    native: GEMMA_E2B_LITERTLM
+    web: { full: GEMMA_E4B_ONNX, light: GEMMA_E4B_ONNX_TEXT },
+    native: GEMMA_E4B_LITERTLM
 };
 
-/** Every model this build knows how to download. */
+/** Every model this build knows how to download or manage. */
 export const MODELS = {
     whisperTiny: WHISPER_TINY,
-    gemmaOnnx: GEMMA_E2B_ONNX,
-    gemmaOnnxText: GEMMA_E2B_ONNX_TEXT,
-    gemmaLitertLm: GEMMA_E2B_LITERTLM,
+    gemmaOnnx: GEMMA_E4B_ONNX,
+    gemmaOnnxText: GEMMA_E4B_ONNX_TEXT,
+    gemmaLitertLm: GEMMA_E4B_LITERTLM,
+    gemmaE2bOnnx: GEMMA_E2B_ONNX,
+    gemmaE2bLitertLm: GEMMA_E2B_LITERTLM,
     embeddingGemma: EMBEDDING_GEMMA_ONNX
 };
 
 export const tierModels = (tier, { native = false } = {}) => {
-    if (tier === 'full') return [native ? GEMMA_E2B_LITERTLM : GEMMA_E2B_ONNX];
-    if (tier === 'light') return [WHISPER_TINY, native ? GEMMA_E2B_LITERTLM : GEMMA_E2B_ONNX_TEXT];
+    if (tier === 'full') return [native ? GEMMA_E4B_LITERTLM : GEMMA_E4B_ONNX];
+    if (tier === 'light') return [WHISPER_TINY, native ? GEMMA_E4B_LITERTLM : GEMMA_E4B_ONNX_TEXT];
     return [];
 };
 

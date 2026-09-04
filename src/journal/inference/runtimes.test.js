@@ -7,7 +7,7 @@ import { parseModelJson, firstObject, REPAIRS } from './parse';
 import { PROPOSAL_SCHEMA, PROPOSAL_GRAMMAR_SCHEMA, checkSchema, schemaFeelingIds, schemaTags } from './schema';
 import { TIERS, effectiveTier, tierFromMemory, FULL_TIER_NEEDS_64_BIT } from './tier';
 import { RUNTIME_IDS, INPUT_MODES } from './contract';
-import { GEMMA_E2B_ONNX, GEMMA_E2B_ONNX_TEXT, WHISPER_TINY, tierModels } from './models';
+import { GEMMA_E4B_ONNX, GEMMA_E4B_ONNX_TEXT, WHISPER_TINY, tierModels } from './models';
 import { CONTEXT_TAGS } from '../../constants/contextTags';
 
 /* 1. Which runtime a tier gets */
@@ -17,13 +17,13 @@ describe('the tier picks the runtime', () => {
         tier,
         loadModel: async () => ({}),
         transcriber: { propose: async () => ({ transcript: 'x' }) },
-        proposer: { propose: async () => ({}), model: 'google/gemma-4-E2B-it' }
+        proposer: { propose: async () => ({}), model: 'google/gemma-4-E4B-it' }
     });
     const native = (tier) => createNativeRuntime({
         tier,
         plugin: {},
         transcriber: { propose: async () => ({ transcript: 'x' }) },
-        proposer: { propose: async () => ({}), model: 'google/gemma-4-E2B-it' }
+        proposer: { propose: async () => ({}), model: 'google/gemma-4-E4B-it' }
     });
 
     it('gives the Full tier one model over the audio, on both platforms', () => {
@@ -40,15 +40,15 @@ describe('the tier picks the runtime', () => {
     });
 
     it('downloads what the tier runs, and no more', () => {
-        expect(tierModels(TIERS.full)).toEqual([GEMMA_E2B_ONNX]);
-        expect(tierModels(TIERS.light)).toEqual([WHISPER_TINY, GEMMA_E2B_ONNX_TEXT]);
+        expect(tierModels(TIERS.full)).toEqual([GEMMA_E4B_ONNX]);
+        expect(tierModels(TIERS.light)).toEqual([WHISPER_TINY, GEMMA_E4B_ONNX_TEXT]);
         expect(tierModels(TIERS.textOnly)).toEqual([]);
 
-        const lightFiles = GEMMA_E2B_ONNX_TEXT.files.map(file => file.path);
+        const lightFiles = GEMMA_E4B_ONNX_TEXT.files.map(file => file.path);
         expect(lightFiles.some(path => path.includes('audio_encoder'))).toBe(false);
         expect(lightFiles.some(path => path.includes('vision_encoder'))).toBe(false);
         // And it is a strict subset, so a device promoted to Full re-uses every verified byte.
-        expect(GEMMA_E2B_ONNX.files.map(file => file.path)).toEqual(expect.arrayContaining(lightFiles));
+        expect(GEMMA_E4B_ONNX.files.map(file => file.path)).toEqual(expect.arrayContaining(lightFiles));
     });
 });
 
@@ -75,7 +75,7 @@ describe('the override', () => {
             proposer: { propose: async () => ({}) }
         });
         expect(runtime.id).toBe(RUNTIME_IDS.webLight);
-        expect(tierModels(pinned)).toEqual([WHISPER_TINY, GEMMA_E2B_ONNX_TEXT]);
+        expect(tierModels(pinned)).toEqual([WHISPER_TINY, GEMMA_E4B_ONNX_TEXT]);
     });
 
     it('keeps a 32-bit phone off the Full tier whatever its memory says', () => {
@@ -96,7 +96,7 @@ describe('the Light tier composition', () => {
     const parts = ({ heard = 'Lucie called.', proposal = { feelings: [], ambiguity: 'none' }, fail = null } = {}) => {
         const transcriber = { propose: vi.fn(async () => ({ transcript: heard, language: 'en', feelings: [], people: [], facts: [], ambiguity: 'feeling' })) };
         const proposer = {
-            model: 'google/gemma-4-E2B-it',
+            model: 'google/gemma-4-E4B-it',
             promptVersion: 1,
             propose: vi.fn(async () => { if (fail) throw new Error(fail); return proposal; })
         };
@@ -146,7 +146,7 @@ describe('the Light tier composition', () => {
 
     it('reports the proposer as the model and carries its prompt version', async () => {
         const { runtime } = parts();
-        expect(runtime.model).toBe('google/gemma-4-E2B-it');
+        expect(runtime.model).toBe('google/gemma-4-E4B-it');
         expect(runtime.promptVersion).toBe(1);
     });
 

@@ -1,5 +1,5 @@
 import { RUNTIME_IDS, INPUT_MODES, FAILURE_KINDS, InferenceError, TASKS, asProposal } from './contract';
-import { WHISPER_TINY, GEMMA_E2B_LITERTLM, PROPOSAL_MODEL } from './models';
+import { WHISPER_TINY, GEMMA_E4B_LITERTLM, GEMMA_E2B_LITERTLM, PROPOSAL_MODEL } from './models';
 import { createLightRuntime } from './light';
 import { buildPrompt, PROMPT_VERSION } from './prompt';
 import { buildRitualPrompt, buildRitualSchema } from './ritual';
@@ -53,7 +53,7 @@ export const createNativeTranscriber = (options = {}) => {
 export const createNativeProposer = (options = {}) => {
     const {
         plugin = AlqJournal,
-        model = GEMMA_E2B_LITERTLM,
+        model = GEMMA_E4B_LITERTLM,
         tier = TIERS.full,
         language = null,
         idleUnloadMs = IDLE_UNLOAD_MS,
