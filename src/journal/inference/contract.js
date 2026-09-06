@@ -7,6 +7,12 @@ export const RUNTIME_IDS = {
     nativeLight: 'native-light',
     /** Light tier, web: the same pair, in the browser. */
     webLight: 'web-light',
+    /**
+     * Not a tier: Gemini, reached through this app's own server, audio in and JSON out in
+     * one pass. Opt-in, off by default, and the only runtime whose model is not on the
+     * device — which is why the id says so on every entry it helped with.
+     */
+    cloud: 'gemini',
     /** Tests only. Never in the app's import graph — see `fake.js`. */
     fake: 'fake'
 };

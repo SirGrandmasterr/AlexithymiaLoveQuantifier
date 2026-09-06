@@ -17,6 +17,15 @@ func main() {
 	// Initialize database connection
 	database.Connect()
 
+	// The Gemini relay is optional by design: with no key the journal runs its models on the
+	// device, which is the default deployment. Said once here so the operator does not have
+	// to infer it from a 503 later. The key itself is never logged.
+	if handlers.LoadGemini() {
+		log.Printf("Gemini journal proposals enabled (model: %s)", handlers.GeminiSettings().EffectiveModel())
+	} else {
+		log.Println("Gemini journal proposals disabled: GEMINI_API_KEY is not set")
+	}
+
 	r := gin.Default()
 
 	// Enable CORS for cross-subdomain and mobile client access
@@ -53,6 +62,12 @@ func main() {
 		protected.DELETE("/journal/entries/:id", handlers.DeleteJournalEntry)
 		protected.GET("/journal/days", handlers.GetJournalDays)
 		protected.DELETE("/journal/people/:id", handlers.DeleteJournalPerson)
+
+		// The Gemini relay. Behind the same auth as everything else, because it spends the
+		// operator's quota. `status` is what the settings screen asks before it offers the
+		// toggle; `propose` is the one hop off this machine, and it stores nothing.
+		protected.GET("/journal/propose/status", handlers.GeminiStatus)
+		protected.POST("/journal/propose", handlers.ProposeWithGemini)
 
 		// The vault: take everything out, put everything back, and see what is stored.
 		protected.GET("/export", handlers.ExportVault)

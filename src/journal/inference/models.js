@@ -221,6 +221,29 @@ export const PROPOSAL_MODEL = {
     native: GEMMA_E4B_LITERTLM
 };
 
+/**
+ * The model behind the Gemini option (§5.5b) — **the one entry here with no files.**
+ *
+ * It is in this module because this is where the app keeps *what a model is and what it is
+ * called*, and the provenance block on a relayed entry records `model` from here exactly as
+ * it does for Gemma. Everything else about it is different, and the shape says so: no
+ * `files`, so nothing downloads and `totalBytes` is never asked; no `dtype`, because no
+ * session is opened here; and a `terms` rather than a `licence`, because open weights under
+ * Apache 2.0 and a hosted API under someone's terms of service are not the same kind of
+ * promise, and the settings copy must not imply they are.
+ *
+ * `id` is the default. The server is the authority — it is the machine holding the key and
+ * the model name — so `cloudProposalStatus` overrides it with whatever the operator
+ * configured, and that is what lands in provenance.
+ */
+export const GEMINI_MODEL = {
+    id: 'gemini-2.5-flash',
+    label: 'Gemini',
+    terms: 'Google\'s API terms',
+    /** Where the request goes, so the settings screen can name it without hard-coding a host. */
+    provider: 'Google'
+};
+
 /** Every model this build knows how to download or manage. */
 export const MODELS = {
     whisperTiny: WHISPER_TINY,

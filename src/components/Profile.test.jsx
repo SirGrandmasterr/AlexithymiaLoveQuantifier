@@ -5,7 +5,7 @@ import axios from 'axios';
 
 import Profile from './Profile';
 import {
-    EMBEDDING_GEMMA_ONNX, EMBEDDING_MODEL, PROPOSAL_MODEL,
+    EMBEDDING_GEMMA_ONNX, EMBEDDING_MODEL, GEMINI_MODEL, PROPOSAL_MODEL,
     formatBytes, modelSize, setBytes, setLabel, tierModels
 } from '../journal/inference/models';
 import {
@@ -20,11 +20,13 @@ import {
 } from '../constants/journal';
 import {
     readAskWho,
+    readCloudProposals,
     readEmbeddings,
     readOptionalQuestions,
     readRitualSetting
 } from '../constants/journalSettings';
 import { setNativeTierReport } from '../journal/inference/tier';
+import { setCloudReport } from '../journal/inference/cloud';
 
 vi.mock('axios');
 
@@ -45,6 +47,9 @@ const questionButton = (id) => document.querySelector(`[data-question="${id}"]`)
 beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    // The server's answer is cached for the session; a test that does not set one gets the
+    // default deployment, which is a server with no key.
+    setCloudReport(null);
     mockProfile();
 });
 
@@ -101,6 +106,77 @@ describe('the Journal settings section', () => {
         expect(document.querySelector('[data-embeddings-unavailable]')).toHaveTextContent(
             JOURNAL_COPY.settings.embeddings.unavailable
         );
+    });
+
+    /**
+     * §5.5b's toggle. Two things this block has to get right, and they pull in opposite
+     * directions: the option must not be offered where it cannot work, and what it *does*
+     * must be on screen before it can be tapped — including on the machines where it will
+     * never be available, because "you cannot have this" is not an excuse to stop saying
+     * what it would have done.
+     */
+    it('offers the Gemini toggle off, disabled, and named, when the server has no key', async () => {
+        setCloudReport({ available: false, model: 'gemini-2.5-flash' });
+        await renderProfile();
+
+        expect(control('cloud')).toBeInTheDocument();
+        expect(control('cloud')).toHaveAttribute('aria-pressed', 'false');
+        expect(control('cloud')).toBeDisabled();
+        expect(readCloudProposals()).toBe(false);
+
+        await waitFor(() => expect(document.querySelector('[data-cloud-unavailable]')).toHaveTextContent(
+            JOURNAL_COPY.settings.cloud.unavailable
+        ));
+        // Still said, and said here: the recording leaves the device, and the model is not
+        // open weights on it.
+        expect(document.querySelector('[data-cloud-audio]')).toHaveTextContent(
+            JOURNAL_COPY.settings.cloud.audio
+        );
+        expect(document.querySelector('[data-cloud-terms]')).toHaveTextContent(
+            fillCopy(JOURNAL_COPY.settings.cloud.terms, {
+                label: GEMINI_MODEL.label, provider: GEMINI_MODEL.provider, terms: GEMINI_MODEL.terms
+            })
+        );
+    });
+
+    it('names the model the server would call, once it says it has one', async () => {
+        setCloudReport({ available: true, model: 'gemini-2.5-pro' });
+        await renderProfile();
+
+        await waitFor(() => expect(control('cloud')).toBeEnabled());
+        expect(document.querySelector('[data-cloud-model]')).toHaveAttribute('data-cloud-model', 'gemini-2.5-pro');
+        expect(document.querySelector('[data-cloud-model]')).toHaveTextContent(
+            fillCopy(JOURNAL_COPY.settings.cloud.model, { model: 'gemini-2.5-pro' })
+        );
+    });
+
+    it('turns on, and stops claiming that nothing here is sent anywhere', async () => {
+        setCloudReport({ available: true, model: 'gemini-2.5-flash' });
+        await renderProfile();
+        await waitFor(() => expect(control('cloud')).toBeEnabled());
+
+        await userEvent.click(control('cloud'));
+
+        expect(control('cloud')).toHaveAttribute('aria-pressed', 'true');
+        expect(readCloudProposals(true)).toBe(true);
+        // The section's own subheading. A page that describes the settings above it wrongly
+        // is the same failure as a Vault claim that does.
+        expect(document.querySelector('[data-journal-subheading]'))
+            .toHaveAttribute('data-journal-subheading', 'cloud');
+        expect(screen.getByText(JOURNAL_COPY.settings.subheadingCloud)).toBeInTheDocument();
+        expect(screen.queryByText(JOURNAL_COPY.settings.subheading)).not.toBeInTheDocument();
+    });
+
+    it('refuses a switch the server will not honour, visibly rather than silently', async () => {
+        // Turned on elsewhere, or before the operator removed the key. The writer refuses the
+        // `true` and what it stored is what goes on screen.
+        localStorage.setItem(JOURNAL_STORAGE_KEYS.cloud, 'true');
+        setCloudReport({ available: false, model: 'gemini-2.5-flash' });
+
+        await renderProfile();
+
+        await waitFor(() => expect(control('cloud')).toHaveAttribute('aria-pressed', 'false'));
+        expect(JSON.parse(localStorage.getItem(JOURNAL_STORAGE_KEYS.cloud))).toBe(false);
     });
 
     it('says the size before anything moves, and only once it is turned on', async () => {
@@ -283,7 +359,13 @@ const allowed = new Set([
     }),
     fillCopy(JOURNAL_COPY.settings.embeddings.downloadOffer, {
         label: EMBEDDING_MODEL.label, size: modelSize(EMBEDDING_GEMMA_ONNX)
-    })
+    }),
+    // §5.5b's terms line, which is on screen whether or not the option is on offer — where
+    // the model runs is part of deciding, not a detail revealed afterwards.
+    fillCopy(JOURNAL_COPY.settings.cloud.terms, {
+        label: GEMINI_MODEL.label, provider: GEMINI_MODEL.provider, terms: GEMINI_MODEL.terms
+    }),
+    fillCopy(JOURNAL_COPY.settings.cloud.model, { model: GEMINI_MODEL.id })
 ]);
 
 const wordsInSection = () => [...section().querySelectorAll('*')]

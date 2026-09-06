@@ -247,7 +247,9 @@ export const JOURNAL_STORAGE_KEYS = {
     embeddings: 'alq:journal-embeddings',
     keepTranscripts: 'alq:journal-keep-transcripts',
     language: 'alq:journal-language',
-    tier: 'alq:journal-tier'
+    tier: 'alq:journal-tier',
+    // The Gemini option (§5.5b). Off by default, and per device like every key here.
+    cloud: 'alq:journal-cloud'
 };
 
 /** The ritual's default time, if the user never picks one. */
@@ -509,6 +511,10 @@ export const JOURNAL_COPY = {
     settings: {
         heading: 'Journal',
         subheading: 'All of this is per device, and none of it is sent anywhere.',
+        // The same sentence, minus the half that stops being true the moment the Gemini
+        // option is on. A settings page that describes the settings above it wrongly is the
+        // same failure as a Vault claim that does (§10.2, invariant 2e).
+        subheadingCloud: 'All of this is per device. Everything except the Gemini option below stays here.',
         // The two words a toggle shows for its own state. One pair for the whole section,
         // so a control cannot end up describing itself differently from the one beside it.
         on: 'On',
@@ -532,6 +538,10 @@ export const JOURNAL_COPY = {
         voice: {
             label: 'Voice check-ins',
             description: 'One model, and it runs on this device: Whisper tiny, open weights under the Apache 2.0 licence, downloaded once from this server. It writes down a voice note — the audio is never saved and never sent — and it is asked only what you said, never how you sounded. It reads the words back to you before anything is saved, and you tag them yourself. It switches off in your profile at any time.',
+            // The same block with the Gemini option on. Every clause that changes is a clause
+            // that would otherwise be false: which model, where it runs, and whether the
+            // recording stays here.
+            descriptionCloud: 'With the Gemini option on, a voice note is sent through this app\'s own server to Gemini, which writes it down and suggests what it was about in one pass. Nothing runs on this device and nothing is downloaded. It reads the words back to you before anything is saved, and you tag them yourself. It switches off in your profile at any time.',
             // Said before the download, never after it: §5.6 wants the size in front of the
             // user while the choice is still theirs.
             size: '{label}, {size}. It downloads once and stays on this device.',
@@ -551,7 +561,10 @@ export const JOURNAL_COPY = {
             label: 'Show suggestions',
             description: 'With this off, voice still writes the words down and you tag them yourself with chips.',
             // licence instead of saying there is none. It stays descriptive: what runs, where
-            model: '{label} suggests them, on this device, under the {licence} licence. Every suggestion waits for you to keep it or put it down.'
+            model: '{label} suggests them, on this device, under the {licence} licence. Every suggestion waits for you to keep it or put it down.',
+            // "On this device" is the half that stops being true under the Gemini option, so
+            // this variant says where it actually runs instead of dropping the clause.
+            modelCloud: '{label} suggests them, on {provider}\'s machines under {terms}. Every suggestion waits for you to keep it or put it down.'
         },
         embeddings: {
             label: 'Similar-entry suggestions and search',
@@ -570,6 +583,23 @@ export const JOURNAL_COPY = {
             // Named rather than hidden: a control that is not offered and says nothing about
             // why is a control that lies about being absent.
             unavailable: 'This device has nowhere to keep the numbers, so this stays off here.'
+        },
+        cloud: {
+            label: 'Use Gemini instead',
+            // The one control in this section that turns something *off* the device, so it
+            // says so first, plainly, before anything about what it buys. Everything the
+            // Vault page will claim once it is on is stated here while the choice is still
+            // the user's — the same rule the download size follows (§5.6).
+            description: 'Off by default. With this on, a voice check-in is sent to Google\'s Gemini through this app\'s own server, which holds the key — the recording leaves this device. Nothing is downloaded and nothing runs here, so a device that cannot hold the models can still speak its check-ins. What comes back is still a proposal you confirm chip by chip, and it is never saved on its own.',
+            // Named rather than implied: an API under someone's terms is not open weights
+            // under a licence, and the two must not read alike.
+            terms: '{label} runs on {provider}\'s machines under {terms}, not as open weights on yours. The recording and the words are sent; nothing else about you is.',
+            // The recording itself, which is the sentence a user actually wants.
+            audio: 'The recording is sent as it was made and is not kept — not here, not on your server, and by Google only under whatever their terms say at the time you turn this on.',
+            // Said where it is true. Availability is the server's answer, not the device's.
+            unavailable: 'The server this app talks to has no Gemini key, so this stays off here. Whoever runs it can set GEMINI_API_KEY to offer it.',
+            checking: 'Asking the server whether this is on offer…',
+            model: 'This server would use {model}.'
         },
         keepTranscripts: {
             label: 'Keep transcripts',

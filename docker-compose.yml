@@ -86,6 +86,12 @@ services:
       # Gin's debug mode logs every registered route and warns on stdout; release mode is
       # the production setting and stops leaking the route table into the logs.
       - GIN_MODE=release
+      # The Gemini relay (§5.5b). Unset by default and unset in .env.example, which is the
+      # whole point: with no key the journal runs its models on the device, the settings
+      # toggle is not offered, and every Vault claim about locality stays true. `:-` and not
+      # `:?` for exactly that reason — an empty value is a valid deployment, not a mistake.
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-}
     depends_on:
       postgres:
         condition: service_healthy
