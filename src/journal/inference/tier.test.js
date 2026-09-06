@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import {
     TIERS,
     captureCapabilities,
+    canCapture,
     missingCapability,
     detectTier,
     effectiveTier,
@@ -175,6 +176,62 @@ describe('voiceAvailability', () => {
         expect(refused.refused).toBe(TIERS.full);
         expect(refused.tier).toBe(TIERS.light);
         expect(refused.showMicrophone).toBe(true);
+    });
+
+    /* §5.5b: the tier stops deciding when there is no model to host */
+
+    it('offers voice on the text-only floor when Gemini is answering', () => {
+        const floor = voiceAvailability({ detected: TIERS.textOnly, voiceOn: true, cloud: true });
+
+        expect(floor.capable).toBe(true);
+        expect(floor.offerToggle).toBe(true);
+        expect(floor.showMicrophone).toBe(true);
+        // The tier is still what the device is. The option did not upgrade the machine, it
+        // moved the model off it — and a screen that says which is which needs both.
+        expect(floor.tier).toBe(TIERS.textOnly);
+        expect(floor.cloud).toBe(true);
+    });
+
+    it('still hides the microphone under discretion, whoever is answering', () => {
+        const discreet = voiceAvailability({
+            detected: TIERS.textOnly, voiceOn: true, cloud: true, discreet: true
+        });
+        expect(discreet.showMicrophone).toBe(false);
+        expect(discreet.showKeyboard).toBe(true);
+    });
+
+    it('says the tier answered when the option is off', () => {
+        expect(voiceAvailability({ detected: TIERS.full, voiceOn: true }).cloud).toBe(false);
+        expect(voiceAvailability({ detected: TIERS.textOnly, voiceOn: true, cloud: false }).capable).toBe(false);
+    });
+});
+
+describe('canCapture', () => {
+    const recording = {
+        isSecureContext: true,
+        navigator: { mediaDevices: { getUserMedia: () => { } } },
+        MediaRecorder: function MediaRecorder() { },
+        OfflineAudioContext: function OfflineAudioContext() { }
+    };
+
+    it('asks only for what a recording needs, not for what a model needs', () => {
+        // No WebAssembly, no SubtleCrypto, no Cache Storage — the three that are only there
+        // to run, verify and keep weights. This is what lets §5.5b reach a device the tier
+        // table puts on the floor.
+        expect(canCapture(recording)).toBe(true);
+        expect(missingCapability(captureCapabilities(recording))).toBe('wasm');
+    });
+
+    it('refuses a page that is not a secure context', () => {
+        expect(canCapture({ ...recording, isSecureContext: false })).toBe(false);
+    });
+
+    it('refuses a browser with no recorder', () => {
+        expect(canCapture({ ...recording, MediaRecorder: undefined })).toBe(false);
+    });
+
+    it('takes Android at its word, because capture there is the plugin\'s and not the WebView\'s', () => {
+        expect(canCapture({ navigator: {} }, { native: true })).toBe(true);
     });
 });
 

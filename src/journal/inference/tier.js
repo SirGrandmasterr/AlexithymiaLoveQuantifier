@@ -77,6 +77,28 @@ export const captureCapabilities = (view = globalThis) => ({
 /** The ones without which there is nothing to offer. WebGPU is deliberately not among them. */
 const REQUIRED = ['secureContext', 'microphone', 'recorder', 'audioContext', 'wasm', 'digest', 'storage'];
 
+/**
+ * The subset a *recording* needs, as against the ones a local model needs.
+ *
+ * The three that fall away — `wasm`, `digest`, `storage` — are all about hosting weights:
+ * running them, checking what was downloaded, and keeping it. With the model on a server
+ * (§5.5b) none of that applies, and a browser that can hold a microphone open can make a
+ * check-in. This is the whole reason the Gemini option can reach a text-only device.
+ */
+const CAPTURE_REQUIRED = ['secureContext', 'microphone', 'recorder', 'audioContext'];
+
+/**
+ * Whether this device can record at all, ignoring what it could run afterwards.
+ *
+ * `native` is a straight yes: on Android the capture path is the plugin's, not
+ * `MediaRecorder`'s, so the browser's answer describes the wrong thing. A phone without a
+ * microphone permission still reports the error it always did, at the moment of recording,
+ * with the copy that already exists for it (§4.2).
+ */
+export const canCapture = (view = globalThis, { native = false } = {}) => (
+    native || CAPTURE_REQUIRED.every(name => captureCapabilities(view)[name])
+);
+
 /** The first missing requirement, or `null`. What the unavailable copy is keyed on. */
 export const missingCapability = (capabilities) => REQUIRED.find(name => !capabilities[name]) || null;
 
@@ -108,15 +130,24 @@ export const effectiveTier = (detected, override) => {
 /** Both tiers that can carry the transcriber. `text-only` is the one that cannot. */
 export const canTranscribe = (tier) => tier === TIERS.full || tier === TIERS.light;
 
-export const voiceAvailability = ({ detected, override, voiceOn, discreet = false } = {}) => {
+/**
+ * @param {object} options
+ * @param {boolean} [options.cloud] whether the Gemini option (§5.5b) is on **and usable
+ *   here** — the caller resolves that, because it is a server's answer and a device's
+ *   ability to record, neither of which this module can see. When it is true the tier stops
+ *   deciding whether voice is on offer: there is no model to host.
+ */
+export const voiceAvailability = ({ detected, override, voiceOn, discreet = false, cloud = false } = {}) => {
     const { tier, refused } = effectiveTier(detected, override);
-    const capable = canTranscribe(tier);
+    const capable = canTranscribe(tier) || cloud === true;
     const showMicrophone = capable && voiceOn === true && !discreet;
 
     return {
         tier,
         refused,
         capable,
+        /** Which of the two answered `capable`. What the settings copy and the Vault page key on. */
+        cloud: cloud === true,
         // The setting may only be turned on where it could do something. A toggle that
         // stores `true` on a device that cannot record is a Vault claim waiting to be false.
         offerToggle: capable,

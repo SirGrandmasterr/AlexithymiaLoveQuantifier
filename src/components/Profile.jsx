@@ -14,6 +14,7 @@ import {
 } from '../constants/journal';
 import {
     readAskWho,
+    readCloudProposals,
     readKeepTranscripts,
     readLanguage,
     readEmbeddings,
@@ -23,6 +24,7 @@ import {
     readTierOverride,
     readVoiceSetting,
     writeAskWho,
+    writeCloudProposals,
     writeEmbeddings,
     writeKeepTranscripts,
     writeLanguage,
@@ -33,11 +35,12 @@ import {
     writeVoiceSetting
 } from '../constants/journalSettings';
 import {
-    canTranscribe, detectTier, effectiveTier, nativeTierReport, nominalMemoryGb, probeWebGpu
+    canCapture, canTranscribe, detectTier, effectiveTier, nativeTierReport, nominalMemoryGb, probeWebGpu
 } from '../journal/inference/tier';
+import { cloudReport, primeCloudStatus } from '../journal/inference/cloud';
 import { createModelSetDownloader } from '../journal/inference/download';
 import {
-    EMBEDDING_GEMMA_ONNX, EMBEDDING_MODEL, PROPOSAL_MODEL,
+    EMBEDDING_GEMMA_ONNX, EMBEDDING_MODEL, GEMINI_MODEL, PROPOSAL_MODEL,
     formatBytes, modelSize, setBytes, setLabel, tierModels
 } from '../journal/inference/models';
 import { embeddingsAvailable } from '../journal/embeddings/availability';
@@ -46,12 +49,32 @@ import {
     createNativeDownloader, primeNativeTier, removeAllNativeModels, getNativeModelStorage
 } from '../mobile/journalPlugin';
 
-const VoiceSettings = () => {
+/**
+ * @param {(on: boolean) => void} [onCloudChange] told whenever the Gemini switch settles on
+ *   a value — tapped, or refused by a server with no key. The section above owns a sentence
+ *   that depends on it, and a `const` read at render time would go stale on the tap.
+ */
+const VoiceSettings = ({ onCloudChange }) => {
     const native = isNative();
     const [detected, setDetected] = useState(() => detectTier());
     const [override, setOverride] = useState(readTierOverride);
     const { tier, refused } = effectiveTier(detected, override);
-    const capable = canTranscribe(tier);
+
+    /*
+     * §5.5b. `null` while the server is being asked, so the block can say it is asking
+     * rather than say "not on offer" and change its mind a moment later.
+     */
+    const [cloudOffered, setCloudOffered] = useState(() => cloudReport()?.available ?? null);
+    const [cloudModel, setCloudModel] = useState(() => cloudReport()?.model ?? GEMINI_MODEL.id);
+    const [cloud, setCloud] = useState(() => readCloudProposals(cloudReport()?.available === true));
+
+    // The microphone is all this path needs. A device that cannot record cannot use it
+    // either, and saying so here is what stops the toggle from being a switch over nothing.
+    const canRecord = canCapture(globalThis, { native });
+    const cloudUsable = cloud && canRecord;
+
+    // Voice is on offer where a model can run **or** where one can be reached.
+    const capable = canTranscribe(tier) || cloudUsable;
 
     const [voice, setVoice] = useState(() => readVoiceSetting(capable));
     const [suggestions, setSuggestions] = useState(readSuggestions);
@@ -65,10 +88,27 @@ const VoiceSettings = () => {
             if (!live) return;
             const now = detectTier();
             setDetected(now);
-            setVoice(readVoiceSetting(canTranscribe(effectiveTier(now, readTierOverride()).tier)));
+            const local = canTranscribe(effectiveTier(now, readTierOverride()).tier);
+            setVoice(readVoiceSetting(local || (readCloudProposals(cloudReport()?.available === true) && canRecord)));
         });
         return () => { live = false; };
-    }, [native]);
+    }, [native, canRecord]);
+
+    useEffect(() => {
+        let live = true;
+        primeCloudStatus().then((report) => {
+            if (!live) return;
+            setCloudOffered(report.available);
+            setCloudModel(report.model);
+            // A server that no longer has a key turns the switch off here rather than leaving
+            // a `true` behind that the Vault page would read as "the recording is being sent"
+            // — the same rule the tier pin follows for voice.
+            const settled = writeCloudProposals(readCloudProposals(true), report.available);
+            setCloud(settled);
+            onCloudChange?.(settled);
+        });
+        return () => { live = false; };
+    }, [onCloudChange]);
 
     const memoryGb = native ? nominalMemoryGb(nativeTierReport()?.totalMemoryBytes) : null;
 
@@ -92,13 +132,30 @@ const VoiceSettings = () => {
         setVoice(writeVoiceSetting(!voice, capable));
     };
 
+    /**
+     * The Gemini switch, and the one thing it has to clean up after itself.
+     *
+     * Turning it **off** on a device whose tier cannot transcribe takes voice with it. The
+     * alternative is a stored `true` for a microphone that has nothing behind it any more —
+     * the same stale-claim problem `pin` solves in the other direction.
+     */
+    const toggleCloud = () => {
+        const next = writeCloudProposals(!cloud, cloudOffered === true);
+        setCloud(next);
+        onCloudChange?.(next);
+        if (!canTranscribe(tier) && !(next && canRecord)) {
+            setVoice(writeVoiceSetting(false, false));
+        }
+    };
+
     const pin = (value) => {
         const next = value || null;
         setOverride(next);
         writeTierOverride(next);
         // Turning the tier down below what voice needs turns voice off with it, rather than
         // leaving a `true` behind that the Vault page would read as "a model is running".
-        if (!canTranscribe(effectiveTier(detected, next).tier)) {
+        // Unless Gemini is answering, in which case the tier was never what voice depended on.
+        if (!canTranscribe(effectiveTier(detected, next).tier) && !cloudUsable) {
             setVoice(writeVoiceSetting(false, false));
         }
     };
@@ -172,6 +229,62 @@ const VoiceSettings = () => {
                 ))}
             </select>
 
+            {/*
+                §5.5b, above the voice toggle rather than inside it, because on a device that
+                cannot host the models this is what makes voice possible at all — and because
+                it is the one control on this page that sends something off the machine. The
+                sentence that says so is on screen before the switch can be tapped.
+            */}
+            <div className="mt-6" data-cloud-settings>
+                <button
+                    type="button"
+                    data-setting="cloud"
+                    disabled={cloudOffered !== true}
+                    onClick={toggleCloud}
+                    aria-pressed={cloud}
+                    className={`w-full sm:w-auto flex items-center justify-between gap-4 px-5 py-3 min-h-[48px] border rounded-xl font-medium transition-all text-sm ${cloud
+                        ? 'bg-slate-800 text-white border-slate-800'
+                        : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 disabled:opacity-40 disabled:hover:border-slate-200'
+                        }`}
+                >
+                    <span>{JOURNAL_COPY.settings.cloud.label}</span>
+                    <span className={`text-xs ${cloud ? 'text-slate-300' : 'text-slate-400'}`}>
+                        {cloud ? JOURNAL_COPY.settings.on : JOURNAL_COPY.settings.off}
+                    </span>
+                </button>
+
+                <p className="mt-3 text-xs text-slate-400 font-light leading-relaxed max-w-md">
+                    {JOURNAL_COPY.settings.cloud.description}
+                </p>
+                {/* Not conditional on the switch: what the recording does is part of deciding. */}
+                <p className="mt-2 text-xs text-slate-400 font-light leading-relaxed max-w-md" data-cloud-audio>
+                    {JOURNAL_COPY.settings.cloud.audio}
+                </p>
+                <p className="mt-2 text-xs text-slate-400 font-light leading-relaxed max-w-md" data-cloud-terms>
+                    {fillCopy(JOURNAL_COPY.settings.cloud.terms, {
+                        label: GEMINI_MODEL.label,
+                        provider: GEMINI_MODEL.provider,
+                        terms: GEMINI_MODEL.terms
+                    })}
+                </p>
+
+                {cloudOffered === null && (
+                    <p className="mt-2 text-xs text-slate-500 font-light" data-cloud-checking>
+                        {JOURNAL_COPY.settings.cloud.checking}
+                    </p>
+                )}
+                {cloudOffered === false && (
+                    <p className="mt-2 text-xs text-slate-500 font-light" data-cloud-unavailable>
+                        {JOURNAL_COPY.settings.cloud.unavailable}
+                    </p>
+                )}
+                {cloudOffered === true && (
+                    <p className="mt-2 text-xs text-slate-400 font-light" data-cloud-model={cloudModel}>
+                        {fillCopy(JOURNAL_COPY.settings.cloud.model, { model: cloudModel })}
+                    </p>
+                )}
+            </div>
+
             <div className="mt-6">
                 {!capable ? (
                     // No toggle at all where it could not work. §9.4's sentence, and the
@@ -199,16 +312,22 @@ const VoiceSettings = () => {
                             </span>
                         </button>
 
-                        <p className="mt-3 text-xs text-slate-400 font-light leading-relaxed max-w-md">
-                            {JOURNAL_COPY.settings.voice.description}
+                        <p className="mt-3 text-xs text-slate-400 font-light leading-relaxed max-w-md" data-voice-runtime={cloudUsable ? 'cloud' : 'device'}>
+                            {cloudUsable
+                                ? JOURNAL_COPY.settings.voice.descriptionCloud
+                                : JOURNAL_COPY.settings.voice.description}
                         </p>
-                        <p className="mt-2 text-xs text-slate-400 font-light">
-                            {onDevice
-                                ? JOURNAL_COPY.settings.voice.downloaded
-                                : fillCopy(JOURNAL_COPY.settings.voice.size, {
-                                    label: setLabel(models), size: formatBytes(setBytes(models))
-                                })}
-                        </p>
+                        {/* A download line under a runtime that downloads nothing would be
+                            an offer to fetch weights this device is not going to open. */}
+                        {!cloudUsable && (
+                            <p className="mt-2 text-xs text-slate-400 font-light">
+                                {onDevice
+                                    ? JOURNAL_COPY.settings.voice.downloaded
+                                    : fillCopy(JOURNAL_COPY.settings.voice.size, {
+                                        label: setLabel(models), size: formatBytes(setBytes(models))
+                                    })}
+                            </p>
+                        )}
 
                         {(onDevice || storedBytes > 0) && (
                             <div className="flex flex-wrap gap-2 mt-3">
@@ -254,10 +373,16 @@ const VoiceSettings = () => {
                                     {JOURNAL_COPY.settings.suggestions.description}
                                 </p>
                                 <p className="mt-2 text-xs text-slate-400 font-light leading-relaxed max-w-md" data-suggestions-model>
-                                    {fillCopy(JOURNAL_COPY.settings.suggestions.model, {
-                                        label: PROPOSAL_MODEL.label,
-                                        licence: PROPOSAL_MODEL.licence
-                                    })}
+                                    {cloudUsable
+                                        ? fillCopy(JOURNAL_COPY.settings.suggestions.modelCloud, {
+                                            label: GEMINI_MODEL.label,
+                                            provider: GEMINI_MODEL.provider,
+                                            terms: GEMINI_MODEL.terms
+                                        })
+                                        : fillCopy(JOURNAL_COPY.settings.suggestions.model, {
+                                            label: PROPOSAL_MODEL.label,
+                                            licence: PROPOSAL_MODEL.licence
+                                        })}
                                 </p>
                             </div>
                         )}
@@ -439,6 +564,10 @@ const EmbeddingSettings = () => {
 };
 
 const JournalSettings = () => {
+    // The section's own subheading claims nothing here is sent anywhere, which the Gemini
+    // option makes false. State rather than a read at render time: the switch lives in the
+    // block below, and this sentence has to move on the same tap.
+    const [cloudOn, setCloudOn] = useState(() => readCloudProposals(cloudReport()?.available === true));
     const [ritual, setRitual] = useState(readRitualSetting);
     const [questions, setQuestions] = useState(readOptionalQuestions);
     const [askWho, setAskWho] = useState(readAskWho);
@@ -476,7 +605,9 @@ const JournalSettings = () => {
                 <NotebookPen size={18} />
                 <h3>{JOURNAL_COPY.settings.heading}</h3>
             </div>
-            <p className="text-xs text-slate-400 font-light mb-4">{JOURNAL_COPY.settings.subheading}</p>
+            <p className="text-xs text-slate-400 font-light mb-4" data-journal-subheading={cloudOn ? 'cloud' : 'device'}>
+                {cloudOn ? JOURNAL_COPY.settings.subheadingCloud : JOURNAL_COPY.settings.subheading}
+            </p>
 
             <button
                 type="button"
@@ -576,7 +707,7 @@ const JournalSettings = () => {
                 </p>
             </div>
 
-            <VoiceSettings />
+            <VoiceSettings onCloudChange={setCloudOn} />
             <EmbeddingSettings />
         </div>
     );

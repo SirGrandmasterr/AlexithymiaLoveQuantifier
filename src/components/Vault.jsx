@@ -7,6 +7,7 @@ import { hashPassphrase, readLockHash, setLockHash, isLockAvailable } from './Ap
 import { readEmbeddings, readVoiceSetting } from '../constants/journalSettings';
 import { embeddingsAvailable } from '../journal/embeddings/availability';
 import { canTranscribe, detectTier, TIERS } from '../journal/inference/tier';
+import { cloudIsOn, primeCloudStatus } from '../journal/inference/cloud';
 import { MAX_CLIP_MS, SILENCE_HOLD_MS } from '../journal/recorder';
 import { isNative } from '../mobile/platform';
 
@@ -66,8 +67,37 @@ export const AI_CLAIM = {
         + 'snapshots. They switch off in your profile at any time.'
 };
 
-/** Which of the two *voice on* paragraphs describes this device. */
-export const aiClaimFor = (tier) => (tier === TIERS.light ? AI_CLAIM.onLight : AI_CLAIM.on);
+/**
+ * The fourth variant: §5.5b's Gemini option, and the one state in which this page cannot say
+ * *"on this device"* about anything.
+ *
+ * It is a separate paragraph rather than an edit to the other three because every promise
+ * they make is a promise about locality, and each one is false here in a different way: the
+ * model is not open weights, it was not downloaded, it does not run here, and **the audio is
+ * sent**. Three of those are matters of accuracy; the fourth is the reason this page exists.
+ * So the paragraph leads with it.
+ *
+ * What survives from the on-device variants, because the code still makes it true: the model
+ * is asked only what was said (the same prompt, rule 3), every suggestion waits for a tap
+ * (`buildProvenance` reads the card's confirmed state, not the proposal), it never touches a
+ * love snapshot, and it switches off in the profile.
+ */
+export const AI_CLAIM_CLOUD = 'One model, and it does not run here: your voice note is sent, '
+    + 'as it was recorded, through this app\'s own server to Google\'s Gemini. The server '
+    + 'holds the key; your browser still talks to nothing but this app. Gemini **writes down** '
+    + 'the note and **suggests** feelings, people and triggers from what was said, in one '
+    + 'pass — it is asked only what you said, never how you sounded. **The recording is not '
+    + 'kept**, here or on the server, and what Google does with it is governed by their terms '
+    + 'and not by this app. Every suggestion still waits for you to confirm, change, or '
+    + 'discard it — **nothing it proposes is saved on its own**, and it never touches your '
+    + 'love snapshots. It switches off in your profile at any time, and with it off no '
+    + 'journal audio leaves this device.';
+
+/** Which of the *voice on* paragraphs describes this device. */
+export const aiClaimFor = (tier, cloud = false) => {
+    if (cloud === true) return AI_CLAIM_CLOUD;
+    return tier === TIERS.light ? AI_CLAIM.onLight : AI_CLAIM.on;
+};
 
 /**
  * §10.2's *"What about the similar-entry suggestions?"* — G1, and **two variants where the
@@ -119,6 +149,31 @@ export const SIMILAR_CLAIM = {
         + 'in your profile at any time.'
 };
 
+/**
+ * §10.2's *"What does the app send anywhere?"*, which needed a second variant the moment a
+ * request could leave the operator's machine.
+ *
+ * The first sentence of the existing answer is *"Nothing."* — and with the Gemini option on
+ * that is false, not narrowly but in the way this page is least allowed to be wrong. What is
+ * still exactly true, and what the `cloud` variant leads with, is the part a user can check
+ * themselves: **the browser** still talks only to this app's origin. The hop is the server's,
+ * it is one endpoint, and it carries the recording and nothing else.
+ */
+export const SEND_CLAIM = {
+    off: 'Nothing. Every request goes to this app\'s own origin — you can check that in your '
+        + 'browser\'s network tab. There is no analytics, no telemetry, and no third-party '
+        + 'script. **If you turn on voice check-ins, the speech and language model files are '
+        + 'downloaded once, from this same server, and run here.**',
+
+    cloud: 'One thing, because you turned it on. Your browser still sends every request to '
+        + 'this app\'s own origin — you can check that in your browser\'s network tab — and '
+        + 'there is still no analytics, no telemetry, and no third-party script. But **with '
+        + 'the Gemini option on, the server forwards your voice notes to Google** so they can '
+        + 'be written down and labelled. Nothing else goes with them: not your name, not your '
+        + 'people, not your scores, not your other entries. Turn it off in your profile and '
+        + 'nothing leaves this machine again.'
+};
+
 export const embeddingsAreOn = () => readEmbeddings(embeddingsAvailable());
 
 /** The `**bold**` runs §10.2 writes, rendered without a markdown dependency for two words. */
@@ -126,7 +181,12 @@ const emphasised = (text) => text.split(/\*\*(.+?)\*\*/g).map((part, index) => (
     index % 2 === 1 ? <strong key={index} className="font-medium text-slate-700">{part}</strong> : part
 ));
 
-export const voiceIsOn = () => readVoiceSetting(canTranscribe(detectTier()));
+/**
+ * Whether a model would answer a check-in on this device, by either route. The Gemini option
+ * makes voice possible where the tier cannot, so asking the tier alone would leave a
+ * text-only phone reading *"None are running"* while its recordings were being sent.
+ */
+export const voiceIsOn = () => readVoiceSetting(canTranscribe(detectTier()) || cloudIsOn());
 
 const readLastExport = () => {
     try {
@@ -276,10 +336,15 @@ export default function Vault() {
     const [lockSet, setLockSet] = useState(() => Boolean(readLockHash()));
     // Read once, like the lock hash beside it: the settings screen is a different route,
     // so this page is remounted after any change that could move it.
-    const [voiceOn] = useState(voiceIsOn);
+    const [voiceOn, setVoiceOn] = useState(voiceIsOn);
     // Which paragraph describes this device: one model on the Full tier, two on the Light
     // one. Read once, like every other fact on this page.
     const [voiceTier] = useState(() => detectTier());
+    // The fourth: Gemini. Unlike everything else on this page it cannot be read once at
+    // mount, because half the answer is the server's — so it is asked, and the two claims it
+    // governs are re-read when it comes back rather than describing the wrong device in the
+    // meantime.
+    const [cloudOn, setCloudOn] = useState(cloudIsOn);
     const [similarOn] = useState(embeddingsAreOn);
     const [passphrase, setPassphrase] = useState('');
 
@@ -288,6 +353,16 @@ export default function Vault() {
         axios.get('/api/meta')
             .then(response => { if (!cancelled) setMeta(response.data); })
             .catch(() => { if (!cancelled) setMetaError('Could not read your storage details.'); });
+        return () => { cancelled = true; };
+    }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+        primeCloudStatus().then(() => {
+            if (cancelled) return;
+            setCloudOn(cloudIsOn());
+            setVoiceOn(voiceIsOn());
+        });
         return () => { cancelled = true; };
     }, []);
 
@@ -498,20 +573,17 @@ export default function Vault() {
                         </div>
                         <div>
                             <dt className="font-medium text-slate-800">What does the app send anywhere?</dt>
-                            <dd className="text-slate-600 mt-1">
-                                Nothing. Every request goes to this app's own origin — you can check that in
-                                your browser's network tab. There is no analytics, no telemetry, and no
-                                third-party script.{' '}
-                                <span className="font-medium text-slate-700">
-                                    If you turn on voice check-ins, the speech and language model files
-                                    are downloaded once, from this same server, and run here.
-                                </span>
+                            <dd className="text-slate-600 mt-1" data-send-claim={cloudOn ? 'cloud' : 'off'}>
+                                {emphasised(cloudOn ? SEND_CLAIM.cloud : SEND_CLAIM.off)}
                             </dd>
                         </div>
                         <div>
                             <dt className="font-medium text-slate-800">What about AI features?</dt>
-                            <dd className="text-slate-600 mt-1" data-ai-claim={voiceOn ? 'on' : 'off'}>
-                                {emphasised(voiceOn ? aiClaimFor(voiceTier) : AI_CLAIM.off)}
+                            <dd
+                                className="text-slate-600 mt-1"
+                                data-ai-claim={voiceOn ? (cloudOn ? 'cloud' : 'on') : 'off'}
+                            >
+                                {emphasised(voiceOn ? aiClaimFor(voiceTier, cloudOn) : AI_CLAIM.off)}
                             </dd>
                         </div>
                         <div>

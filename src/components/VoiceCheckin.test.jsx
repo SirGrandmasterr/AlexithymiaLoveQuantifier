@@ -9,9 +9,11 @@ import { createFakeJournalPlugin } from '../mobile/journalPlugin.fake';
 import { DiscretionProvider } from '../context/DiscretionContext';
 import { SubjectsProvider } from '../context/SubjectsContext';
 import { JournalProvider } from '../context/JournalContext';
-import { JOURNAL_COPY, fillCopy } from '../constants/journal';
+import { JOURNAL_COPY, JOURNAL_STORAGE_KEYS, fillCopy } from '../constants/journal';
 import { createFakeRuntime, proposalFixture } from '../journal/inference/fake';
 import { buildContext } from '../journal/inference';
+import { RUNTIME_IDS } from '../journal/inference/contract';
+import { setCloudReport } from '../journal/inference/cloud';
 import { WHISPER_TINY, modelSize } from '../journal/inference/models';
 
 vi.mock('axios');
@@ -429,5 +431,57 @@ describe('the Android kit', () => {
         expect(call.args).not.toHaveProperty('audio');
         await waitFor(() => expect(plugin.names()).toContain('releaseClip'));
         expect(plugin.clips.size).toBe(0);
+    });
+});
+
+/* 9. The Gemini kit (§5.5b) */
+
+describe('the Gemini kit', () => {
+    afterEach(() => setCloudReport(null));
+
+    const recording = () => {
+        Object.defineProperty(window, 'isSecureContext', { value: true, configurable: true });
+        Object.defineProperty(navigator, 'mediaDevices', {
+            value: { getUserMedia: () => { } }, configurable: true
+        });
+        window.MediaRecorder = function MediaRecorder() { };
+        window.OfflineAudioContext = function OfflineAudioContext() { };
+    };
+
+    it('is not built unless the user asked for it, whatever the server offers', () => {
+        setCloudReport({ available: true, model: 'gemini-2.5-flash' });
+        recording();
+
+        expect(createVoiceKit({ native: false, tier: 'full' }).cloud).toBeUndefined();
+    });
+
+    it('holds the relay runtime and no model set once it is on', () => {
+        setCloudReport({ available: true, model: 'gemini-2.5-pro' });
+        recording();
+        localStorage.setItem(JOURNAL_STORAGE_KEYS.cloud, 'true');
+
+        const kit = createVoiceKit({ native: false, tier: 'text-only' });
+
+        expect(kit.cloud).toBe(true);
+        expect(kit.runtime.id).toBe(RUNTIME_IDS.cloud);
+        // Nothing to download, so nothing is offered: `models` is empty and the downloader
+        // says the model is already here.
+        expect(kit.models).toEqual([]);
+        expect(kit.size).toBe('');
+        expect(kit.runtime.model).toBe('gemini-2.5-pro');
+    });
+
+    it('offers the microphone on the tier that could never run a model', async () => {
+        setCloudReport({ available: true, model: 'gemini-2.5-flash' });
+        recording();
+        localStorage.setItem(JOURNAL_STORAGE_KEYS.cloud, 'true');
+
+        const kit = { ...createVoiceKit({ native: false, tier: 'text-only' }), recorder: fakeRecorder() };
+        renderCapture(kit);
+
+        // The download block is what a text-only device would otherwise be shown; here the
+        // record button is up immediately, because there is nothing to wait for.
+        expect(await screen.findByTitle(JOURNAL_COPY.voice.openHint)).toBeInTheDocument();
+        expect(document.querySelector('[data-voice-block]')).toHaveAttribute('data-voice-block', 'capture');
     });
 });

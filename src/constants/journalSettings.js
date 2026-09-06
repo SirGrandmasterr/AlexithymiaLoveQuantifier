@@ -98,6 +98,28 @@ export const writeLanguage = (code) => writeJSON(
     typeof code === 'string' && /^[a-z]{2}$/.test(code) ? code : null
 );
 
+/* §5.5b: the Gemini option */
+
+/**
+ * Whether this device sends its check-ins to Gemini through the server (§5.5b).
+ *
+ * Off by default, and — like the voice and index toggles — it may only be **on** where it
+ * could do something. `available` is the server's answer (`cloudProposalStatus`), so a
+ * device whose server lost its key reads `false` here without anything having to rewrite the
+ * key: the toggle goes off on the screen, and the Vault page stops claiming a hop that is not
+ * happening.
+ */
+export const readCloudProposals = (available = true) => (
+    available === true && readJSON(JOURNAL_STORAGE_KEYS.cloud, false) === true
+);
+
+/** Returns what was actually stored, so a caller can tell a refusal from a change. */
+export const writeCloudProposals = (on, available = true) => {
+    const next = on === true && available === true;
+    writeJSON(JOURNAL_STORAGE_KEYS.cloud, next);
+    return next;
+};
+
 /** The tier the user pinned, or `null` for "whatever this device reports" (§5.5, C3). */
 export const readTierOverride = () => {
     const stored = readJSON(JOURNAL_STORAGE_KEYS.tier, null);

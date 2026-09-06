@@ -29,6 +29,8 @@ Route table: [`backend/cmd/server/main.go:17-35`](../backend/cmd/server/main.go#
 | DELETE | `/api/journal/entries/:id` | Bearer | [`DeleteJournalEntry`](../backend/internal/handlers/journal.go) |
 | GET | `/api/journal/days` | Bearer | [`GetJournalDays`](../backend/internal/handlers/journal.go) |
 | DELETE | `/api/journal/people/:id` | Bearer | [`DeleteJournalPerson`](../backend/internal/handlers/journal.go) |
+| GET | `/api/journal/propose/status` | Bearer | [`GeminiStatus`](../backend/internal/handlers/gemini.go) |
+| POST | `/api/journal/propose` | Bearer | [`ProposeWithGemini`](../backend/internal/handlers/gemini.go) |
 | GET | `/api/export` | Bearer | [`ExportVault`](../backend/internal/handlers/vault.go) |
 | POST | `/api/import` | Bearer | [`ImportVault`](../backend/internal/handlers/vault.go) |
 | GET | `/api/meta` | Bearer | [`GetMeta`](../backend/internal/handlers/vault.go) |
@@ -760,6 +762,96 @@ recreate the person.
 **This is not a relationship delete.** The relationship, its snapshots and its cadence are
 untouched; the two actions live on different screens with different dialogs, and neither
 implies the other.
+
+---
+
+## 5b. The Gemini relay
+
+Two endpoints, and **the only place in this codebase that talks to a third party.** They exist
+because §5.5's bottom tier — a phone or a browser that cannot host three gigabytes of weights
+— otherwise loses voice check-ins entirely: with these, the model is reached instead of run,
+and the device needs nothing but a microphone.
+
+Four things are true of both, and each is a claim the Vault page makes:
+
+- **The browser never talks to Google.** `connect-src 'self'` in `nginx.conf` is unchanged.
+  The client posts to its own origin and this server makes the hop.
+- **The key is the operator's.** `GEMINI_API_KEY` is read from the environment at startup like
+  `JWT_SECRET`, sent to Google in the `x-goog-api-key` **header** — never a query string, which
+  would put it in access logs — and never returned to a client in any form.
+- **Nothing is stored.** The audio is a request body that becomes an upstream request body.
+  There is no row, no file, and no log line carrying the note or the answer.
+- **It is off unless a key is set.** With none, `status` says so and `propose` answers `503`.
+  That is the default deployment, not a broken one.
+
+**The relay does not understand the journal.** It forwards a prompt and some audio and returns
+the model's text verbatim. [§5.2](../product_vision/06-emotional-journal.md)'s schema, the
+closed vocabularies, the JSON repairs and the validator all stay on the client, where they run
+for every other runtime — `validate.js` has to run regardless of who answered, and a second
+implementation of the contract in Go would be a second thing to keep in step with it.
+
+### `GET /api/journal/propose/status`
+
+What the settings screen asks before it offers the toggle, so a user is never given a switch
+that turns nothing on — the rule the voice and index toggles already follow.
+
+```json
+{ "available": true, "model": "gemini-2.5-flash" }
+```
+
+| Field | Meaning |
+| :---- | :------ |
+| `available` | Whether a key is set. Nothing else about it is said. |
+| `model` | What this server would call. The configured `GEMINI_MODEL`, or the default. Reported even when `available` is `false`, so the settings copy can name it while explaining that it is not on offer. |
+
+The client caches this for the session (`primeCloudStatus`) and every screen reads that one
+answer, so the journal and the profile cannot disagree about what is on offer.
+
+### `POST /api/journal/propose`
+
+One note, one pass. The recording goes up **as a recording**: Gemini is natively multimodal, so
+there is no transcriber in front of it and no second model.
+
+```json
+{
+  "system": "You label a spoken note for one person's private journal. …",
+  "text": "Listen to the note and answer with the JSON object.",
+  "audio": { "mime_type": "audio/wav", "data": "<base64>" }
+}
+```
+
+| Field | Rules |
+| :---- | :---- |
+| `system` | Required, at most 32,000 characters. The prompt the client built from the closed vocabularies and this user's own names and trigger labels ([§5.3](../product_vision/06-emotional-journal.md)) — which is why it is built there and forwarded rather than assembled here. |
+| `text` | At most 8,000 characters. The instruction that accompanies the audio, or the note itself in text mode. Required when there is no `audio`. |
+| `audio` | Optional. `mime_type` must be one Gemini accepts inline — `audio/wav` is what both recorders produce; a `; codecs=…` parameter is stripped. `data` is base64 without a `data:` prefix, at most 12 MB, and is validated as base64 but never decoded and kept. |
+
+The answer is the model's raw text and the model that produced it:
+
+```json
+{ "text": "{\"transcript\":\"I had a nice day with Lucie\",…}", "model": "gemini-2.5-flash" }
+```
+
+`model` is what lands in the entry's provenance block, so the record says which model answered
+rather than which one the client assumed. `runtime` on the same block is `"gemini"`.
+
+Two generation settings are fixed here and not exposed: `temperature: 0`, so the same note
+proposes the same thing twice and [§5.7](../product_vision/06-emotional-journal.md)'s golden
+suite means something; and `response_mime_type: "application/json"`, which removes the fence
+and the prose `parseModelJson` would otherwise have to repair. It is **not** the schema — the
+client's validator is still what decides whether any of it is usable.
+
+| Status | Body | When |
+| :----- | :--- | :--- |
+| `200` | The body above | |
+| `400` | `{"error":"…"}` | No prompt, neither audio nor text, an unsupported audio type, or data that is not base64. Nothing is forwarded. |
+| `401` | `{"error":"User ID not found in context"}` | |
+| `413` | `{"error":"That note is too long to send."}` | Over the body cap. Nginx refuses at 8 MB first. |
+| `422` | `{"error":"Gemini returned nothing for this note."}` | An empty answer, or a note Gemini declined. **The reason is not passed on**: the note is the user's own speech, and repeating a safety category back at them would be the app judging what they said. |
+| `429` | Google's own message | Quota. Passed through, because "try again later" is a different thing from "this will not work". |
+| `502` | `{"error":"Could not reach Gemini from this server."}` | Transport failure or an upstream 5xx. The underlying error is not echoed — it can carry the URL. |
+| `503` | `{"error":"This server has no Gemini API key, …"}` | No key set, **or a key Google rejected**. Not `401`: the user's own session is fine, and signing them out over the operator's expired key would be the wrong answer to the wrong question. |
+| `504` | `{"error":"Gemini did not answer in time."}` | 90 s. `nginx.conf` gives this one endpoint a 120 s read timeout so the backend's decision is the one the user hears about. |
 
 ---
 

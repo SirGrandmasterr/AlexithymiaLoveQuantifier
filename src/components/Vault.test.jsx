@@ -3,11 +3,15 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import axios from 'axios';
-import Vault, { AI_CLAIM, OUTBOX_CLAIM, SIMILAR_CLAIM, buildCSV, buildJournalCSV, describeBackend } from './Vault';
+import Vault, {
+    AI_CLAIM, AI_CLAIM_CLOUD, OUTBOX_CLAIM, SEND_CLAIM, SIMILAR_CLAIM,
+    buildCSV, buildJournalCSV, describeBackend
+} from './Vault';
 import { JOURNAL_COPY, JOURNAL_STORAGE_KEYS } from '../constants/journal';
 import { MAX_CLIP_MS, SILENCE_HOLD_MS } from '../journal/recorder';
 import { IDLE_LIMIT_MS } from './AppLock';
 import * as tier from '../journal/inference/tier';
+import { setCloudReport } from '../journal/inference/cloud';
 import { SubjectsProvider } from '../context/SubjectsContext';
 
 vi.mock('axios');
@@ -215,6 +219,13 @@ describe('Vault page', () => {
         expect(screen.queryByText(/\d+ journal entr/)).not.toBeInTheDocument();
     });
 
+    /** The page up, with the claim block rendered. Asserts nothing about which variant. */
+    const renderClaims = async () => {
+        renderVault();
+        await screen.findByText(/SQLite file/);
+        await waitFor(() => expect(document.querySelector('[data-send-claim]')).toBeInTheDocument());
+    };
+
     const claims = async () => {
         renderVault();
         await screen.findByText(/SQLite file/);
@@ -225,6 +236,9 @@ describe('Vault page', () => {
             + 'script. If you turn on voice check-ins, the speech and language model files are downloaded once, '
             + 'from this same server, and run here.'
         );
+        // The sentence above, retyped on purpose, and the constant the page renders. Both,
+        // so neither an edit to the string nor an edit to the page can move it alone.
+        expect(document.querySelector('[data-send-claim]')).toHaveTextContent(plain(SEND_CLAIM.off));
 
         // §4.2's numbers, read off the recorder's own constants rather than retyped.
         expect(screen.getByText(/Only while the record button is lit/)).toHaveTextContent(
@@ -338,6 +352,110 @@ describe('Vault page', () => {
             if (claim.includes('Whisper tiny')) expect(claim).toContain('Apache 2.0');
         });
         expect(AI_CLAIM.onLight).toContain('Whisper tiny and Gemma 4 E2B');
+    });
+
+    /* §5.5b — the fourth variant, and the only state in which something leaves the machine */
+
+    /**
+     * jsdom has no microphone, and `cloudIsOn` insists on one — for the same reason the
+     * on-device claims insist on a tier: this page describes what is happening *here*.
+     */
+    const givenARecordingDevice = () => {
+        const originals = {
+            secure: window.isSecureContext,
+            media: navigator.mediaDevices,
+            recorder: window.MediaRecorder,
+            audio: window.OfflineAudioContext
+        };
+        Object.defineProperty(window, 'isSecureContext', { value: true, configurable: true });
+        Object.defineProperty(navigator, 'mediaDevices', {
+            value: { getUserMedia: () => { } }, configurable: true
+        });
+        window.MediaRecorder = function MediaRecorder() { };
+        window.OfflineAudioContext = function OfflineAudioContext() { };
+
+        return () => {
+            Object.defineProperty(window, 'isSecureContext', { value: originals.secure, configurable: true });
+            Object.defineProperty(navigator, 'mediaDevices', { value: originals.media, configurable: true });
+            window.MediaRecorder = originals.recorder;
+            window.OfflineAudioContext = originals.audio;
+        };
+    };
+
+    const givenGeminiIsOn = () => {
+        window.localStorage.setItem(JOURNAL_STORAGE_KEYS.voice, 'true');
+        window.localStorage.setItem(JOURNAL_STORAGE_KEYS.cloud, 'true');
+        setCloudReport({ available: true, model: 'gemini-2.5-flash' });
+        return givenARecordingDevice();
+    };
+
+    afterEach(() => setCloudReport(null));
+
+    it('stops saying "Nothing" about what the app sends once Gemini is on', async () => {
+        const restore = givenGeminiIsOn();
+        try {
+            await renderClaims();
+            const answer = document.querySelector('[data-send-claim]');
+            expect(answer).toHaveAttribute('data-send-claim', 'cloud');
+            expect(answer).toHaveTextContent(plain(SEND_CLAIM.cloud));
+            // The one word this page may not keep saying while a recording is in flight.
+            expect(answer.textContent.startsWith('Nothing.')).toBe(false);
+        } finally {
+            restore();
+        }
+    });
+
+    it('states the Gemini paragraph verbatim, on a device that could not run a model either', async () => {
+        // The text-only floor, which is the case §5.5b exists for: no tier could transcribe
+        // here, and voice works anyway because the model is somewhere else.
+        vi.spyOn(tier, 'detectTier').mockReturnValue('text-only');
+        const restore = givenGeminiIsOn();
+        try {
+            await renderClaims();
+
+            const answer = document.querySelector('[data-ai-claim]');
+            expect(answer).toHaveAttribute('data-ai-claim', 'cloud');
+            expect(answer).toHaveTextContent(plain(AI_CLAIM_CLOUD));
+            // None of the on-device paragraphs may appear beside it.
+            expect(screen.queryByText(/None are running/)).not.toBeInTheDocument();
+            expect(screen.queryByText(/One model, and it runs on this device/)).not.toBeInTheDocument();
+            expect(screen.queryByText(/One small model writes the words down/)).not.toBeInTheDocument();
+        } finally {
+            restore();
+        }
+    });
+
+    it('says the recording is sent, and names who holds the key', () => {
+        // The three things this paragraph exists to say, asserted on the string so a later
+        // edit that softens one of them fails here rather than on someone's privacy page.
+        expect(AI_CLAIM_CLOUD).toContain('your voice note is sent');
+        expect(AI_CLAIM_CLOUD).toContain('The server holds the key');
+        expect(AI_CLAIM_CLOUD).toContain('**The recording is not kept**');
+        // And the one promise that survives from the on-device variants unchanged.
+        expect(AI_CLAIM_CLOUD).toContain('**nothing it proposes is saved on its own**');
+    });
+
+    it('keeps the settings toggle and this page saying the same thing about Gemini', () => {
+        expect(JOURNAL_COPY.settings.cloud.description).toContain('the recording leaves this device');
+        expect(JOURNAL_COPY.settings.cloud.description).toContain('Off by default');
+    });
+
+    it('goes back to "None are running" when the server no longer has a key', async () => {
+        // The stale-`true` case again, one layer out: the switch is on, the operator removed
+        // the key, and nothing is being sent. The page must describe that, not the switch.
+        window.localStorage.setItem(JOURNAL_STORAGE_KEYS.voice, 'true');
+        window.localStorage.setItem(JOURNAL_STORAGE_KEYS.cloud, 'true');
+        setCloudReport({ available: false, model: 'gemini-2.5-flash' });
+        vi.spyOn(tier, 'detectTier').mockReturnValue('text-only');
+        const restore = givenARecordingDevice();
+
+        try {
+            await renderClaims();
+            expect(document.querySelector('[data-send-claim]')).toHaveAttribute('data-send-claim', 'off');
+            expect(screen.getByText(/None are running/)).toBeInTheDocument();
+        } finally {
+            restore();
+        }
     });
 
     it('says a model is not running on a device that could not run one', async () => {

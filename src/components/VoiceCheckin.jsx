@@ -4,12 +4,16 @@ import { JOURNAL_COPY, countCopy, fillCopy } from '../constants/journal';
 import { useDiscretion } from '../context/DiscretionContext';
 import { createRecorder, watchLifecycle, MAX_CLIP_MS, DISCARD_REASONS, ERROR_KINDS } from '../journal/recorder';
 import { createModelSetDownloader, DOWNLOAD_ERRORS } from '../journal/inference/download';
-import { PROPOSAL_MODEL, formatBytes, setBytes, setLabel, tierModels } from '../journal/inference/models';
+import { GEMINI_MODEL, PROPOSAL_MODEL, formatBytes, setBytes, setLabel, tierModels } from '../journal/inference/models';
 import { audioInput, propose } from '../journal/inference';
 import { createWebRuntime } from '../journal/inference/web';
 import { createNativeRuntime } from '../journal/inference/native';
 import {
-    canTranscribe, detectTier, effectiveTier, nativeTierReport, probeWebGpu, voiceAvailability, webGpuAvailable
+    cloudIsOn, cloudModelName, cloudReport, createCloudDownloader, createCloudRuntime, primeCloudStatus
+} from '../journal/inference/cloud';
+import {
+    canTranscribe, detectTier, effectiveTier, nativeTierReport, probeWebGpu,
+    voiceAvailability, webGpuAvailable
 } from '../journal/inference/tier';
 import { readLanguage, readTierOverride, readVoiceSetting } from '../constants/journalSettings';
 import { isNative } from '../mobile/platform';
@@ -18,6 +22,38 @@ import { createNativeDownloader, nativeCaptureDeps, primeNativeTier } from '../m
 export const createVoiceKit = (options = {}) => {
     const native = options.native ?? isNative();
     const tier = options.tier || effectiveTier(detectTier(), readTierOverride()).tier;
+
+    /**
+     * The Gemini option short-circuits the tier entirely.
+     *
+     * It comes first because everything below it is about hosting weights — which model set
+     * this device downloads, how big it is, whether it is here yet — and none of that exists
+     * on this path. The recorder is still the device's, because the microphone always was.
+     *
+     * The flag is resolved here when a caller does not pass one, so the two existing call
+     * sites — the composer and the ritual — need to know nothing about any of this.
+     */
+    if (options.cloud ?? cloudIsOn({ native })) {
+        return {
+            tier,
+            cloud: true,
+            models: [],
+            model: GEMINI_MODEL,
+            label: GEMINI_MODEL.label,
+            size: '',
+            recorder: options.recorder
+                || createRecorder(native ? nativeCaptureDeps(options.plugin) : undefined),
+            downloader: options.downloader || createCloudDownloader(),
+            runtime: options.runtime || createCloudRuntime({
+                language: options.language,
+                // The name that lands in provenance. The server said it; nothing here guesses.
+                ...(options.cloudModel || cloudReport()?.model
+                    ? { model: options.cloudModel || cloudModelName() }
+                    : {})
+            })
+        };
+    }
+
     const models = options.models || tierModels(tier, { native });
 
     // What the download line and the settings screen say. One sentence for the whole set,
@@ -64,6 +100,8 @@ export const useVoiceAvailability = () => {
     const [primed, setPrimed] = useState(
         () => (isNative() ? nativeTierReport() !== null : webGpuAvailable() !== null)
     );
+    const [cloudChecked, setCloudChecked] = useState(() => cloudReport() !== null);
+
     useEffect(() => {
         if (primed) return undefined;
         let live = true;
@@ -71,16 +109,35 @@ export const useVoiceAvailability = () => {
         return () => { live = false; };
     }, [primed]);
 
+    useEffect(() => {
+        if (cloudChecked) return undefined;
+        let live = true;
+        primeCloudStatus().then(() => { if (live) setCloudChecked(true); });
+        return () => { live = false; };
+    }, [cloudChecked]);
+
     return useMemo(() => {
         const detected = detectTier();
+        const offered = cloudReport()?.available === true;
+        const cloud = cloudIsOn();
+
         const availability = voiceAvailability({
             detected,
             override: readTierOverride(),
-            voiceOn: readVoiceSetting(canTranscribe(detected)),
-            discreet
+            voiceOn: readVoiceSetting(canTranscribe(detected) || cloud),
+            discreet,
+            cloud
         });
-        return { ...availability, detected, language: readLanguage(), primed };
-    }, [discreet, primed]);
+        return {
+            ...availability,
+            detected,
+            language: readLanguage(),
+            primed,
+            cloudChecked,
+            cloudOffered: offered,
+            cloudModel: cloudReport() ? cloudModelName() : null
+        };
+    }, [discreet, primed, cloudChecked]);
 };
 
 /** A store snapshot, subscribed the way React 19 wants stores subscribed. */

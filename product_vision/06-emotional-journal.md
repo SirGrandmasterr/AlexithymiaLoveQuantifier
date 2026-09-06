@@ -1091,6 +1091,56 @@ battery over ten consecutive check-ins. All three need a phone; there was none, 
 was measured instead is the audio encoder's *marginal* cost — 169 MB — which is the number that
 decides whether the encoder sets this boundary, and it does not.
 
+### 5.5b The Gemini option — the one runtime that is not on the device
+
+§5.5's tier table decides what a device can *host*, and its bottom row is a refusal: a phone or
+a browser that cannot hold three gigabytes of weights gets typing and chips, and no voice
+check-in at all. That is the right default and the wrong ceiling. **This section adds one
+opt-in that removes the model from the device rather than the feature from the user.**
+
+**What it is.** A fourth runtime alongside the three in §5.1, implementing the same contract:
+`createCloudRuntime` in `src/journal/inference/cloud.js`, id `gemini`. The take is encoded as a
+16 kHz mono WAV — the same samples the on-device Full tier would have been given, so what the
+model hears is identical and the two paths stay comparable — and posted to this app's own
+server, which forwards it to Gemini with the operator's key. Gemini is natively multimodal, so
+**there is no transcription step**: audio in, §5.2's JSON out, one pass, exactly as the Full
+tier's local pass works.
+
+**Four decisions, and the reasons they are not the other way round.**
+
+1. **Through the app's own server, never from the browser.** `connect-src 'self'` is unchanged
+   (§5.6), an API key in a browser is a key anyone using the app can read, and a request to
+   `generativelanguage.googleapis.com` from the page would make the Vault's *"every request
+   goes to this app's own origin"* false for the browser rather than only for the server. The
+   relay is `backend/internal/handlers/gemini.go`; the key is `GEMINI_API_KEY`, read at startup
+   like `JWT_SECRET`, and it is never sent to a client in any form.
+2. **The operator's key, not the user's.** This is a single-user self-hosted product; whoever
+   runs the server already holds `JWT_SECRET` and the database. A per-user key would be a
+   password-shaped secret in `localStorage` for no gain.
+3. **Two switches, not one.** The server's key decides whether the option is *offered*
+   (`GET /api/journal/propose/status`); the user's toggle decides whether it is *used*
+   (`alq:journal-cloud`, off by default, per device). Either one absent means nothing is sent —
+   and a stored `true` on a device whose server has since lost its key is rewritten to `false`
+   on sight, so no screen goes on describing a hop that is not happening.
+4. **The validator still runs.** A model that answered from someone else's machine gets no more
+   credit than one that answered from this one: `parseModelJson` and `validateProposal` are the
+   same functions, so a feeling outside the vocabulary is dropped here exactly as it is there.
+
+**What it costs, said plainly.** The recording leaves the device. It is not stored — not on the
+device, not on the server, not in a log — but it is sent, and what Google does with it is
+governed by their terms and not by this app. That is a different promise from every other one
+in this phase, so it gets its own paragraph on the Vault page (§10.2 gains a fourth *AI
+features* variant and a second *what does the app send anywhere* variant), its own sentence in
+the settings block **above** the switch, and the licence-versus-terms distinction stated rather
+than blurred: Gemma is open weights under Apache 2.0 on the user's own machine, Gemini is a
+hosted API under Google's terms, and the copy must not let those read alike.
+
+**What it buys.** Voice on the text-only floor, with nothing to download and nothing to wait
+for. `voiceAvailability` takes a `cloud` flag and, when it is set, stops asking the tier —
+`canCapture` replaces `canTranscribe`, which drops the three capabilities that only exist to
+run, verify and keep weights (`wasm`, `digest`, `storage`) and keeps the four a recording needs.
+A Full-tier machine may choose it too, for the reason anyone chooses a bigger model.
+
 ### 5.6 Where the weights come from, and the headers that must change
 
 - **They must come from the app's own origin or the app package.** The Vault page says
@@ -2297,6 +2347,17 @@ byte-for-byte what it was. [docs/12 §6](../docs/12-android-app.md) has the poli
 [§3.4](../docs/12-android-app.md) the reminder and the shortcut.
 
 ### 10.6 A note on third parties
+
+**Amended by §5.5b.** The paragraph below was written for a phase in which nothing left the
+machine, and its last clause — *"the Vault's export is the only way the data leaves"* — is now
+true only of a device with the Gemini option off, which is every device by default and every
+device on a server with no key. Where it is on, a fourth way exists and it is the recording
+itself: a voice note, sent through the operator's own server to Google, carrying the user's
+speech and therefore whatever it says about the people in it. **The people named in a note
+consented to none of this either**, which is the same objection §10.6 already records and the
+reason the option is off by default, per device, offered only where a server has been given a
+key, and described in full above the switch rather than after it. It is stated here so the
+consequence is recorded rather than discovered.
 
 A relationship name was already the field docs/13 flagged for naming someone who never
 consented. The journal adds verbatim speech about those people and, with facts, statements
